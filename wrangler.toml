@@ -62,9 +62,11 @@ AUTH_ENABLED = "false"
 # Stripe price for the $20/mo "Priority Access" plan (set the real price id).
 STRIPE_PRICE_ID = "price_PLACEHOLDER"
 
-# AI image/video generation (optional). Set the endpoint URLs here and the keys
-# as secrets (IMAGE_API_KEY / VIDEO_API_KEY). Apps call window.YIELD.image()/video().
-IMAGE_API_URL = ""
+# AI image/video generation. Image is preconfigured for NVIDIA FLUX.1-schnell and
+# reuses your NVIDIA_API_KEY (no extra setup). Apps call window.YIELD.image()/video().
+# Video (NVIDIA Cosmos) hosted endpoint isn't generally available yet — set
+# VIDEO_API_URL + VIDEO_API_KEY when you have it.
+IMAGE_API_URL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell"
 IMAGE_API_MODEL = ""
 VIDEO_API_URL = ""
 VIDEO_API_MODEL = ""

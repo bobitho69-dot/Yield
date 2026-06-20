@@ -16,14 +16,22 @@ const CORS = {
 };
 const j = (data: unknown, status = 200) => json(data, { status, headers: CORS });
 
-// Pull a media URL out of whatever shape the provider returns.
+function b64ToDataUrl(b64: string): string {
+  const mime = b64.startsWith('/9j/') ? 'image/jpeg' : b64.startsWith('iVBOR') ? 'image/png' : b64.startsWith('UklGR') ? 'image/webp' : 'image/png';
+  return `data:${mime};base64,${b64}`;
+}
+
+// Pull a media URL (or data URL) out of whatever shape the provider returns.
 function extractUrl(d: any): string | null {
+  if (typeof d?.image === 'string' && d.image.startsWith('data:')) return d.image;
+  if (typeof d?.url === 'string') return d.url;
+  const b64 = d?.artifacts?.[0]?.base64 || d?.data?.[0]?.b64_json || d?.image_base64 || (typeof d?.image === 'string' && !d.image.startsWith('http') ? d.image : null);
+  if (b64) return b64ToDataUrl(b64);
   return (
-    d?.url || d?.image_url || d?.video_url ||
-    d?.data?.[0]?.url || d?.data?.[0]?.b64_json && `data:image/png;base64,${d.data[0].b64_json}` ||
+    d?.image_url || d?.video_url || d?.data?.[0]?.url ||
     d?.images?.[0]?.url || (typeof d?.images?.[0] === 'string' ? d.images[0] : null) ||
     (typeof d?.output?.[0] === 'string' ? d.output[0] : null) || (typeof d?.output === 'string' ? d.output : null) ||
-    d?.image || d?.video || d?.result?.url || d?.artifacts?.[0]?.url || null
+    d?.video || d?.result?.url || d?.artifacts?.[0]?.url || null
   );
 }
 
@@ -32,7 +40,8 @@ export async function handleMedia(req: Request, c: Ctx, kind: 'image' | 'video')
   if (req.method !== 'POST') return j({ error: 'POST only' }, 405);
 
   const url = kind === 'video' ? c.env.VIDEO_API_URL : c.env.IMAGE_API_URL;
-  const key = kind === 'video' ? c.env.VIDEO_API_KEY : c.env.IMAGE_API_KEY;
+  // NVIDIA media gen uses the same nvapi key — fall back to it so no extra setup.
+  const key = (kind === 'video' ? c.env.VIDEO_API_KEY : c.env.IMAGE_API_KEY) || c.env.NVIDIA_API_KEY;
   const model = kind === 'video' ? c.env.VIDEO_API_MODEL : c.env.IMAGE_API_MODEL;
   if (!url || !key) return j({ error: `${kind} generation isn't configured yet.`, code: 'not_configured' }, 503);
 
@@ -41,7 +50,9 @@ export async function handleMedia(req: Request, c: Ctx, kind: 'image' | 'video')
 
   const body = (await req.json().catch(() => ({}))) as Record<string, any>;
   if (!body.prompt) return j({ error: 'prompt required' }, 400);
-  const payload = { ...(model ? { model } : {}), ...body };
+  // Sensible defaults for NVIDIA FLUX image generation; the app can override any.
+  const defaults = kind === 'image' ? { mode: 'base', cfg_scale: 3.5, width: 1024, height: 1024, seed: 0, steps: 4 } : {};
+  const payload = { ...defaults, ...(model ? { model } : {}), ...body };
 
   try {
     const r = await fetch(url, {

@@ -27,6 +27,7 @@ back to a working model. Configured in `src/config/models.ts`.
 | GLM 5.1 | coder | `z-ai/glm-5.1` | `GLM_API_KEY` |
 | Qwen3 Coder 480B (free) | coder | `qwen/qwen3-coder:free` *(OpenRouter)* | `OPENROUTER_API_KEY` |
 | Gemma 4 31B (free) | coder | `google/gemma-4-31b-it:free` *(OpenRouter)* | `OPENROUTER_API_KEY` |
+| Laguna M.1 (free) | coder | `poolside/laguna-m.1:free` *(OpenRouter)* | `OPENROUTER_API_KEY` |
 | gpt-oss-20b | router (Auto) + agent fallback | `openai/gpt-oss-20b` | `GPTOSS_API_KEY` |
 | JailbreakDetect | guard | `nvidia/nemoguard-jailbreak-detect` | `NEMOGUARD_API_KEY` |
 

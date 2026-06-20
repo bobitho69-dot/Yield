@@ -150,7 +150,9 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
       `create:function(e,d){return fetch(B+e,{method:'POST',headers:H,body:JSON.stringify(d||{})}).then(jr).then(function(x){return x.record;});},` +
       `get:function(e,i){return fetch(B+e+'/'+i).then(jr).then(function(x){return x.record;});},` +
       `update:function(e,i,d){return fetch(B+e+'/'+i,{method:'PUT',headers:H,body:JSON.stringify(d||{})}).then(jr).then(function(x){return x.record;});},` +
-      `delete:function(e,i){return fetch(B+e+'/'+i,{method:'DELETE'}).then(jr);}};})(${JSON.stringify(project.id)});`;
+      `delete:function(e,i){return fetch(B+e+'/'+i,{method:'DELETE'}).then(jr);}};})(${JSON.stringify(project.id)});` +
+      `window.YIELD.image=function(p,o){return fetch('/api/media/image',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({prompt:p},o||{}))}).then(function(r){return r.json();}).then(function(d){return d.url||d;});};` +
+      `window.YIELD.video=function(p,o){return fetch('/api/media/video',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({prompt:p},o||{}))}).then(function(r){return r.json();}).then(function(d){return d.url||d;});};`;
     inject = `<script>${sdk}</script>`;
   }
   const body = ext === 'html' ? REPORTER + inject + file.content : file.content;

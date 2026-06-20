@@ -14,6 +14,7 @@ import { handleGithubStatus, handleGithubRepos, handleProjectGithub, handleVersi
 import { handleAgents } from './routes/agents';
 import { handleSecrets } from './routes/secrets';
 import { handleAppData } from './routes/appdata';
+import { handleMedia } from './routes/media';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -60,6 +61,8 @@ export default {
         } else {
           res = await handleProjects(request, c, id || undefined, sub || undefined);
         }
+      } else if (path === '/api/media/image' || path === '/api/media/video') {
+        res = await handleMedia(request, c, path.endsWith('video') ? 'video' : 'image');
       } else if (path.startsWith('/api/apps/')) {
         const p = path.slice('/api/apps/'.length).split('/'); // [id, 'entities', entity, recordId?]
         if (p[1] === 'entities' && p[0] && p[2]) res = await handleAppData(request, c, p[0], p[2], p[3]);

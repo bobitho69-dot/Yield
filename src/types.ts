@@ -19,6 +19,12 @@ export interface Env {
   AUTH_ENABLED: string; // 'true' = require login; 'false' = open testing mode (guest)
   STRIPE_PRICE_ID: string;
 
+  // AI image/video generation (optional). Apps call window.YIELD.image()/video().
+  IMAGE_API_URL?: string;
+  IMAGE_API_MODEL?: string;
+  VIDEO_API_URL?: string;
+  VIDEO_API_MODEL?: string;
+
   // Secrets
   NVIDIA_API_KEY: string; // shared default + fallback for every AI below
 
@@ -39,6 +45,9 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
+
+  IMAGE_API_KEY?: string;
+  VIDEO_API_KEY?: string;
 }
 
 export interface SessionUser {

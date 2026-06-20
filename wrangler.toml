@@ -62,6 +62,13 @@ AUTH_ENABLED = "false"
 # Stripe price for the $20/mo "Priority Access" plan (set the real price id).
 STRIPE_PRICE_ID = "price_PLACEHOLDER"
 
+# AI image/video generation (optional). Set the endpoint URLs here and the keys
+# as secrets (IMAGE_API_KEY / VIDEO_API_KEY). Apps call window.YIELD.image()/video().
+IMAGE_API_URL = ""
+IMAGE_API_MODEL = ""
+VIDEO_API_URL = ""
+VIDEO_API_MODEL = ""
+
 # OAuth is OPTIONAL — email + password login works without it. These placeholders
 # let the app deploy today; the login UI auto-hides GitHub/Google until they're real.
 # To enable later: put your real Client ID values here, and for each *_SECRET set a

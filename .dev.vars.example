@@ -34,3 +34,9 @@ GOOGLE_CLIENT_SECRET=
 # --- Stripe (required for the $20/mo plan) -------------------------------------
 STRIPE_SECRET_KEY=sk_test_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx
+
+# --- AI image/video generation (optional) --------------------------------------
+# Endpoint URLs go in wrangler.toml [vars] (IMAGE_API_URL / VIDEO_API_URL);
+# the keys are secrets:
+IMAGE_API_KEY=
+VIDEO_API_KEY=

@@ -136,6 +136,19 @@ export const CODER_MODELS: ModelDef[] = [
     // Its own API on OpenRouter (OpenAI-compatible). Set OPENROUTER_API_KEY.
     provider: { apiKeyEnv: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1' },
   },
+  {
+    id: 'gemma-4-31b',
+    label: 'Gemma 4 31B (free)',
+    modelId: 'google/gemma-4-31b-it:free',
+    role: 'coder',
+    tier: 'standard',
+    speed: 4,
+    blurb: "Google's Gemma 4 31B — fast, capable open model, free via OpenRouter.",
+    pros: ['Free to use', 'Fast for its size', 'Solid for everyday apps & UI'],
+    cons: ['Smaller than the flagship coders', 'Free tier is rate-limited'],
+    // Same OpenRouter provider + key as Qwen (OpenAI-compatible).
+    provider: { apiKeyEnv: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1' },
+  },
 ];
 
 // Auto router — analyzes the prompt and picks the best coder model.

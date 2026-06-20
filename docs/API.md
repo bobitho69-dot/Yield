@@ -25,6 +25,8 @@ back to a working model. Configured in `src/config/models.ts`.
 | Step 3.7 Flash | coder | `stepfun-ai/step-3.7-flash` | `STEP_API_KEY` |
 | DeepSeek V4 Pro | coder | `deepseek-ai/deepseek-v4-pro` | `DEEPSEEK_PRO_API_KEY` |
 | GLM 5.1 | coder | `z-ai/glm-5.1` | `GLM_API_KEY` |
+| Qwen3 Coder 480B (free) | coder | `qwen/qwen3-coder:free` *(OpenRouter)* | `OPENROUTER_API_KEY` |
+| Gemma 4 31B (free) | coder | `google/gemma-4-31b-it:free` *(OpenRouter)* | `OPENROUTER_API_KEY` |
 | gpt-oss-20b | router (Auto) + agent fallback | `openai/gpt-oss-20b` | `GPTOSS_API_KEY` |
 | JailbreakDetect | guard | `nvidia/nemoguard-jailbreak-detect` | `NEMOGUARD_API_KEY` |
 

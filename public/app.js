@@ -527,7 +527,10 @@ async function renderSettingsPane() {
       <div class="sub">Encrypted at rest; for this app's agents / server use.</div>
       <div id="setSecrets" style="margin:.4rem 0">${(secrets || []).map((s) => `<div class="row" style="margin-top:.3rem">🔒 <b>${esc(s.name)}</b><button class="btn ghost sm" data-del-secret="${s.id}">Delete</button></div>`).join('') || '<div class="sub">None yet.</div>'}</div>
       <div class="pane-form" style="grid-template-columns:1fr 1fr auto"><input id="secName" placeholder="NAME" /><input id="secVal" type="password" placeholder="value" /><button class="btn primary sm" id="secAdd">Save</button></div>
-      <div id="secMsg" class="sub"></div></div>`;
+      <div id="secMsg" class="sub"></div></div>
+    <div class="pane-card"><b>Version history</b>
+      <div class="sub">Each build is a commit in your repo — restore any version.</div>
+      <div id="setVersions" style="margin-top:.4rem"><span class="sub">Loading…</span></div></div>`;
   $('#setRename').onclick = async () => { const t = $('#setTitle').value.trim(); if (t) { await fetch(`/api/projects/${state.projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: t }) }); $('#projectTitle').value = t; loadProjects(); } };
   $('#secAdd').onclick = async () => { const name = $('#secName').value.trim(), value = $('#secVal').value; const r = await fetch(`/api/secrets?project=${state.projectId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, value }) }); const d = await r.json(); if (!r.ok) { $('#secMsg').textContent = d.error || 'Failed'; return; } renderSettingsPane(); };
   el.querySelectorAll('[data-del-secret]').forEach((b) => (b.onclick = async () => { await fetch('/api/secrets/' + b.dataset.delSecret, { method: 'DELETE' }); renderSettingsPane(); }));
@@ -537,6 +540,28 @@ async function renderSettingsPane() {
     ? `Connected as @${esc(gh.login)}. ${state.githubRepo ? `Repo: <a href="${state.githubUrl}" target="_blank" style="color:var(--brand-2)">${esc(state.githubRepo)}</a>` : '<button class="btn ghost sm" id="setGhPush">Save this app to a repo</button>'}`
     : `<a class="btn primary sm" href="${ghRedirect()}">Connect GitHub</a>`;
   const gp = $('#setGhPush'); if (gp) gp.onclick = openGithubDialog;
+  populateVersions();
+}
+
+async function populateVersions() {
+  const box = $('#setVersions'); if (!box) return;
+  const res = await fetch(`/api/projects/${state.projectId}/versions`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { box.innerHTML = `<span class="sub">${esc(data.error || 'Connect GitHub to enable version history.')}</span>`; return; }
+  const commits = data.commits || [];
+  if (!commits.length) { box.innerHTML = '<span class="sub">No versions yet.</span>'; return; }
+  box.innerHTML = commits.map((cm) => `<div class="row" style="margin-top:.35rem">
+    <span style="flex:1;overflow:hidden;text-overflow:ellipsis"><span class="endpoint">${cm.sha.slice(0, 7)}</span> ${esc((cm.message || '').split('\n')[0]).slice(0, 64)}</span>
+    <button class="btn ghost sm" data-restore="${cm.sha}">Restore</button></div>`).join('');
+  box.querySelectorAll('[data-restore]').forEach((b) => (b.onclick = () => restoreVersion(b.dataset.restore)));
+}
+async function restoreVersion(sha) {
+  if (!confirm('Restore the app to this version? Current files are overwritten, but a new commit is created so nothing is lost.')) return;
+  const r = await fetch(`/api/projects/${state.projectId}/versions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sha }) });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || 'Restore failed'); return; }
+  await loadFiles(); refreshPreview();
+  addBubble('ai', `<div class="meta">restored</div>↩ Restored to ${esc(sha.slice(0, 7))} (${d.restored} files).`);
 }
 
 // ---------- GitHub code storage ----------

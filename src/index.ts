@@ -10,7 +10,7 @@ import { handleProjects, serveProjectFile } from './routes/projects';
 import { handleAuth } from './routes/authRoutes';
 import { handleBilling } from './routes/billingRoutes';
 import { handleModels, handleStatus, handleHealth } from './routes/misc';
-import { handleGithubStatus, handleGithubRepos, handleProjectGithub } from './routes/githubRoutes';
+import { handleGithubStatus, handleGithubRepos, handleProjectGithub, handleVersions } from './routes/githubRoutes';
 import { handleAgents } from './routes/agents';
 import { handleSecrets } from './routes/secrets';
 import { handleAppData } from './routes/appdata';
@@ -55,6 +55,8 @@ export default {
         const [id, sub] = rest.split('/');
         if (id && sub === 'github' && request.method === 'POST') {
           res = await handleProjectGithub(request, c, id);
+        } else if (id && sub === 'versions') {
+          res = await handleVersions(request, c, id);
         } else {
           res = await handleProjects(request, c, id || undefined, sub || undefined);
         }

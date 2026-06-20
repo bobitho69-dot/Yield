@@ -479,14 +479,15 @@ async function consumeStream(res, opts = {}) {
 // working so the composer shows "Working…" instead of looking idle.
 async function resumeBuild() {
   if (!state.projectId) return;
+  // Show the working state immediately — the build is running server-side.
+  state.working = true; updateComposer();
   let res;
   try {
     res = await fetch(`/api/projects/${state.projectId}/stream`);
   } catch {
-    return startBuildWatch();
+    return startBuildWatch(); // keeps working=true; clears when it finishes
   }
   if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) return startBuildWatch();
-  state.working = true; updateComposer();
   try {
     await consumeStream(res, { resume: true });
     await loadFiles(); refreshPreview();

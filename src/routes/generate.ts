@@ -489,6 +489,9 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
   // the browser tab is refreshed or closed. The response is the DO's live stream.
   if (project && c.env.BUILDER) {
     try {
+      // Mark "building" immediately so a refresh in the first moments already shows
+      // the in-progress state (the DO refreshes this flag and clears it when done).
+      await c.env.KV.put(`build:${project.id}`, String(Date.now()), { expirationTtl: 3600 }).catch(() => {});
       const stub = c.env.BUILDER.get(c.env.BUILDER.idFromName(project.id));
       return await stub.fetch('https://build.yield/run', {
         method: 'POST',

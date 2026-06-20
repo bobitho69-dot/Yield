@@ -11,7 +11,7 @@ import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
 import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor } from '../config/models';
 import { chat, chatStream } from '../lib/nvidia';
-import { CONVO_SYSTEM, SUBAGENT_SYSTEM, routerSystem } from '../lib/prompts';
+import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import {
   addMessage, createAgent, createProject, getProject, getProjectFiles, getSecretRows, listAgents, listMessages,
@@ -130,6 +130,7 @@ function cleanFile(s: string): string {
 export interface SecretReq { name: string; description: string }
 export interface AgentReq { name: string; model: string | null; system_prompt: string }
 export interface TaskReq { name: string; model: string | null; instructions: string }
+export interface ResearchReq { name: string; model: string | null; instructions: string }
 
 // Streaming parser: chat text streams live; "=== file: path ===" starts a file,
 // "=== agent: Name | model ===" declares a runtime agent, "=== secret: NAME — why ==="
@@ -140,17 +141,20 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   const SECRET = /^={2,}\s*secret:\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:[—:-]\s*(.*?))?\s*={2,}\s*$/i;
   const AGENT = /^={2,}\s*agent:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
   const TASK = /^={2,}\s*task:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
+  const RESEARCH = /^={2,}\s*research:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
   let buf = '';
-  let mode: 'chat' | 'file' | 'agent' | 'task' = 'chat';
+  let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' = 'chat';
   let inThink = false;
   let curFile: { path: string; lines: string[] } | null = null;
   let curAgent: { name: string; model: string | null; lines: string[] } | null = null;
   let curTask: { name: string; model: string | null; lines: string[] } | null = null;
+  let curResearch: { name: string; model: string | null; lines: string[] } | null = null;
   let lastStatus = '';
   const chatLines: string[] = [];
   const files: { path: string; lines: string[] }[] = [];
   const agents: { name: string; model: string | null; lines: string[] }[] = [];
   const tasks: { name: string; model: string | null; lines: string[] }[] = [];
+  const research: { name: string; model: string | null; lines: string[] }[] = [];
   const secrets: SecretReq[] = [];
 
   async function handleLine(line: string): Promise<void> {
@@ -183,6 +187,13 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       await send('code', { agent: agentLabel, path: curFile.path, delta: '', start: true });
       return;
     }
+    if ((m = line.match(RESEARCH))) {
+      mode = 'research';
+      curResearch = { name: m[1].trim().slice(0, 80), model: m[2] ? m[2].trim() : null, lines: [] };
+      research.push(curResearch);
+      await send('status', { stage: `Helper AI: ${curResearch.name}` });
+      return;
+    }
     if ((m = line.match(TASK))) {
       mode = 'task';
       curTask = { name: m[1].trim().slice(0, 80), model: m[2] ? m[2].trim() : null, lines: [] };
@@ -205,6 +216,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     else if (mode === 'file' && curFile) { curFile.lines.push(line); await send('code', { agent: agentLabel, path: curFile.path, delta: line + '\n' }); }
     else if (mode === 'agent' && curAgent) curAgent.lines.push(line);
     else if (mode === 'task' && curTask) curTask.lines.push(line);
+    else if (mode === 'research' && curResearch) curResearch.lines.push(line);
   }
 
   return {
@@ -220,7 +232,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     async end() {
       if (buf.length) { await handleLine(buf); buf = ''; }
     },
-    get produced() { return chatLines.length > 0 || files.length > 0 || agents.length > 0 || tasks.length > 0; },
+    get produced() { return chatLines.length > 0 || files.length > 0 || agents.length > 0 || tasks.length > 0 || research.length > 0; },
     result() {
       // Drop reasoning-model scratchpads if any leaked into the text.
       let chat = chatLines.join('\n')
@@ -237,18 +249,50 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
         .map((t) => ({ name: t.name, model: t.model, instructions: cleanFile(t.lines.join('\n')) }))
         .filter((t) => t.name && t.instructions.trim())
         .slice(0, 6); // cap parallel agents
+      const rsc: ResearchReq[] = research
+        .map((r) => ({ name: r.name, model: r.model, instructions: cleanFile(r.lines.join('\n')) }))
+        .filter((r) => r.name && r.instructions.trim())
+        .slice(0, 4); // cap helper AIs
       // The model didn't use === file: === — recover code from fences / raw HTML.
-      // (Only when no tasks were delegated; tasks produce the files instead.)
-      if (fs.length === 0 && tks.length === 0) {
+      // (Only when no tasks/research were delegated; those produce the files instead.)
+      if (fs.length === 0 && tks.length === 0 && rsc.length === 0) {
         const fb = extractFilesFromText(chat);
         if (fb.files.length) { fs = fb.files; chat = fb.chat || 'Here is your app.'; }
       }
-      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks };
+      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc };
     },
   };
 }
 
 export type SendFn = (event: string, data: unknown) => Promise<void>;
+
+// Run one helper/research AI (from a "=== research: ===" block). It does NOT write
+// code — it returns findings/analysis (text) that the coder then builds with.
+async function runResearchAgent(env: Env, req: ResearchReq, context: string, effort: 'low' | 'medium' | 'high'): Promise<{ name: string; findings: string }> {
+  const messages = [
+    { role: 'system' as const, content: RESEARCH_SYSTEM },
+    { role: 'user' as const, content: `Context: ${context}\n\nResearch task ("${req.name}"):\n${req.instructions}` },
+  ];
+  const order = [req.model, 'glm-5.1', 'deepseek-v4-flash'].filter(Boolean) as string[];
+  const seen = new Set<string>();
+  for (const cid of order) {
+    if (seen.has(cid)) continue;
+    seen.add(cid);
+    const model = resolveModel(cid);
+    const ep = endpointFor(env, model);
+    for (const eff of [effort, null] as const) {
+      try {
+        const { text } = await chat({
+          baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+          temperature: 0.4, max_tokens: 4000, timeoutMs: 150000,
+          ...(eff ? { extra: { reasoning_effort: eff } } : {}),
+        });
+        if (text && text.trim()) return { name: req.name, findings: text.trim() };
+      } catch { /* try plain, then next model */ }
+    }
+  }
+  return { name: req.name, findings: '(no findings — proceed with your best judgement)' };
+}
 
 // Run one parallel build agent (from a "=== task: ===" block). It streams its code
 // live (tagged with the agent's name via `send`) and returns the file(s) it built.
@@ -394,41 +438,75 @@ export async function runBuild(
     //    it errors AFTER producing code (e.g. a slow timeout) we KEEP the partial
     //    result instead of throwing it away.
     const wantEffort = effortOf(body.thinking); // user-chosen thinking level
-    const streamer = makeFileStreamer(send);
-    const streamWith = async (mdef: typeof model, eff: 'low' | 'medium' | 'high' | null) => {
-      const ep = endpointFor(c.env, mdef);
-      await chatStream(
-        {
-          baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-          temperature: 0.3, top_p: 0.95, max_tokens: 32768, timeoutMs: 600000,
-          ...(eff ? { extra: { reasoning_effort: eff } } : {}),
-        },
-        async (delta) => { await streamer.feed(delta); await heartbeat(); },
-        async (rr) => { await send('thinking', rr); await heartbeat(); },
-      );
-    };
     let activeModel = model;
-    try {
-      await streamWith(model, wantEffort);
-    } catch (e) {
-      if (streamer.produced) {
-        await send('status', { stage: 'Finalizing what was built…' }); // keep partial output
-      } else {
-        try {
-          await streamWith(model, null); // model may have rejected the reasoning flag
-        } catch (e2) {
-          const fb = resolveModel('deepseek-v4-flash');
-          if (fb.id === model.id) throw e2;
-          activeModel = fb;
-          await send('status', { stage: `Switching to ${fb.label}` });
-          await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'stable model' });
-          await streamWith(fb, null);
+
+    // One orchestrator pass: stream code into a fresh parser, with reasoning-flag
+    // and stable-model fallbacks, keeping any partial output a slow model produced.
+    const streamOnce = async () => {
+      const streamer = makeFileStreamer(send);
+      const streamWith = async (mdef: typeof model, eff: 'low' | 'medium' | 'high' | null) => {
+        const ep = endpointFor(c.env, mdef);
+        await chatStream(
+          {
+            baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+            temperature: 0.3, top_p: 0.95, max_tokens: 32768, timeoutMs: 600000,
+            ...(eff ? { extra: { reasoning_effort: eff } } : {}),
+          },
+          async (delta) => { await streamer.feed(delta); await heartbeat(); },
+          async (rr) => { await send('thinking', rr); await heartbeat(); },
+        );
+      };
+      try {
+        await streamWith(activeModel, wantEffort);
+      } catch (e) {
+        if (streamer.produced) {
+          await send('status', { stage: 'Finalizing what was built…' }); // keep partial output
+        } else {
+          try {
+            await streamWith(activeModel, null); // model may have rejected the reasoning flag
+          } catch (e2) {
+            const fb = resolveModel('deepseek-v4-flash');
+            if (fb.id === activeModel.id) throw e2;
+            activeModel = fb;
+            await send('status', { stage: `Switching to ${fb.label}` });
+            await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'stable model' });
+            await streamWith(fb, null);
+          }
         }
       }
-    }
-    await streamer.end();
+      await streamer.end();
+      return streamer.result();
+    };
 
-    const result = streamer.result();
+    let result = await streamOnce();
+
+    // Helper AIs: if the coder asked to research/plan a tricky part first
+    // ("=== research: Name ==="), run those helpers in parallel, surface their
+    // findings in the Thinking panel, then build again WITH the findings. Bounded
+    // to a single research round so it always converges to code.
+    if (result.research.length) {
+      const reqs = result.research;
+      await send('status', { stage: `Consulting ${reqs.length} helper AI(s)…` });
+      await heartbeat();
+      const rctx = `App being built. Goal:\n${prompt.slice(0, 1400)}`;
+      const findings = await Promise.all(reqs.map(async (r) => {
+        await send('status', { stage: `🔬 ${r.name} researching…` });
+        const f = await runResearchAgent(c.env, r, rctx, wantEffort);
+        await send('thinking', `\n🔬 ${r.name} (helper AI) found:\n${f.findings}\n`);
+        await heartbeat();
+        return f;
+      }));
+      messages.push({ role: 'assistant', content: (result.chat || 'Let me research this first.').slice(0, 2000) });
+      messages.push({
+        role: 'user',
+        content:
+          'Findings from your helper AIs:\n\n' +
+          findings.map((f) => `### ${f.name}\n${f.findings}`).join('\n\n') +
+          '\n\nNow build the COMPLETE app using these findings. Do not request more research — write the files.',
+      });
+      result = await streamOnce();
+    }
+
     const chatBody = result.chat;
     const agentReqs = result.agents;
     const secretReqs = result.secrets;

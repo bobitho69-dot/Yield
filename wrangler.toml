@@ -1,0 +1,89 @@
+# Yield — Cloudflare Workers configuration
+#
+# The Worker serves both the API (/api/*) and the static frontend (./public).
+# Fill in the placeholder IDs after you create the resources:
+#   npm run db:create        -> copy the database_id below
+#   npm run kv:create        -> copy the id below
+# Secrets (never commit these) are set with `wrangler secret put <NAME>`.
+# See .dev.vars.example for the full list.
+
+name = "yield"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# --- Static frontend (chat UI, editor, preview shell) --------------------------
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# Static pages (/, /app, /dashboard, ...) are served straight from ./public by
+# Cloudflare's asset layer for free — html_handling maps "/app" -> app.html, etc.
+# Only the API and dynamic previews run the Worker, which keeps billable Worker
+# invocations (and thus cost) as low as possible on the free tier.
+run_worker_first = [ "/api/*", "/p/*" ]
+html_handling = "auto-trailing-slash"
+not_found_handling = "404-page"
+
+# --- D1: users, projects, files, subscriptions, usage ledger -------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "yield-db"
+database_id = "ff477f86-f456-45e5-be97-e64a1adbb64c"
+
+# --- KV: sessions, OAuth state, usage counters, feature flags ------------------
+[[kv_namespaces]]
+binding = "KV"
+id = "22565cb87f544eb9aede82692e0681a9"
+
+# --- Non-secret vars (override per environment) --------------------------------
+[vars]
+APP_NAME = "Yield"
+APP_URL = "https://yield.example.workers.dev"
+
+# NVIDIA endpoints (OpenAI-compatible chat + NemoGuard jailbreak classifier).
+NVIDIA_CHAT_BASE = "https://integrate.api.nvidia.com/v1"
+NVIDIA_JAILBREAK_URL = "https://ai.api.nvidia.com/v1/security/nvidia/nemoguard-jailbreak-detect/v1/classify"
+
+# "High Usage Times" gating. When monthly Worker requests exceed FREE_REQUEST_BUDGET,
+# Yield flips to high-usage mode: only paid ($20/mo) users may generate. Anonymous
+# and free users get a friendly "come back later / upgrade" message.
+# FREE_REQUEST_BUDGET is a safety margin under Cloudflare's free 100k/day allowance.
+FREE_REQUEST_BUDGET = "2500000"      # generations per calendar month before gating
+FREE_DAILY_LIMIT = "15"              # generations/day per free user
+ANON_DAILY_LIMIT = "3"               # generations/day per anonymous device
+HIGH_USAGE_OVERRIDE = "auto"         # auto | on | off  (manual kill-switch)
+
+# Master auth switch. "false" = OPEN TESTING MODE: no login required, everyone acts
+# as a shared guest, all limits off. Flip to "true" to require accounts (everything
+# is already built — email/password + optional OAuth + billing gating turn on).
+AUTH_ENABLED = "false"
+
+# Stripe price for the $20/mo "Priority Access" plan (set the real price id).
+STRIPE_PRICE_ID = "price_PLACEHOLDER"
+
+# OAuth is OPTIONAL — email + password login works without it. These placeholders
+# let the app deploy today; the login UI auto-hides GitHub/Google until they're real.
+# To enable later: put your real Client ID values here, and for each *_SECRET set a
+# proper Cloudflare secret (Settings → Variables and Secrets) and delete its line here.
+GITHUB_CLIENT_ID = "PLACEHOLDER_GITHUB_CLIENT_ID"
+GITHUB_CLIENT_SECRET = "PLACEHOLDER_GITHUB_CLIENT_SECRET"
+GOOGLE_CLIENT_ID = "PLACEHOLDER_GOOGLE_CLIENT_ID"
+GOOGLE_CLIENT_SECRET = "PLACEHOLDER_GOOGLE_CLIENT_SECRET"
+
+# Secrets set via `wrangler secret put` (do NOT put real values here):
+#   NVIDIA_API_KEY            nvapi-...  (shared default + fallback for every AI)
+#   # Per-AI keys (optional; each AI is its own API, falls back to NVIDIA_API_KEY):
+#   KIMI_API_KEY             Kimi K2.6
+#   MINIMAX_API_KEY          MiniMax M3
+#   DEEPSEEK_FLASH_API_KEY   DeepSeek V4 Flash
+#   STEP_API_KEY             Step 3.7 Flash
+#   DEEPSEEK_PRO_API_KEY     DeepSeek V4 Pro
+#   GLM_API_KEY              GLM 5.1
+#   GPTOSS_API_KEY           gpt-oss-20b (Auto router)
+#   NEMOGUARD_API_KEY        NeMoGuard JailbreakDetect
+#   SESSION_SECRET            random 32+ byte string (HMAC for session cookies)
+#   # GitHub/Google OAuth are OPTIONAL placeholder vars above (email+password works
+#   # without them); promote the *_SECRET ones to real secrets when you enable OAuth.
+#   STRIPE_SECRET_KEY         sk_live_... / sk_test_...
+#   STRIPE_WEBHOOK_SECRET     whsec_...

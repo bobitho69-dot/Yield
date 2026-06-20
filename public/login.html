@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in — Yield</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+      <h1 id="title">Welcome back</h1>
+      <p class="sub muted" id="sub">Sign in to your account. Free forever.</p>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-mode="login" type="button">Sign in</button>
+        <button class="auth-tab" data-mode="signup" type="button">Create account</button>
+      </div>
+
+      <form id="form" class="auth-form">
+        <input id="name" class="auth-input hidden" type="text" placeholder="Your name (optional)" autocomplete="name" />
+        <input id="email" class="auth-input" type="email" placeholder="you@email.com" autocomplete="email" required />
+        <input id="password" class="auth-input" type="password" placeholder="Password (min 8 chars)" autocomplete="current-password" required />
+        <div id="err" class="auth-err"></div>
+        <button id="submit" class="btn primary" type="submit">Sign in</button>
+      </form>
+
+      <div id="oauth" class="oauth hidden">
+        <div class="divider"><span>or</span></div>
+        <div class="auth-btns">
+          <a class="btn ghost" id="gh">Continue with GitHub</a>
+          <a class="btn ghost" id="go">Continue with Google</a>
+        </div>
+      </div>
+
+      <p class="muted" style="font-size:.78rem;margin-top:1.4rem">
+        By continuing you agree to our <a href="/terms" style="text-decoration:underline">Terms</a>
+        and <a href="/privacy" style="text-decoration:underline">Privacy Policy</a>.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const redirect = new URLSearchParams(location.search).get('redirect') || '/dashboard';
+    let mode = 'login';
+    const $ = (s) => document.querySelector(s);
+
+    // Tabs
+    document.querySelectorAll('.auth-tab').forEach((t) => t.addEventListener('click', () => {
+      mode = t.dataset.mode;
+      document.querySelectorAll('.auth-tab').forEach((x) => x.classList.toggle('active', x === t));
+      $('#name').classList.toggle('hidden', mode !== 'signup');
+      $('#password').setAttribute('autocomplete', mode === 'signup' ? 'new-password' : 'current-password');
+      $('#title').textContent = mode === 'signup' ? 'Create your account' : 'Welcome back';
+      $('#sub').textContent = mode === 'signup' ? 'Free forever. No credit card.' : 'Sign in to your account. Free forever.';
+      $('#submit').textContent = mode === 'signup' ? 'Create account' : 'Sign in';
+      $('#err').textContent = '';
+    }));
+
+    // Email/password submit
+    $('#form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('#err').textContent = '';
+      $('#submit').disabled = true;
+      const body = { email: $('#email').value.trim(), password: $('#password').value, name: $('#name').value.trim() };
+      try {
+        const res = await fetch(`/api/auth/email/${mode === 'signup' ? 'signup' : 'login'}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) { $('#err').textContent = data.error || 'Something went wrong.'; $('#submit').disabled = false; return; }
+        location.href = redirect;
+      } catch (err) { $('#err').textContent = String(err); $('#submit').disabled = false; }
+    });
+
+    // Show OAuth buttons only if configured.
+    fetch('/api/auth/providers').then((r) => r.json()).then(({ providers }) => {
+      if (!providers) return;
+      if (providers.github || providers.google) $('#oauth').classList.remove('hidden');
+      $('#gh').classList.toggle('hidden', !providers.github);
+      $('#go').classList.toggle('hidden', !providers.google);
+      $('#gh').href = '/api/auth/github/login?redirect=' + encodeURIComponent(redirect);
+      $('#go').href = '/api/auth/google/login?redirect=' + encodeURIComponent(redirect);
+    }).catch(() => {});
+  </script>
+</body>
+</html>

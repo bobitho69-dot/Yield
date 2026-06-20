@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings — Yield</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+    <nav class="nav-links">
+      <a class="toplink" href="/dashboard">Projects</a>
+      <a class="toplink" href="/settings">Settings</a>
+      <a class="toplink" href="/account">Account</a>
+      <a class="btn primary sm" href="/app">＋ New app</a>
+    </nav>
+  </header>
+
+  <div class="page">
+    <div class="page-head"><div><h1>Settings</h1><p>Build AI agents and store secrets. Used by your apps and the builder.</p></div></div>
+    <div id="gate"></div>
+
+    <div id="main" class="hidden">
+      <!-- Agents -->
+      <div class="panel" style="margin-bottom:1.4rem">
+        <h3>⚡ AI Agents</h3>
+        <p class="muted" style="margin-top:-.4rem">Reusable AIs powered by your available models. Apps you build can call them at <code>/api/agents/&lt;id&gt;/run</code>.</p>
+        <div id="agentList"></div>
+        <details style="margin-top:1rem">
+          <summary class="btn ghost sm" style="display:inline-flex">＋ New agent</summary>
+          <div style="margin-top:1rem;display:grid;gap:.6rem;max-width:560px">
+            <input id="aName" class="auth-input" placeholder="Agent name (e.g. Workout Coach)" />
+            <input id="aDesc" class="auth-input" placeholder="Short description (optional)" />
+            <select id="aModel" class="auth-input"></select>
+            <textarea id="aPrompt" class="auth-input" rows="5" placeholder="System prompt — tell the agent how to behave…"></textarea>
+            <label class="muted" style="font-size:.85rem"><input type="checkbox" id="aPublic" checked /> Callable from generated apps (public by id)</label>
+            <button id="aCreate" class="btn primary" style="justify-self:start">Create agent</button>
+            <div id="aMsg" class="muted" style="font-size:.85rem"></div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Secrets -->
+      <div class="panel">
+        <h3>🔑 Secrets</h3>
+        <p class="muted" style="margin-top:-.4rem">Stored encrypted (AES-GCM) at rest. Names are visible; values are write-only and never shown again.</p>
+        <div id="secretList"></div>
+        <div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap;max-width:560px">
+          <input id="sName" class="auth-input" style="flex:1;min-width:160px" placeholder="NAME (e.g. OPENAI_KEY)" />
+          <input id="sVal" class="auth-input" style="flex:2;min-width:200px" type="password" placeholder="value" />
+          <button id="sAdd" class="btn primary">Save</button>
+        </div>
+        <div id="sMsg" class="muted" style="font-size:.85rem;margin-top:.5rem"></div>
+      </div>
+
+      <p class="muted" style="font-size:.82rem;margin-top:1.4rem">
+        Storage: in testing mode, projects, agents and secrets live in the app database. With GitHub connected,
+        your app code already syncs to your repos; project/agent storage moves to GitHub in production.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    let models = [];
+
+    (async function () {
+      const me = await fetch('/api/auth/me').then(r=>r.json()).catch(()=>({user:null}));
+      if (!me.user) {
+        document.getElementById('gate').innerHTML =
+          `<div class="empty-state"><h2>Please sign in</h2><a class="btn primary" href="/login?redirect=/settings">Sign in</a></div>`;
+        return;
+      }
+      document.getElementById('main').classList.remove('hidden');
+      const md = await fetch('/api/models').then(r=>r.json());
+      models = (md.models||[]).filter(m=>m.id!=='auto');
+      document.getElementById('aModel').innerHTML = models.map(m=>`<option value="${m.id}">${esc(m.label)}</option>`).join('');
+      loadAgents(); loadSecrets();
+
+      document.getElementById('aCreate').onclick = createAgent;
+      document.getElementById('sAdd').onclick = addSecret;
+    })();
+
+    async function loadAgents() {
+      const { agents } = await fetch('/api/agents').then(r=>r.json());
+      const el = document.getElementById('agentList');
+      if (!agents || !agents.length) { el.innerHTML = '<p class="muted">No agents yet.</p>'; return; }
+      el.innerHTML = agents.map(a => `
+        <div class="kv" style="align-items:flex-start">
+          <span style="flex:1">
+            <b>${esc(a.name)}</b> <span class="tier-badge">${esc(a.model)}</span>
+            ${a.is_public?'<span class="badge priority">public</span>':'<span class="badge free">private</span>'}
+            <div class="muted" style="font-size:.82rem">${esc(a.description||'')}</div>
+            <div class="muted" style="font-size:.74rem;margin-top:.2rem">POST /api/agents/${a.id}/run</div>
+          </span>
+          <button class="btn ghost sm" onclick="delAgent('${a.id}')">Delete</button>
+        </div>`).join('');
+    }
+    async function createAgent() {
+      const body = {
+        name: document.getElementById('aName').value.trim(),
+        description: document.getElementById('aDesc').value.trim(),
+        model: document.getElementById('aModel').value,
+        system_prompt: document.getElementById('aPrompt').value.trim(),
+        is_public: document.getElementById('aPublic').checked,
+      };
+      const msg = document.getElementById('aMsg');
+      if (!body.name || !body.system_prompt) { msg.textContent = 'Name and system prompt are required.'; return; }
+      const res = await fetch('/api/agents', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) { msg.textContent = data.error || 'Failed'; return; }
+      document.getElementById('aName').value=''; document.getElementById('aDesc').value=''; document.getElementById('aPrompt').value='';
+      msg.textContent = 'Created ✓'; loadAgents();
+    }
+    async function delAgent(id) {
+      if (!confirm('Delete this agent?')) return;
+      await fetch('/api/agents/'+id, { method:'DELETE' }); loadAgents();
+    }
+
+    async function loadSecrets() {
+      const { secrets } = await fetch('/api/secrets').then(r=>r.json());
+      const el = document.getElementById('secretList');
+      if (!secrets || !secrets.length) { el.innerHTML = '<p class="muted">No secrets yet.</p>'; return; }
+      el.innerHTML = secrets.map(s => `
+        <div class="kv"><span>🔒 <b>${esc(s.name)}</b></span>
+          <button class="btn ghost sm" onclick="delSecret('${s.id}')">Delete</button></div>`).join('');
+    }
+    async function addSecret() {
+      const name = document.getElementById('sName').value.trim();
+      const value = document.getElementById('sVal').value;
+      const msg = document.getElementById('sMsg');
+      const res = await fetch('/api/secrets', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ name, value }) });
+      const data = await res.json();
+      if (!res.ok) { msg.textContent = data.error || 'Failed'; return; }
+      document.getElementById('sName').value=''; document.getElementById('sVal').value='';
+      msg.textContent = 'Saved ✓'; loadSecrets();
+    }
+    async function delSecret(id) {
+      if (!confirm('Delete this secret?')) return;
+      await fetch('/api/secrets/'+id, { method:'DELETE' }); loadSecrets();
+    }
+  </script>
+</body>
+</html>

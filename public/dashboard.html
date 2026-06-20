@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your projects — Yield</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+    <nav class="nav-links">
+      <a class="toplink" href="/dashboard">Projects</a>
+      <a class="toplink" href="/pricing">Pricing</a>
+      <a class="toplink" href="/account">Account</a>
+      <a class="btn primary sm" href="/app">＋ New app</a>
+      <span id="authArea"></span>
+    </nav>
+  </header>
+
+  <div class="page">
+    <div class="page-head">
+      <div>
+        <h1>Your projects</h1>
+        <p>Everything you've built with Yield. Open to keep editing, or create something new.</p>
+      </div>
+    </div>
+    <div id="content"><div class="empty-state">Loading…</div></div>
+  </div>
+
+  <script>
+    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const ago = (t) => { const d = (Date.now()/1000 - t); if (d<3600) return Math.max(1,Math.round(d/60))+'m ago'; if (d<86400) return Math.round(d/3600)+'h ago'; return Math.round(d/86400)+'d ago'; };
+
+    (async function () {
+      // Auth state
+      const me = await fetch('/api/auth/me').then(r=>r.json()).catch(()=>({user:null}));
+      const auth = document.getElementById('authArea');
+      auth.innerHTML = me.user
+        ? `<button id="logout" class="btn ghost sm">Sign out</button>`
+        : `<a class="btn ghost sm" href="/login">Sign in</a>`;
+      if (me.user) document.getElementById('logout').onclick = async () => { await fetch('/api/auth/logout',{method:'POST'}); location.reload(); };
+
+      const res = await fetch('/api/projects');
+      const content = document.getElementById('content');
+      if (res.status === 401) {
+        content.innerHTML = `<div class="empty-state"><h2>Sign in to see your projects</h2>
+          <p>Your builds are saved to your account.</p><a class="btn primary" href="/login">Sign in</a></div>`;
+        return;
+      }
+      const { projects } = await res.json();
+      let cards = `<div class="proj-card new-card" onclick="location.href='/app'">＋ New app</div>`;
+      if (projects && projects.length) {
+        cards += projects.map(p => `
+          <div class="proj-card">
+            <div class="proj-thumb">
+              ${p.has_code ? `<iframe loading="lazy" src="/api/projects/${p.id}/preview"></iframe>` : `<div class="empty">No preview yet</div>`}
+            </div>
+            <div class="proj-body">
+              <h3>${esc(p.title)}</h3>
+              <span class="when">edited ${ago(p.updated_at)}${p.github_url ? ' · <a href="'+p.github_url+'" target="_blank" style="color:var(--brand-2)">GitHub ↗</a>' : ''}</span>
+              <div class="proj-actions">
+                <a class="btn primary sm" href="/app?project=${p.id}">Open</a>
+                <button class="btn ghost sm" onclick="del('${p.id}')">Delete</button>
+              </div>
+            </div>
+          </div>`).join('');
+      }
+      content.innerHTML = `<div class="dash-grid">${cards}</div>`;
+    })();
+
+    async function del(id) {
+      if (!confirm('Delete this project? This cannot be undone.')) return;
+      await fetch('/api/projects/'+id, { method:'DELETE' });
+      location.reload();
+    }
+  </script>
+</body>
+</html>

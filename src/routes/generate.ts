@@ -15,7 +15,7 @@ import { chat, chatStream } from '../lib/nvidia';
 import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import {
-  addMessage, createAgent, createProject, getProject, getProjectFiles, getSecretRows, listAgents, listMessages,
+  addMessage, createAgent, createProject, getProject, getProjectFiles, listAgents, listMessages,
   logUsage, saveFiles, updateAgent, type FileRow,
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
@@ -531,7 +531,6 @@ export async function runBuild(
 
     const chatBody = result.chat;
     const agentReqs = result.agents;
-    const secretReqs = result.secrets;
     let files = result.files;
 
     // Fan out: if the orchestrator delegated "=== task: ===" blocks, run them as
@@ -563,29 +562,23 @@ export async function runBuild(
     const hasFiles = files.length > 0;
     const chatText = (chatBody || (hasFiles ? 'Updated your app.' : 'Done.')) + agentNote;
 
-    // 7) Create/update AI-declared agents (project-scoped) and resolve secret
-    //    needs. Best-effort — a DB hiccup here must NOT prevent the 'done' event
-    //    (which carries the files), or a reconnecting tab would see no code.
+    // 7) Create/update AI-declared agents (project-scoped). Best-effort — a DB
+    //    hiccup here must NOT prevent the 'done' event (which carries the files),
+    //    or a reconnecting tab would see no code. (Secrets are no longer stored by
+    //    Yield — they live in the user's own Cloudflare Worker backend.)
     const createdAgents: Record<string, string> = {};
-    let secretsNeeded: typeof secretReqs = [];
+    const secretsNeeded: SecretReq[] = [];
     try {
-      if (project && c.user) {
-        if (agentReqs.length) {
-          const { results: existing } = await listAgents(c.env, c.user.id, project.id);
-          for (const a of agentReqs) {
-            const mdl = CODER_MODELS.some((m) => m.id === a.model) ? a.model! : 'glm-5.1';
-            const found = existing.find((e) => e.name === a.name && e.project_id === project!.id);
-            if (found) { await updateAgent(c.env, found.id, { system_prompt: a.system_prompt, model: mdl }); createdAgents[a.name] = found.id; }
-            else { const ag = await createAgent(c.env, c.user.id, { name: a.name, system_prompt: a.system_prompt, model: mdl, is_public: true, project_id: project.id }); createdAgents[a.name] = ag.id; }
-          }
-        }
-        if (secretReqs.length) {
-          const { results: have } = await getSecretRows(c.env, c.user.id, project.id);
-          const haveNames = new Set(have.map((r) => r.name));
-          secretsNeeded = secretReqs.filter((s) => !haveNames.has(s.name));
+      if (project && c.user && agentReqs.length) {
+        const { results: existing } = await listAgents(c.env, c.user.id, project.id);
+        for (const a of agentReqs) {
+          const mdl = CODER_MODELS.some((m) => m.id === a.model) ? a.model! : 'glm-5.1';
+          const found = existing.find((e) => e.name === a.name && e.project_id === project!.id);
+          if (found) { await updateAgent(c.env, found.id, { system_prompt: a.system_prompt, model: mdl }); createdAgents[a.name] = found.id; }
+          else { const ag = await createAgent(c.env, c.user.id, { name: a.name, system_prompt: a.system_prompt, model: mdl, is_public: true, project_id: project.id }); createdAgents[a.name] = ag.id; }
         }
       }
-    } catch (e) { console.error('agent/secret step failed:', e); }
+    } catch (e) { console.error('agent step failed:', e); }
 
     // Persist files BEFORE 'done' so the preview can fetch them immediately
     // (best-effort: never let a save error swallow the result).

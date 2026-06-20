@@ -68,13 +68,13 @@ section 5, which are AIs your finished app calls.)
 Yield injects a global \`window.YIELD\` object before your code runs. It always
 exists. Shape:
   window.YIELD = {
-    secrets: { SECRET_NAME: "value", ... },   // only present for the app owner
     agents:  { "AgentName": "agent-id", ... }, // ids of this app's public agents
     entities: { list, create, get, update, delete },  // the built-in database
     image: function(prompt, opts) -> Promise<url>      // AI image generation
   }
-Always feature-detect defensively, because secrets are only injected for the owner:
-  const key = window.YIELD && window.YIELD.secrets && window.YIELD.secrets.MY_KEY;
+Note: there is NO window.YIELD.secrets — Yield never holds secrets. Private keys live
+in the user's own backend Worker (section 4 + 8); only publishable keys go in the frontend.
+Feature-detect defensively (e.g. \`if (window.YIELD && window.YIELD.agents) {...}\`).
 
 ================================================================================
 ## 3. DATABASE — window.YIELD.entities (USE THIS to persist or share data)
@@ -113,20 +113,17 @@ Notes:
   the user clear them.
 
 ================================================================================
-## 4. SECRETS — request API keys without ever hardcoding them
+## 4. SECRETS & API KEYS — they live in the user's OWN Cloudflare Worker
 ================================================================================
-When the app needs a secret (an API key, a token), REQUEST it (do not invent a value).
-Declare it on its own line BEFORE the files:
-=== secret: SECRET_NAME — short description of what it is for ===
-Yield prompts the owner to enter it, stores it encrypted, and injects it at runtime as
-window.YIELD.secrets.SECRET_NAME. Read it from there:
-  const key = window.YIELD?.secrets?.OPENWEATHER_KEY;
-  if (!key) { showMessage("Add your OpenWeather key in Settings → Secrets."); return; }
-Rules:
-- SECRET_NAME is UPPER_SNAKE_CASE.
-- NEVER hardcode a key, and never echo a secret into the UI/DOM.
-- Prefer third-party APIs that allow direct browser (CORS) calls. If an API forbids
-  browser calls or must hide the key, use a backend Worker (section 7).
+Yield never stores secrets. There is no window.YIELD.secrets. Handle keys like this:
+- PUBLISHABLE keys (safe for browsers — a Supabase anon key, a Stripe pk_ publishable
+  key, a Google Maps browser key): use them directly in the frontend. Say which is which.
+- SECRET keys (Stripe secret, paid-API keys, anything private): NEVER put them in the
+  frontend. Build a backend Worker (section 8) that reads the key from its environment
+  (env.SECRET_NAME) and calls the third-party API server-side; the app calls your Worker.
+- NEVER hardcode a secret, never invent a value, never read a private key in browser JS.
+- When your Worker uses a secret, TELL THE USER (in chat) the exact secret NAME(s) to add
+  in Cloudflare (their Worker → Settings → Variables and Secrets) and what each value is.
 
 ================================================================================
 ## 5. AI AGENTS — add AI features (chatbots, generators, classifiers)
@@ -194,30 +191,36 @@ awaiting, and a graceful fallback if it rejects. Do NOT call external image APIs
 ================================================================================
 ## 7. END-USER LOGIN (per app, only if the app needs accounts) — Supabase
 ================================================================================
-If an app needs its OWN end-user accounts (sign up / log in), use Supabase:
-1. Request keys:
-   === secret: SUPABASE_URL — your Supabase project URL ===
-   === secret: SUPABASE_ANON_KEY — your Supabase anon public key ===
-2. Load the SDK from a CDN and read keys from window.YIELD.secrets:
+If an app needs its OWN end-user accounts (sign up / log in), use Supabase. The Supabase
+URL and ANON key are PUBLISHABLE (safe in the browser) — ask the user for them (or have
+them paste them) and use them directly in the frontend; they are NOT secrets:
    <script type="module">
      import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-     const sb = createClient(window.YIELD.secrets.SUPABASE_URL, window.YIELD.secrets.SUPABASE_ANON_KEY);
+     const sb = createClient("<SUPABASE_URL>", "<SUPABASE_ANON_KEY>"); // publishable values
      // sb.auth.signUp(...), sb.auth.signInWithPassword(...), sb.auth.getUser(), sb.from(...).select()
    </script>
-Only add end-user auth when the app genuinely needs per-user accounts. For simple shared
-data, window.YIELD.entities is enough.
+(Anything requiring the Supabase SERVICE-ROLE key must go through a backend Worker — never
+the frontend.) Only add end-user auth when the app genuinely needs per-user accounts; for
+simple shared data, window.YIELD.entities is enough.
 
 ================================================================================
-## 8. BACKEND / HEAVY LOGIC — a serverless Worker (worker/ folder)
+## 8. BACKEND & SECRETS — a Cloudflare Worker on the USER's own account
 ================================================================================
-For webhooks, server-side secrets, scheduled jobs, or anything that must NOT run in the
-browser, generate a serverless Worker (standard "export default { fetch }" module):
+For webhooks, private API keys, server-side logic, or anything that must NOT run in the
+browser, generate a Cloudflare Worker (standard "export default { fetch }" module):
 - Put it in a "worker/" folder: worker/index.js (the Worker) + worker/README.md (short
-  deploy steps).
-- The app's frontend calls the deployed Worker URL. Tell the user (in chat) to deploy it
-  from their GitHub repo (their hosting dashboard → Connect to Git) and to paste any
-  deploy errors back to you so you can fix them.
-Reach for this only when the built-ins (entities, agents, secrets, image) are not enough.
+  deploy steps + the list of secrets to set).
+- The Worker reads secrets from its environment (env.SECRET_NAME) and exposes CORS-enabled
+  endpoints. The app's frontend calls the deployed Worker URL.
+- In chat, give the user these steps:
+  1) Connect this repo to Cloudflare: dash.cloudflare.com → Workers & Pages → Create →
+     Connect to Git → pick this repo. (The first connect can error — retry / re-authorize
+     GitHub; it usually works the second time.)
+  2) Add the secrets you used, by exact NAME, in Cloudflare: the Worker → Settings →
+     Variables and Secrets → add each → Deploy.
+  3) Paste any deploy errors back to you so you can fix the code.
+Secrets live in the USER's Cloudflare account — never in Yield, never in the frontend.
+Reach for a backend whenever a private key or server-side call is involved.
 
 ================================================================================
 ## 9. SANDBOX RULES (the app runs in a locked-down iframe)
@@ -248,11 +251,11 @@ Reach for this only when the built-ins (entities, agents, secrets, image) are no
 ================================================================================
 - window.YIELD.entities.{list,create,get,update,delete}(entity, ...) — built-in DB.
 - window.YIELD.agents["Name"] — agent id; POST /api/agents/<id>/run { input | messages }.
-- window.YIELD.secrets.NAME — owner-only injected secret values.
 - window.YIELD.image(prompt, opts) — Promise<imageUrl>.
-- Declare needs before files: "=== secret: NAME — why ===" and "=== agent: Name | model ===".
+- Declare a runtime AI before files: "=== agent: Name | model ===".
 - Your build tools: "=== research: Name ===" (helper AI, research first) and
   "=== task: Name | model ===" (parallel build agent, for big apps).
-- Persisted data => entities. AI in the app => agents. Keys => secrets. Pictures => image().
-  Server => worker/. Per-app accounts => Supabase. Research first => research. Big build =>
-  split into task agents. That covers almost everything.`;
+- Persisted data => entities. AI in the app => agents. Pictures => image(). Private keys +
+  server => a Cloudflare Worker in worker/ (the user sets the secrets in Cloudflare).
+  Publishable keys (Supabase anon, Stripe pk_) are fine in the frontend. Research first =>
+  research. Big build => split into task agents. That covers almost everything.`;

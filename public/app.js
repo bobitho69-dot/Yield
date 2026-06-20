@@ -704,6 +704,47 @@ async function restoreVersion(sha) {
   addBubble('ai', `<div class="meta">restored</div>↩ Restored to ${esc(sha.slice(0, 7))} (${d.restored} files).`);
 }
 
+// ---------- Prompt history (saved to GitHub, recallable in chat) ----------
+let histEntries = [];
+async function openHistory() {
+  const dialog = $('#histDialog');
+  const body = $('#histBody');
+  if (!state.projectId) {
+    body.innerHTML = `<h3>📜 Prompt history</h3>
+      <p class="gh-sub">Start building — every prompt and reply gets saved here with a timestamp, and mirrored to your GitHub at <span class="endpoint">.yield/prompts.txt</span>.</p>`;
+    dialog.showModal();
+    return;
+  }
+  body.innerHTML = `<h3>📜 Prompt history</h3>
+    <p class="gh-sub">Timestamped record of this app's chat — also saved to your repo at <span class="endpoint">.yield/prompts.txt</span>. Click <b>↻ Reuse</b> to send a past prompt again.</p>
+    <div id="histList" class="hist-list"><span class="gh-sub">Loading…</span></div>
+    <div class="gh-section"><a class="btn ghost sm" id="histDownload" download="prompts.txt">⬇ Download prompts.txt</a></div>`;
+  dialog.showModal();
+  const data = await fetch(`/api/projects/${state.projectId}/prompts`).then((r) => r.json()).catch(() => ({ entries: [] }));
+  histEntries = data.entries || [];
+  const list = $('#histList');
+  if (!histEntries.length) { list.innerHTML = '<span class="gh-sub">No prompts yet.</span>'; return; }
+  list.innerHTML = histEntries.map((e, i) => {
+    const who = e.role === 'user' ? '👤 You' : `🤖 Yield${e.model ? ' · ' + esc(e.model) : ''}`;
+    const flag = e.flagged ? ' ⚠' : '';
+    const reuse = e.role === 'user' && !e.flagged ? `<button class="btn ghost sm" data-reuse="${i}">↻ Reuse</button>` : '';
+    return `<div class="hist-item">
+      <div class="hist-meta">${esc(e.time || '')} · ${who}${flag}</div>
+      <div class="hist-text">${esc((e.content || '').slice(0, 600))}</div>
+      <div class="hist-actions">${reuse}</div></div>`;
+  }).join('');
+  list.querySelectorAll('[data-reuse]').forEach((b) => (b.onclick = () => {
+    const e = histEntries[+b.dataset.reuse];
+    if (!e) return;
+    $('#prompt').value = e.content;
+    dialog.close();
+    $('#prompt').focus();
+    updateComposer();
+  }));
+  const dl = $('#histDownload');
+  if (dl && data.text) dl.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(data.text);
+}
+
 // ---------- GitHub code storage ----------
 function ghRedirect() {
   const back = state.projectId ? `/app?project=${state.projectId}` : '/app';
@@ -870,6 +911,7 @@ function wireEvents() {
     if (state.projectId) window.open(`/p/${state.projectId}/index.html`, '_blank');
   });
   $('#upgradeBtn').addEventListener('click', upgrade);
+  $('#histBtn').addEventListener('click', openHistory);
   $('#ghBtn').addEventListener('click', openGithubDialog);
   $('#projectTitle').addEventListener('change', async () => {
     if (state.user && state.projectId)

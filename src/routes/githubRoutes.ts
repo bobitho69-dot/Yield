@@ -9,10 +9,11 @@
 import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
 import {
-  getGithubAuth, getProject, getProjectFiles, saveFiles, setProjectGithub, markGithubSynced, clearProjectGithub,
+  getGithubAuth, getProject, getProjectFiles, listMessages, saveFiles, setProjectGithub, markGithubSynced, clearProjectGithub,
   type ProjectRow, type FileRow,
 } from '../lib/db';
 import { decryptToken, createRepo, getCommitFiles, listCommits, listRepos, pushFiles, slugify } from '../lib/github';
+import { renderPromptLog } from '../lib/promptlog';
 
 export async function handleGithubStatus(c: Ctx): Promise<Response> {
   if (!c.user) return json({ connected: false });
@@ -122,7 +123,13 @@ export async function syncProjectToGithub(c: Ctx, project: ProjectRow, files: Fi
     const auth = await getGithubAuth(c.env, c.user.id);
     if (!auth) return;
     const token = await decryptToken(c.env, auth.tokenEnc);
-    await pushFiles(token, project.github_repo, project.github_branch || 'main', project.title, files);
+    const push = [...files];
+    // Mirror the conversation to a portable, timestamped log in the repo.
+    try {
+      const { results: msgs } = await listMessages(c.env, project.id);
+      if (msgs.length) push.push({ path: '.yield/prompts.txt', content: renderPromptLog(project.title, msgs as any) });
+    } catch { /* history is best-effort */ }
+    await pushFiles(token, project.github_repo, project.github_branch || 'main', project.title, push);
     await markGithubSynced(c.env, project.id);
   } catch {
     /* don't let a GitHub hiccup fail the build/save */

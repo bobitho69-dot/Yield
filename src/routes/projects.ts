@@ -17,6 +17,7 @@ import {
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
 import { decryptToken } from '../lib/github';
+import { renderPromptLog, fmtTime } from '../lib/promptlog';
 import { zip } from '../lib/zip';
 
 export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: string): Promise<Response> {
@@ -67,6 +68,19 @@ export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: st
       return json({ ok: true });
     }
     return error(405, 'Method not allowed');
+  }
+
+  // Timestamped prompt/chat history (also mirrored to GitHub at .yield/prompts.txt).
+  if (sub === 'prompts' && req.method === 'GET') {
+    const { results } = await listMessages(c.env, id);
+    const entries = (results as any[]).map((m) => ({
+      role: m.role,
+      content: m.content,
+      model: m.model || null,
+      flagged: !!m.flagged,
+      time: fmtTime(m.created_at),
+    }));
+    return json({ entries, text: renderPromptLog(project.title, results as any) });
   }
 
   // Export the whole app as a .zip download.

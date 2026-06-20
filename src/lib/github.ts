@@ -2,6 +2,7 @@
 // push generated code via the GitHub Contents API.
 
 import type { Env } from '../types';
+import { sessionSecret } from './auth';
 
 const API = 'https://api.github.com';
 const ENC = new TextEncoder();
@@ -24,14 +25,14 @@ function unb64(s: string): Uint8Array {
   return out;
 }
 export async function encryptToken(env: Env, plain: string): Promise<string> {
-  const key = await aesKey(env.SESSION_SECRET);
+  const key = await aesKey(sessionSecret(env));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, ENC.encode(plain));
   return `${b64(iv)}.${b64(new Uint8Array(ct))}`;
 }
 export async function decryptToken(env: Env, blob: string): Promise<string> {
   const [ivB, ctB] = blob.split('.');
-  const key = await aesKey(env.SESSION_SECRET);
+  const key = await aesKey(sessionSecret(env));
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(ivB) }, key, unb64(ctB));
   return DEC.decode(pt);
 }

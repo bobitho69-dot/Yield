@@ -12,12 +12,18 @@ const SESSION_COOKIE = 'yield_session';
 const DEVICE_COOKIE = 'yield_device';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days
 
+// Never sign with an empty key (crashes WebCrypto). Falls back to a dev constant so
+// the app runs in testing mode without SESSION_SECRET set — set a real one for prod.
+export function sessionSecret(env: Env): string {
+  return env.SESSION_SECRET || 'yield-insecure-dev-secret-please-set-SESSION_SECRET';
+}
+
 // --- Session create / read / destroy -----------------------------------------
 export async function createSession(env: Env, userId: string): Promise<string> {
   const sid = newId();
   const expiry = now() + SESSION_TTL;
   await env.KV.put(`sess:${sid}`, JSON.stringify({ userId, expiry }), { expirationTtl: SESSION_TTL });
-  const sig = await hmac(env.SESSION_SECRET, `${sid}.${expiry}`);
+  const sig = await hmac(sessionSecret(env),`${sid}.${expiry}`);
   const value = `${sid}.${expiry}.${sig}`;
   return cookie(SESSION_COOKIE, value, { maxAge: SESSION_TTL, httpOnly: true });
 }
@@ -27,7 +33,7 @@ export async function readSession(env: Env, req: Request): Promise<SessionUser |
   if (!raw) return null;
   const [sid, expiryStr, sig] = raw.split('.');
   if (!sid || !expiryStr || !sig) return null;
-  const expected = await hmac(env.SESSION_SECRET, `${sid}.${expiryStr}`);
+  const expected = await hmac(sessionSecret(env),`${sid}.${expiryStr}`);
   if (!safeEqual(sig, expected)) return null;
   if (Number(expiryStr) < now()) return null;
   const stored = await env.KV.get(`sess:${sid}`);
@@ -52,10 +58,10 @@ export async function getOrCreateDeviceId(env: Env, req: Request): Promise<{ dev
   const raw = parseCookies(req)[DEVICE_COOKIE];
   if (raw) {
     const [id, sig] = raw.split('.');
-    if (id && sig && safeEqual(sig, await hmac(env.SESSION_SECRET, id))) return { deviceId: id };
+    if (id && sig && safeEqual(sig, await hmac(sessionSecret(env),id))) return { deviceId: id };
   }
   const id = newId();
-  const sig = await hmac(env.SESSION_SECRET, id);
+  const sig = await hmac(sessionSecret(env),id);
   return { deviceId: id, setCookie: cookie(DEVICE_COOKIE, `${id}.${sig}`, { maxAge: 60 * 60 * 24 * 365, httpOnly: true }) };
 }
 

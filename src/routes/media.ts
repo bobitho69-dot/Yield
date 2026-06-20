@@ -1,8 +1,7 @@
-// AI image / video generation proxy. The generated app calls window.YIELD.image()
-// / window.YIELD.video(), which hit these endpoints; Yield forwards to the
-// configured provider (keeping the key server-side) and returns a media URL.
+// AI image generation proxy. The generated app calls window.YIELD.image(), which
+// hits this endpoint; Yield forwards to the configured provider (keeping the key
+// server-side) and returns an image URL / data URL.
 //   POST /api/media/image  { prompt, ...opts } -> { url, raw }
-//   POST /api/media/video  { prompt, ...opts } -> { url, raw }
 
 import type { Ctx } from '../types';
 import { json } from '../lib/response';
@@ -28,22 +27,22 @@ function extractUrl(d: any): string | null {
   const b64 = d?.artifacts?.[0]?.base64 || d?.data?.[0]?.b64_json || d?.image_base64 || (typeof d?.image === 'string' && !d.image.startsWith('http') ? d.image : null);
   if (b64) return b64ToDataUrl(b64);
   return (
-    d?.image_url || d?.video_url || d?.data?.[0]?.url ||
+    d?.image_url || d?.data?.[0]?.url ||
     d?.images?.[0]?.url || (typeof d?.images?.[0] === 'string' ? d.images[0] : null) ||
     (typeof d?.output?.[0] === 'string' ? d.output[0] : null) || (typeof d?.output === 'string' ? d.output : null) ||
-    d?.video || d?.result?.url || d?.artifacts?.[0]?.url || null
+    d?.result?.url || d?.artifacts?.[0]?.url || null
   );
 }
 
-export async function handleMedia(req: Request, c: Ctx, kind: 'image' | 'video'): Promise<Response> {
+export async function handleMedia(req: Request, c: Ctx): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
   if (req.method !== 'POST') return j({ error: 'POST only' }, 405);
 
-  const url = kind === 'video' ? c.env.VIDEO_API_URL : c.env.IMAGE_API_URL;
-  // NVIDIA media gen uses the same nvapi key — fall back to it so no extra setup.
-  const key = (kind === 'video' ? c.env.VIDEO_API_KEY : c.env.IMAGE_API_KEY) || c.env.NVIDIA_API_KEY;
-  const model = kind === 'video' ? c.env.VIDEO_API_MODEL : c.env.IMAGE_API_MODEL;
-  if (!url || !key) return j({ error: `${kind} generation isn't configured yet.`, code: 'not_configured' }, 503);
+  const url = c.env.IMAGE_API_URL;
+  // NVIDIA image gen uses the same nvapi key — fall back to it so no extra setup.
+  const key = c.env.IMAGE_API_KEY || c.env.NVIDIA_API_KEY;
+  const model = c.env.IMAGE_API_MODEL;
+  if (!url || !key) return j({ error: `Image generation isn't configured yet.`, code: 'not_configured' }, 503);
 
   const gate = await gateGeneration(c);
   if (!gate.allowed) return j({ error: gate.reason, code: gate.code }, gate.status);
@@ -51,7 +50,7 @@ export async function handleMedia(req: Request, c: Ctx, kind: 'image' | 'video')
   const body = (await req.json().catch(() => ({}))) as Record<string, any>;
   if (!body.prompt) return j({ error: 'prompt required' }, 400);
   // Sensible defaults for NVIDIA FLUX image generation; the app can override any.
-  const defaults = kind === 'image' ? { mode: 'base', cfg_scale: 3.5, width: 1024, height: 1024, seed: 0, steps: 4 } : {};
+  const defaults = { mode: 'base', cfg_scale: 3.5, width: 1024, height: 1024, seed: 0, steps: 4 };
   const payload = { ...defaults, ...(model ? { model } : {}), ...body };
 
   try {
@@ -63,7 +62,7 @@ export async function handleMedia(req: Request, c: Ctx, kind: 'image' | 'video')
     const data: any = await r.json().catch(() => ({}));
     if (!r.ok) return j({ error: 'Media API error', detail: String(JSON.stringify(data)).slice(0, 300) }, 502);
     await recordGeneration(c);
-    await logUsage(c.env, { user_id: c.user?.id ?? null, kind: `media_${kind}` });
+    await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_image' });
     return j({ url: extractUrl(data), raw: data });
   } catch (e: any) {
     return j({ error: String(e?.message || e).slice(0, 200) }, 502);

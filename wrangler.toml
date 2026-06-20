@@ -62,14 +62,10 @@ AUTH_ENABLED = "false"
 # Stripe price for the $20/mo "Priority Access" plan (set the real price id).
 STRIPE_PRICE_ID = "price_PLACEHOLDER"
 
-# AI image/video generation. Image is preconfigured for NVIDIA FLUX.1-schnell and
-# reuses your NVIDIA_API_KEY (no extra setup). Apps call window.YIELD.image()/video().
-# Video (NVIDIA Cosmos) hosted endpoint isn't generally available yet — set
-# VIDEO_API_URL + VIDEO_API_KEY when you have it.
+# AI image generation. Preconfigured for NVIDIA FLUX.1-schnell and reuses your
+# NVIDIA_API_KEY (no extra setup). Apps call window.YIELD.image().
 IMAGE_API_URL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell"
 IMAGE_API_MODEL = ""
-VIDEO_API_URL = ""
-VIDEO_API_MODEL = ""
 
 # OAuth is OPTIONAL — email + password login works without it. These placeholders
 # let the app deploy today; the login UI auto-hides GitHub/Google until they're real.

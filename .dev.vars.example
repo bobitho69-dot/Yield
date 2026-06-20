@@ -35,8 +35,7 @@ GOOGLE_CLIENT_SECRET=
 STRIPE_SECRET_KEY=sk_test_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx
 
-# --- AI image/video generation (optional) --------------------------------------
-# Endpoint URLs go in wrangler.toml [vars] (IMAGE_API_URL / VIDEO_API_URL);
-# the keys are secrets:
+# --- AI image generation (optional) --------------------------------------------
+# Endpoint URL goes in wrangler.toml [vars] (IMAGE_API_URL); the key is a secret.
+# Leave blank to reuse NVIDIA_API_KEY for NVIDIA FLUX image generation.
 IMAGE_API_KEY=
-VIDEO_API_KEY=

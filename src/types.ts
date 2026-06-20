@@ -21,6 +21,9 @@ export interface Env {
   HIGH_USAGE_OVERRIDE: string; // 'auto' | 'on' | 'off'
   AUTH_ENABLED: string; // 'true' = require login; 'false' = open testing mode (guest)
   STRIPE_PRICE_ID: string;
+  // Optional donation link (Ko-fi / Buy Me a Coffee / GitHub Sponsors / Stripe
+  // Payment Link). When set, Yield shows "Support Yield" links pointing here.
+  DONATE_URL?: string;
 
   // AI image generation (optional). Apps call window.YIELD.image().
   IMAGE_API_URL?: string;

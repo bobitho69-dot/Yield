@@ -79,7 +79,7 @@ DATA & BACKEND — the app has a free built-in database; use it for anything tha
   window.YIELD.secrets.NAME. Prefer services that allow browser/CORS calls.
 - AI MEDIA: generate images with window.YIELD.image(prompt) — it returns a URL (await it) to use in <img src>. Use
   real AI images instead of placeholder boxes when it makes the app look better. Don't call external image APIs directly.
-- HEAVY BACKEND (webhooks, secret-protected calls): create a Cloudflare Worker in a "worker/" folder (worker/index.js
+- HEAVY BACKEND (webhooks, secret-protected calls): create a serverless Worker in a "worker/" folder (worker/index.js
   plus a short worker/README.md with deploy steps). Tell the user to deploy it from their GitHub repo and to paste any
   deploy errors back to you so you can fix them.
 

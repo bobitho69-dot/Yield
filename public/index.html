@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Yield — Build full apps by chatting. Free.</title>
-  <meta name="description" content="Yield turns a sentence into a real, multi-file web app — live preview, AI agents, your code on GitHub, version history. Everything base44, Lovable and Replit do, free. Powered by NVIDIA models." />
+  <meta name="description" content="Yield turns a sentence into a real, multi-file web app — live preview, AI agents, your code on GitHub, version history. Everything base44, Lovable and Replit do, free. Powered by frontier AI models." />
   <meta property="og:title" content="Yield — Build full apps by chatting. Free." />
   <meta property="og:description" content="Describe an app, watch it build live. Multi-file, AI agents, your code on GitHub, version history — free." />
   <meta property="og:type" content="website" />
@@ -20,6 +20,7 @@
       <a href="#compare">Why Yield</a>
       <a href="#models">Models</a>
       <a href="#pricing">Pricing</a>
+      <a href="/donate">💜 Donate</a>
       <a href="/dashboard">Projects</a>
       <a class="btn ghost" href="/login">Sign in</a>
       <a class="btn primary" href="/app">Start building →</a>
@@ -43,7 +44,7 @@
       <div class="trust-row">
         <span>✓ No credit card</span>
         <span>✓ Your code on GitHub</span>
-        <span>✓ NVIDIA-hosted models</span>
+        <span>✓ Frontier AI models</span>
         <span>✓ Jailbreak-guarded</span>
       </div>
 
@@ -117,12 +118,12 @@
         <div class="feat">
           <div class="feat-ic">🗄️</div>
           <h3>Database & backend</h3>
-          <p>Entities for storing data, end-user login via Supabase, and Cloudflare Worker backends for anything heavier.</p>
+          <p>Entities for storing data, end-user login via Supabase, and serverless Worker backends for anything heavier.</p>
         </div>
         <div class="feat">
           <div class="feat-ic">🎨</div>
           <h3>AI image generation</h3>
-          <p>Apps generate real images on the fly with <code>window.YIELD.image()</code> — powered by NVIDIA FLUX, no setup.</p>
+          <p>Apps generate real images on the fly with <code>window.YIELD.image()</code> — powered by FLUX, no setup.</p>
         </div>
         <div class="feat">
           <div class="feat-ic">🎯</div>
@@ -152,7 +153,7 @@
         <div class="feat">
           <div class="feat-ic">📦</div>
           <h3>Export & deploy</h3>
-          <p>Download the whole app as a <code>.zip</code>, or follow the guide to deploy it free on Cloudflare.</p>
+          <p>Download the whole app as a <code>.zip</code>, or follow the guide to deploy it yourself for free.</p>
         </div>
       </div>
     </section>
@@ -200,8 +201,8 @@
 
     <!-- ========================== MODELS ========================== -->
     <section id="models" class="band alt">
-      <h2>Models, via NVIDIA</h2>
-      <p class="band-sub">Six coder models plus an Auto router that picks the best one per prompt. Every prompt is screened by NVIDIA's NeMoGuard jailbreak detector first.</p>
+      <h2>The models</h2>
+      <p class="band-sub">Six coder models plus an Auto router that picks the best one per prompt. Every prompt is screened by an automatic jailbreak detector first.</p>
       <div class="models" id="modelChips"></div>
     </section>
 
@@ -238,10 +239,13 @@
         </div>
       </div>
       <p class="fineprint">
-        <b>What's "High Usage Times"?</b> Yield is free to use. But hosting (Cloudflare) only stays free up to a monthly budget.
+        <b>What's "High Usage Times"?</b> Yield is free to use. But our hosting only stays free up to a monthly budget.
         When traffic gets so high that it would start costing real money, Yield switches to High Usage Times: generation pauses
         for free accounts until the next month, while Priority members keep full access — their $20/mo is exactly what funds
         those busy periods. No surprise bills, and the app stays free the rest of the time.
+      </p>
+      <p class="center" style="margin-top:1.2rem">
+        Not ready for a subscription but want to help anyway? <a class="toplink" href="/donate"><b>💜 Make a one-time donation →</b></a>
       </p>
     </section>
 
@@ -263,7 +267,7 @@
         </details>
         <details>
           <summary>Which AI models does it use?</summary>
-          <p>Six coder models hosted by NVIDIA (Kimi, MiniMax, DeepSeek V4 Flash/Pro, Step, GLM) plus a gpt-oss router that auto-picks the best one for your prompt. You can always override the choice yourself.</p>
+          <p>Six coder models (Kimi, MiniMax, DeepSeek V4 Flash/Pro, Step, GLM) plus a gpt-oss router that auto-picks the best one for your prompt. You can always override the choice yourself.</p>
         </details>
         <details>
           <summary>Do I need an account?</summary>
@@ -271,7 +275,7 @@
         </details>
         <details>
           <summary>Is it safe?</summary>
-          <p>Every prompt is screened by NVIDIA's NeMoGuard jailbreak detector, and generated apps run in a sandboxed, opaque-origin preview so they can't touch Yield or your account.</p>
+          <p>Every prompt is screened by an automatic jailbreak detector, and generated apps run in a sandboxed, opaque-origin preview so they can't touch Yield or your account.</p>
         </details>
       </div>
     </section>
@@ -288,11 +292,12 @@
     <span>◆ Yield — free AI app builder</span>
     <span>
       <a class="toplink" href="/pricing">Pricing</a> ·
+      <a class="toplink" href="/donate">Donate</a> ·
       <a class="toplink" href="/dashboard">Projects</a> ·
       <a class="toplink" href="/terms">Terms</a> ·
       <a class="toplink" href="/privacy">Privacy</a>
     </span>
-    <span>Hosted on Cloudflare Workers · Models via NVIDIA</span>
+    <span>Free to start · Your code stays yours</span>
   </footer>
 
   <script>

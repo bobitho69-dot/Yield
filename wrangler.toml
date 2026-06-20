@@ -74,6 +74,12 @@ AUTH_ENABLED = "false"
 # Stripe price for the $20/mo "Priority Access" plan (set the real price id).
 STRIPE_PRICE_ID = "price_PLACEHOLDER"
 
+# Optional donations. Paste a one-off donation link and Yield shows "Support Yield"
+# buttons (landing, footer, builder, and the /donate page) pointing to it. Leave
+# empty to hide them. Easiest options: a Stripe Payment Link, Ko-fi, Buy Me a Coffee,
+# or GitHub Sponsors — e.g. "https://ko-fi.com/yourname" or "https://buymeacoffee.com/yourname".
+DONATE_URL = ""
+
 # AI image generation. Preconfigured for NVIDIA FLUX.1-schnell and reuses your
 # NVIDIA_API_KEY (no extra setup). Apps call window.YIELD.image().
 IMAGE_API_URL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell"

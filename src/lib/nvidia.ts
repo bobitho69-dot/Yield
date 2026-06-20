@@ -102,34 +102,40 @@ export async function chatStream(
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = '';
   let full = '';
+  // Parse one SSE "data:" line. Returns false on a JSON error so the caller can
+  // decide whether the line is incomplete (mid-stream) or just final junk.
+  const handleLine = async (raw: string): Promise<void> => {
+    const line = raw.trim();
+    if (!line.startsWith('data:')) return;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === '[DONE]') return;
+    try {
+      const parsed = JSON.parse(payload);
+      const d = parsed?.choices?.[0]?.delta ?? {};
+      const reasoning = d.reasoning_content ?? d.reasoning ?? '';
+      if (reasoning && onReasoning) await onReasoning(reasoning);
+      const delta = d.content ?? '';
+      if (delta) { full += delta; await onDelta(delta); }
+    } catch {
+      /* partial JSON across chunks — ignore, it'll complete next read */
+    }
+  };
   try {
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += value;
-    // SSE frames are separated by double newlines.
-    let idx: number;
-    while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx).trim();
-      buffer = buffer.slice(idx + 1);
-      if (!line.startsWith('data:')) continue;
-      const payload = line.slice(5).trim();
-      if (payload === '[DONE]') continue;
-      try {
-        const parsed = JSON.parse(payload);
-        const d = parsed?.choices?.[0]?.delta ?? {};
-        const reasoning = d.reasoning_content ?? d.reasoning ?? '';
-        if (reasoning && onReasoning) await onReasoning(reasoning);
-        const delta = d.content ?? '';
-        if (delta) {
-          full += delta;
-          await onDelta(delta);
-        }
-      } catch {
-        /* partial JSON across chunks — ignore, it'll complete next read */
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      // Lines are separated by \n; process every complete line.
+      let idx: number;
+      while ((idx = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        await handleLine(line);
       }
     }
-  }
+    // Flush any trailing line the stream ended on without a newline — otherwise
+    // the model's last token(s) (e.g. a closing </html>) would be silently lost.
+    if (buffer.trim()) await handleLine(buffer);
   } finally {
     to.clear();
   }

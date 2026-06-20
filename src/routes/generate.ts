@@ -506,7 +506,26 @@ export async function runBuild(
           findings.map((f) => `### ${f.name}\n${f.findings}`).join('\n\n') +
           '\n\nNow build the COMPLETE app using these findings. Do not request more research — write the files.',
       });
-      result = await streamOnce();
+      const pass1 = result;
+      const pass2 = await streamOnce();
+      // Merge so anything the first pass already produced isn't lost (the second
+      // pass is authoritative on conflicts).
+      const fileMap = new Map<string, FileRow>();
+      for (const f of pass1.files) fileMap.set(f.path, f);
+      for (const f of pass2.files) fileMap.set(f.path, f);
+      const agentMap = new Map<string, AgentReq>();
+      for (const a of [...pass1.agents, ...pass2.agents]) agentMap.set(a.name, a);
+      const secretMap = new Map<string, SecretReq>();
+      for (const s of [...pass1.secrets, ...pass2.secrets]) secretMap.set(s.name, s);
+      result = {
+        chat: pass2.chat || pass1.chat,
+        files: [...fileMap.values()],
+        hasFiles: fileMap.size > 0,
+        agents: [...agentMap.values()],
+        secrets: [...secretMap.values()],
+        tasks: pass2.tasks.length ? pass2.tasks : pass1.tasks,
+        research: [],
+      };
     }
 
     const chatBody = result.chat;
@@ -543,38 +562,48 @@ export async function runBuild(
     const hasFiles = files.length > 0;
     const chatText = (chatBody || (hasFiles ? 'Updated your app.' : 'Done.')) + agentNote;
 
-    // 7) Create/update AI-declared agents (project-scoped) and resolve secret needs.
+    // 7) Create/update AI-declared agents (project-scoped) and resolve secret
+    //    needs. Best-effort — a DB hiccup here must NOT prevent the 'done' event
+    //    (which carries the files), or a reconnecting tab would see no code.
     const createdAgents: Record<string, string> = {};
     let secretsNeeded: typeof secretReqs = [];
-    if (project && c.user) {
-      if (agentReqs.length) {
-        const { results: existing } = await listAgents(c.env, c.user.id, project.id);
-        for (const a of agentReqs) {
-          const mdl = CODER_MODELS.some((m) => m.id === a.model) ? a.model! : 'glm-5.1';
-          const found = existing.find((e) => e.name === a.name && e.project_id === project!.id);
-          if (found) { await updateAgent(c.env, found.id, { system_prompt: a.system_prompt, model: mdl }); createdAgents[a.name] = found.id; }
-          else { const ag = await createAgent(c.env, c.user.id, { name: a.name, system_prompt: a.system_prompt, model: mdl, is_public: true, project_id: project.id }); createdAgents[a.name] = ag.id; }
+    try {
+      if (project && c.user) {
+        if (agentReqs.length) {
+          const { results: existing } = await listAgents(c.env, c.user.id, project.id);
+          for (const a of agentReqs) {
+            const mdl = CODER_MODELS.some((m) => m.id === a.model) ? a.model! : 'glm-5.1';
+            const found = existing.find((e) => e.name === a.name && e.project_id === project!.id);
+            if (found) { await updateAgent(c.env, found.id, { system_prompt: a.system_prompt, model: mdl }); createdAgents[a.name] = found.id; }
+            else { const ag = await createAgent(c.env, c.user.id, { name: a.name, system_prompt: a.system_prompt, model: mdl, is_public: true, project_id: project.id }); createdAgents[a.name] = ag.id; }
+          }
+        }
+        if (secretReqs.length) {
+          const { results: have } = await getSecretRows(c.env, c.user.id, project.id);
+          const haveNames = new Set(have.map((r) => r.name));
+          secretsNeeded = secretReqs.filter((s) => !haveNames.has(s.name));
         }
       }
-      if (secretReqs.length) {
-        const { results: have } = await getSecretRows(c.env, c.user.id, project.id);
-        const haveNames = new Set(have.map((r) => r.name));
-        secretsNeeded = secretReqs.filter((s) => !haveNames.has(s.name));
-      }
-    }
+    } catch (e) { console.error('agent/secret step failed:', e); }
 
-    // Persist files BEFORE 'done' so the preview can fetch them immediately.
-    if (project && c.user && hasFiles) await saveFiles(c.env, project.id, files, activeModel.id);
+    // Persist files BEFORE 'done' so the preview can fetch them immediately
+    // (best-effort: never let a save error swallow the result).
+    try {
+      if (project && c.user && hasFiles) await saveFiles(c.env, project.id, files, activeModel.id);
+    } catch (e) { console.error('saveFiles failed:', e); }
 
     await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents });
 
-    if (project && c.user) {
-      await addMessage(c.env, { project_id: project.id, role: 'user', content: prompt });
-      await addMessage(c.env, { project_id: project.id, role: 'assistant', content: chatText, model: activeModel.id });
-      if (hasFiles) await syncProjectToGithub(c, project, files);
-    }
-    await recordGeneration(c);
-    await logUsage(c.env, { user_id: c.user?.id ?? null, kind: hasFiles ? 'generate' : 'chat', model: activeModel.id, high_usage: gate.usage.highUsage });
+    // Tail work — fully best-effort; the build is already delivered + saved.
+    try {
+      if (project && c.user) {
+        await addMessage(c.env, { project_id: project.id, role: 'user', content: prompt });
+        await addMessage(c.env, { project_id: project.id, role: 'assistant', content: chatText, model: activeModel.id });
+        if (hasFiles) await syncProjectToGithub(c, project, files);
+      }
+      await recordGeneration(c);
+      await logUsage(c.env, { user_id: c.user?.id ?? null, kind: hasFiles ? 'generate' : 'chat', model: activeModel.id, high_usage: gate.usage.highUsage });
+    } catch (e) { console.error('post-build tail failed:', e); }
   } catch (e: any) {
     await send('error', { message: String(e?.message || e).slice(0, 400) });
   }

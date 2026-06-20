@@ -92,9 +92,12 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
   }
   if (input) messages.push({ role: 'user', content: input });
 
-  // Try the agent's model, then resilient fallbacks ending with gpt-oss (the model
-  // the router already uses, so we know it works). A single unavailable/placeholder
-  // model id — or a reasoning model that returns empty content — never breaks it.
+  // Runtime agents must be SNAPPY (they power chatbots/assistants in live apps), so
+  // run them with LOW reasoning and a short per-try timeout. Try the agent's model,
+  // then fast fallbacks ending with gpt-oss (the model the router uses, so we know
+  // it works). For each model: low reasoning first, then plain if the flag is
+  // rejected — a placeholder id, a slow/looping reasoner, or empty content never
+  // hangs the agent.
   const candidates = [agent.model, 'deepseek-v4-flash', 'glm-5.1', 'minimax-m3', 'auto'];
   const seen = new Set<string>();
   let lastErr = 'No model was able to respond.';
@@ -103,18 +106,27 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
     seen.add(cid);
     const m = resolveModel(cid);
     const e = endpointFor(c.env, m);
-    try {
-      // Generous ceiling so a reasoning model has room to answer after thinking,
-      // but can't loop forever.
-      const { text } = await chat({ baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.modelId, messages, max_tokens: 8000, timeoutMs: 90000 });
-      if (text && text.trim()) {
-        await recordGeneration(c);
-        await logUsage(c.env, { user_id: agent.user_id, kind: 'agent', model: m.id, high_usage: gate.usage.highUsage });
-        return json({ output: text, agent: agent.name, model: m.id }, { headers: CORS });
+    for (const eff of ['low', null] as const) {
+      try {
+        const { text } = await chat({
+          baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.modelId, messages,
+          max_tokens: 4000, timeoutMs: 40000,
+          ...(eff ? { extra: { reasoning_effort: eff } } : {}),
+        });
+        if (text && text.trim()) {
+          await recordGeneration(c);
+          await logUsage(c.env, { user_id: agent.user_id, kind: 'agent', model: m.id, high_usage: gate.usage.highUsage });
+          return json({ output: text, agent: agent.name, model: m.id }, { headers: CORS });
+        }
+        lastErr = `Empty response from ${m.id}.`;
+        break; // clean but empty — try the next model
+      } catch (err: any) {
+        lastErr = String(err?.message || err);
+        // A timeout means the model is hanging — go straight to the next model
+        // instead of burning another full timeout on a plain retry.
+        if (/abort/i.test(lastErr)) break;
+        // Otherwise the reasoning flag may have been rejected -> retry plainly.
       }
-      lastErr = `Empty response from ${m.id}.`;
-    } catch (err: any) {
-      lastErr = String(err?.message || err);
     }
   }
   return json({ error: lastErr.slice(0, 300) }, { status: 502, headers: CORS });

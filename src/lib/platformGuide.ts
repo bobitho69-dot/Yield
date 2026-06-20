@@ -222,6 +222,23 @@ browser, generate a Cloudflare Worker (standard "export default { fetch }" modul
 Secrets live in the USER's Cloudflare account — never in Yield, never in the frontend.
 Reach for a backend whenever a private key or server-side call is involved.
 
+worker/index.js skeleton (copy this shape — CORS + reads secrets from env):
+  const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET,POST,OPTIONS" };
+  export default {
+    async fetch(req, env) {
+      if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+      const url = new URL(req.url);
+      if (url.pathname === "/api/quote") {
+        const r = await fetch("https://api.example.com/quote", { headers: { authorization: "Bearer " + env.EXAMPLE_API_KEY } });
+        const data = await r.json();
+        return new Response(JSON.stringify(data), { headers: { "content-type": "application/json", ...CORS } });
+      }
+      return new Response("Not found", { status: 404, headers: CORS });
+    }
+  };
+worker/README.md must list the secret names (e.g. EXAMPLE_API_KEY) and the deploy steps.
+The frontend calls the deployed Worker URL, e.g. fetch("https://my-worker.<sub>.workers.dev/api/quote").
+
 ================================================================================
 ## 9. SANDBOX RULES (the app runs in a locked-down iframe)
 ================================================================================
@@ -245,6 +262,23 @@ Reach for a backend whenever a private key or server-side call is involved.
 - Fully responsive (mobile-first) and accessible (labels, alt text, keyboard, contrast).
 - Real states: empty, loading (skeletons/spinners), error, success (toasts/inline).
 - Aim for the polish of Linear / Vercel / Stripe. Never ship bare unstyled HTML.
+
+================================================================================
+## 10b. USEFUL CDN LIBRARIES & PATTERNS (no build step — all via <script>/esm.sh)
+================================================================================
+Reach for these instead of reinventing them:
+- UI/reactivity: Tailwind (cdn.tailwindcss.com), Alpine.js, or React/Vue via esm.sh.
+- Icons: lucide (https://unpkg.com/lucide@latest) or inline SVG. Fonts: Google Fonts <link>.
+- Charts: Chart.js. 3D/canvas: three.js (esm.sh/three). Animation: GSAP, or CSS transitions.
+- Markdown: marked + DOMPurify (ALWAYS sanitize untrusted HTML before innerHTML). Dates: day.js.
+- Drag & drop: SortableJS. Confetti/celebration: canvas-confetti. QR: qrcode. Maps: Leaflet.
+Patterns:
+- State: keep a single state object and a render() that redraws from it; re-render after each change.
+- IDs: use crypto.randomUUID() for client-side ids when not using entities.
+- Forms: validate inline, disable the submit button while pending, show success/error toasts.
+- Lists/search/filter: window.YIELD.entities.list returns ALL records — filter/sort/paginate in JS.
+- Keyboard: Enter submits, Esc closes modals; trap focus in dialogs; make it usable without a mouse.
+- Performance: debounce search inputs; lazy-render long lists; avoid layout thrash in loops.
 
 ================================================================================
 ## 11. QUICK REFERENCE (endpoints & globals)

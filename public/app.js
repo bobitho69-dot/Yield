@@ -347,6 +347,35 @@ async function consumeStream(res, opts = {}) {
     return t;
   };
 
+  // Research panel: shows helper AIs the coder consulted and their findings.
+  const researchSecs = {};
+  const ensureResearch = () => {
+    let rp = aiBubble.querySelector('.research');
+    if (!rp) {
+      rp = document.createElement('details');
+      rp.className = 'research';
+      rp.open = true;
+      rp.innerHTML = '<summary>🔬 Helper AIs (research)</summary><div class="rs-body"></div>';
+      aiBubble.insertBefore(rp, aiBubble.querySelector('.body'));
+    }
+    return rp;
+  };
+  const appendResearch = (p) => {
+    const rp = ensureResearch();
+    let sec = researchSecs[p.name];
+    if (!sec) {
+      const wrap = document.createElement('div');
+      wrap.className = 'rs-item';
+      wrap.innerHTML = `<div class="rs-head">🔬 ${esc(p.name)} <span class="rs-state">researching…</span></div><div class="rs-find"></div>`;
+      rp.querySelector('.rs-body').appendChild(wrap);
+      sec = researchSecs[p.name] = { state: wrap.querySelector('.rs-state'), find: wrap.querySelector('.rs-find') };
+    }
+    if (p.findings) {
+      sec.state.textContent = '✓';
+      sec.find.innerHTML = fmt(p.findings);
+    }
+  };
+
   // Live code panel: shows files being written in real time, per agent.
   const codeSecs = {};
   const ensureLiveCode = () => {
@@ -413,6 +442,8 @@ async function consumeStream(res, opts = {}) {
           const tb = ensureThink().querySelector('.think-body');
           tb.textContent = thinkAcc;
           tb.scrollTop = tb.scrollHeight;
+        } else if (ev === 'research') {
+          appendResearch(payload);
         } else if (ev === 'code') {
           appendCode(payload);
         } else if (ev === 'status') {
@@ -444,6 +475,8 @@ async function consumeStream(res, opts = {}) {
           const ts = aiBubble.querySelector('.think summary'); if (ts) ts.textContent = '💭 Thinking';
           const lc = aiBubble.querySelector('.livecode');
           if (lc) { lc.open = false; const s = lc.querySelector('summary'); if (s) s.innerHTML = '👁 Code'; }
+          const rp = aiBubble.querySelector('.research');
+          if (rp) rp.open = false;
         } else if (ev === 'blocked') {
           finished = true;
           aiBubble.classList.add('flagged');

@@ -127,6 +127,20 @@ export const CODER_MODELS: ModelDef[] = [
     cons: ['Rarely the single best at extremes', 'Middle-of-the-road speed'],
     provider: { apiKeyEnv: 'GLM_API_KEY' },
   },
+  {
+    id: 'qwen3-coder',
+    label: 'Qwen3 Coder 480B',
+    // OpenRouter slug for Qwen3-Coder-480B-A35B-Instruct (use ":free" for the free tier).
+    modelId: 'qwen/qwen3-coder',
+    role: 'coder',
+    tier: 'pro',
+    speed: 2,
+    blurb: 'Massive 480B MoE coder (35B active) — elite code quality, via OpenRouter.',
+    pros: ['Elite coding & agentic ability', 'Excels at complex, multi-file apps', 'Huge knowledge + long context'],
+    cons: ['Slower (very large model)', 'Uses your OpenRouter credits', 'Overkill for tiny tweaks'],
+    // Its own API on OpenRouter (OpenAI-compatible). Set OPENROUTER_API_KEY.
+    provider: { apiKeyEnv: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1' },
+  },
 ];
 
 // Auto router — analyzes the prompt and picks the best coder model.

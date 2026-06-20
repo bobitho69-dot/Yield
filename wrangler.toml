@@ -103,6 +103,7 @@ GOOGLE_CLIENT_SECRET = "PLACEHOLDER_GOOGLE_CLIENT_SECRET"
 #   STEP_API_KEY             Step 3.7 Flash
 #   DEEPSEEK_PRO_API_KEY     DeepSeek V4 Pro
 #   GLM_API_KEY              GLM 5.1
+#   OPENROUTER_API_KEY       Qwen3 Coder 480B (via OpenRouter — its own key, not the NVIDIA one)
 #   GPTOSS_API_KEY           gpt-oss-20b (Auto router)
 #   NEMOGUARD_API_KEY        NeMoGuard JailbreakDetect
 #   SESSION_SECRET            random 32+ byte string (HMAC for session cookies)

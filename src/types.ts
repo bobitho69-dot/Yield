@@ -41,6 +41,7 @@ export interface Env {
   GLM_API_KEY?: string;           // GLM 5.1
   GPTOSS_API_KEY?: string;        // gpt-oss-20b (Auto router)
   NEMOGUARD_API_KEY?: string;     // NeMoGuard JailbreakDetect
+  OPENROUTER_API_KEY?: string;    // Qwen3 Coder 480B (via OpenRouter)
 
   SESSION_SECRET: string;
   GITHUB_CLIENT_ID: string;

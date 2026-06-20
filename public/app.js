@@ -16,7 +16,8 @@ async function init() {
   renderFileTree();
   // Open a specific project if requested (?project=ID from the dashboard).
   const wanted = new URLSearchParams(location.search).get('project');
-  if (wanted && state.user) await openProject(wanted).catch(() => {});
+  if (wanted && state.user) await openProject(wanted).catch(() => { renderEmptyChat(); });
+  else renderEmptyChat();
   handleQueryFlags();
 }
 
@@ -260,6 +261,28 @@ function renderMessages(msgs) {
 // Minimal safe text formatting for chat: escape, then bold + line breaks.
 function fmt(s) {
   return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
+}
+
+const EXAMPLES = [
+  ['📋', 'Project tracker', 'A kanban project tracker with draggable cards, columns, labels, and data saved to the database'],
+  ['💬', 'AI chatbot', 'A sleek AI chatbot app with message bubbles and a typing indicator, powered by an AI agent that answers questions'],
+  ['🛒', 'Storefront', 'A modern product storefront with a responsive grid, a slide-out cart, and a checkout summary'],
+  ['📊', 'Dashboard', 'An analytics dashboard with KPI cards, charts, a sidebar, and a clean modern design'],
+  ['📝', 'Notes app', 'A beautiful notes app with tags, search, markdown, and notes saved to the database'],
+  ['🎮', 'Game', 'A polished browser game: 2048 with smooth tile animations, a score, and a best score'],
+];
+function renderEmptyChat() {
+  const m = $('#messages');
+  m.innerHTML = `<div class="empty-chat">
+    <h2>What do you want to build?</h2>
+    <p>Describe an app, or start from an example:</p>
+    <div class="examples">${EXAMPLES.map((e, i) => `<button class="example" data-i="${i}"><span class="ex-emoji">${e[0]}</span> ${esc(e[1])}</button>`).join('')}</div>
+  </div>`;
+  m.querySelectorAll('.example').forEach((b) => b.addEventListener('click', () => {
+    const e = EXAMPLES[+b.dataset.i];
+    if (state.working) { state.queue.push(e[2]); renderQueue(); }
+    else startUserPrompt(e[2]);
+  }));
 }
 
 function addBubble(cls, html) {
@@ -762,7 +785,8 @@ function wireEvents() {
   $('#newBtn').addEventListener('click', () => {
     state.projectId = null; state.files = []; state.activeFile = 'index.html'; $('#codeEditor').value = '';
     $('#projectTitle').value = 'Untitled app';
-    $('#messages').innerHTML = '<div class="empty-chat"><h2>What do you want to build?</h2><p>Describe an app and Yield will generate it.</p></div>';
+    try { history.replaceState(null, '', '/app'); } catch { /* ignore */ }
+    renderEmptyChat();
     renderFileTree(); refreshPreview(); loadProjects();
   });
   $('#applyCode').addEventListener('click', saveFile);

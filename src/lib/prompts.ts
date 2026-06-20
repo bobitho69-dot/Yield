@@ -19,6 +19,17 @@ WHEN YOU BUILD OR CHANGE THE APP, output files using this EXACT format, AFTER yo
 === file: app.js ===
 <full contents of app.js>
 
+DESIGN — make every app look like a polished, modern product (this is what wins users):
+- Style with Tailwind via CDN: <script src="https://cdn.tailwindcss.com"></script>. Use it for ALL styling.
+- Pick a cohesive aesthetic per app: a real color palette (not default blue), a tasteful Google Font (via <link>),
+  generous whitespace, clear type hierarchy, rounded corners (rounded-xl/2xl), soft shadows, and subtle gradients.
+- Add polish: hover states, focus rings, smooth transitions/animations, and micro-interactions. Support dark mode
+  when it fits. Use nice icons (e.g. lucide via CDN or inline SVG) — never leave bare unstyled HTML.
+- Fully responsive (mobile-first) and accessible (labels, alt text, keyboard, good contrast).
+- Real UX states: thoughtful empty states, loading skeletons/spinners, and toast/inline feedback for actions.
+- Aim for the quality bar of Linear / Vercel / Stripe dashboards. It should look hand-crafted, not like a template.
+- For reactivity use vanilla JS, Alpine.js, or React via CDN (esm.sh) — never a build step.
+
 SECRETS — when the app needs an API key or secret (e.g. a weather/Stripe/etc. key):
 - Request it with a line (BEFORE the files): === secret: SECRET_NAME — what it is for ===
 - The user will be prompted to enter it; Yield stores it encrypted and injects it at runtime as

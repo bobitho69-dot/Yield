@@ -1,10 +1,11 @@
 // PLATFORM_GUIDE — the complete Yield platform reference.
 //
-// This is injected into the builder model's context on every build so the AI
-// always knows EXACTLY how to use every Yield capability: the file protocol, the
-// window.YIELD runtime (secrets, agents, database/entities, image generation),
+// This is injected into the builder model's context on every build (and served at
+// GET /api/docs) so the AI always knows EXACTLY how to use every Yield capability:
+// the file protocol, its build-time helpers (research AIs + parallel build agents),
+// the window.YIELD runtime (secrets, agents, database/entities, image generation),
 // end-user auth, backend workers, the sandbox rules, and copy-paste recipes.
-// Keep it accurate — if you change a runtime API, update it here too.
+// Keep it accurate — if you change a runtime API or a directive, update it here too.
 
 export const PLATFORM_GUIDE = `# YIELD PLATFORM REFERENCE (read this; it is how your apps actually run)
 
@@ -30,6 +31,36 @@ Rules:
   components, etc.). Small apps can be a single index.html.
 - No build step / bundler. Use plain JS, or CDN libraries via <script src> (Tailwind,
   Alpine, React/Vue via esm.sh, Chart.js, etc.).
+
+================================================================================
+## 1b. YOUR BUILD-TIME HELPERS — launch other AIs to help you build
+================================================================================
+Beyond writing files yourself, you can launch other AIs. Their work merges into the
+app. Use them when they genuinely raise quality; for simple apps, just build.
+
+RESEARCH / HELPER AIs — figure out something tricky FIRST (design a data schema, work
+out an algorithm or game logic, recall an API's exact shape, compare approaches). In
+your FIRST reply, emit research blocks and NO files yet (just a short plan + the
+blocks):
+=== research: ShortName ===
+<the exact question/task for this helper — be specific about what you need back, e.g.
+"Design the full data model + a few sample records for a habit tracker with streaks".>
+You then receive their findings and build the complete app using them (you don't ask
+twice). Use 1-4 helpers. Their findings appear in the user's panel.
+
+PARALLEL BUILD AGENTS — for a genuinely large app, delegate independent files to
+agents that build at the SAME time (the user watches each write its code live):
+=== task: ShortName | model-id ===
+<a COMPLETE, self-contained brief: exactly which file path(s) to create, the full spec,
+and the SHARED CONTRACT every agent follows — exact file names, global/exported function
+names, CSS class names/framework, and data shapes — so the separately-built pieces fit
+together perfectly.>
+Rules: 2-5 agents, only for big apps; each agent owns DIFFERENT files (never the same
+file twice); put the shared contract in EVERY brief; you may write some files yourself
+(e.g. index.html that wires it together) and delegate the rest. "| model-id" is optional.
+
+(These two are YOUR tools as the coder. They are different from runtime "agents" in
+section 5, which are AIs your finished app calls.)
 
 ================================================================================
 ## 2. THE window.YIELD RUNTIME (injected into every app's index.html)
@@ -220,5 +251,8 @@ Reach for this only when the built-ins (entities, agents, secrets, image) are no
 - window.YIELD.secrets.NAME — owner-only injected secret values.
 - window.YIELD.image(prompt, opts) — Promise<imageUrl>.
 - Declare needs before files: "=== secret: NAME — why ===" and "=== agent: Name | model ===".
-- Persisted data => entities. AI => agents. Keys => secrets. Pictures => image(). Server
-  => worker/. Per-app accounts => Supabase. That covers almost everything.`;
+- Your build tools: "=== research: Name ===" (helper AI, research first) and
+  "=== task: Name | model ===" (parallel build agent, for big apps).
+- Persisted data => entities. AI in the app => agents. Keys => secrets. Pictures => image().
+  Server => worker/. Per-app accounts => Supabase. Research first => research. Big build =>
+  split into task agents. That covers almost everything.`;

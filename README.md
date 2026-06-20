@@ -137,6 +137,10 @@ npm run deploy
 
 Local dev: copy `.dev.vars.example` → `.dev.vars` and fill it in.
 
+**Hosting by linking GitHub → Cloudflare:** see [`docs/DEPLOY.md`](docs/DEPLOY.md) — connect the
+repo once in the Cloudflare dashboard ("Connect to Git") and every push auto-deploys. An optional
+GitHub Actions workflow is included too.
+
 ---
 
 ## 💸 "High Usage Times" — how the cost guard works

@@ -54,9 +54,14 @@ export async function routeModel(c: Ctx, prompt: string): Promise<{ id: string; 
   } catch {
     /* fall through to heuristic */
   }
-  // Heuristic by complexity (no scary "fallback" wording for the user).
+  // Heuristic by complexity + quality signals (no scary "fallback" wording).
+  const p = prompt.toLowerCase();
   const len = prompt.length;
-  if (len > 600) return { id: 'deepseek-v4-pro', reason: 'complex build' };
+  const wantsBest = /\b(best|polished|production|complete|full|impressive|beautiful|professional|advanced|complex)\b/.test(p);
+  const multiFeature = /\b(and|with|plus|including|also)\b/g.test(p) && (p.match(/\b(and|with|plus|including|also)\b/g)?.length || 0) >= 3;
+  const tinyEdit = len < 120 && /\b(change|tweak|fix|rename|color|colour|text|move|smaller|bigger|remove|add a button)\b/.test(p);
+  if (tinyEdit) return { id: 'deepseek-v4-flash', reason: 'quick edit' };
+  if (wantsBest || multiFeature || len > 600) return { id: 'deepseek-v4-pro', reason: 'building for quality' };
   if (len > 200) return { id: 'glm-5.1', reason: 'standard build' };
   return { id: 'deepseek-v4-flash', reason: 'quick build' };
 }

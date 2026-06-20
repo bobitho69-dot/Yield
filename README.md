@@ -58,7 +58,7 @@ if a model id is off, calls automatically fall back to a working model).
 | Coder | DeepSeek V4 Pro | `deepseek-ai/deepseek-v4-pro` | `DEEPSEEK_PRO_API_KEY` |
 | Coder | GLM 5.1 | `z-ai/glm-5.1` | `GLM_API_KEY` |
 | Coder | Qwen3 Coder 480B A35B (free) | `qwen/qwen3-coder:free` *(OpenRouter)* | `OPENROUTER_API_KEY` |
-| Coder | Gemma 4 31B (free) | `google/gemma-4-31b-it:free` *(OpenRouter)* | `OPENROUTER_API_KEY` |
+| Coder | Gemma 4 31B | `google/gemma-4-31b-it` | `GEMMA_API_KEY` / `NVIDIA_API_KEY` |
 | Coder | Laguna M.1 (free) | `poolside/laguna-m.1:free` *(OpenRouter)* | `OPENROUTER_API_KEY` |
 | Coder | Nemotron 3 Ultra 550B | `nvidia/nemotron-3-ultra-550b-a55b` | `NEMOTRON_API_KEY` / `NVIDIA_API_KEY` |
 | Auto router | gpt-oss-20b | `openai/gpt-oss-20b` | `GPTOSS_API_KEY` |

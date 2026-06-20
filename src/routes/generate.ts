@@ -23,6 +23,12 @@ export interface GenBody {
   prompt: string;
   model?: string;
   projectId?: string;
+  thinking?: string; // reasoning effort: 'low' | 'medium' | 'high'
+}
+
+// Validate the user's chosen thinking level; default to high (max reasoning).
+function effortOf(v: string | undefined): 'low' | 'medium' | 'high' {
+  return v === 'low' || v === 'medium' || v === 'high' ? v : 'high';
 }
 
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
@@ -247,7 +253,7 @@ export type SendFn = (event: string, data: unknown) => Promise<void>;
 // Run one parallel build agent (from a "=== task: ===" block). It streams its code
 // live (tagged with the agent's name via `send`) and returns the file(s) it built.
 // Falls back through stable models so one bad model id doesn't waste the agent.
-async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn): Promise<{ name: string; files: FileRow[]; error?: string }> {
+async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn, effort: 'low' | 'medium' | 'high'): Promise<{ name: string; files: FileRow[]; error?: string }> {
   const messages = [
     { role: 'system' as const, content: SUBAGENT_SYSTEM },
     { role: 'system' as const, content: sharedContext },
@@ -261,8 +267,9 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
     seen.add(cid);
     const model = resolveModel(cid);
     const ep = endpointFor(env, model);
-    // Try with MAX reasoning first; if the model rejects the flag, retry plainly.
-    for (const reasoning of [true, false]) {
+    // Try with the chosen reasoning effort first; if the model rejects the flag,
+    // retry plainly (null).
+    for (const eff of [effort, null] as const) {
       // Forward only the agent's live code (already tagged with its name).
       const sub = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, task.name);
       try {
@@ -270,7 +277,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
             temperature: 0.3, max_tokens: 24000, timeoutMs: 300000,
-            ...(reasoning ? { extra: { reasoning_effort: 'high' } } : {}),
+            ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await sub.feed(delta); },
         );
@@ -281,7 +288,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
         break; // got a clean response but no files — move to the next model
       } catch (e: any) {
         lastErr = String(e?.message || e);
-        // reasoning=true failed -> loop retries plainly; plain failed -> next model
+        // effort failed -> loop retries plainly; plain failed -> next model
       }
     }
   }
@@ -386,14 +393,15 @@ export async function runBuild(
     //    it errors before producing anything we fall back to a stable model; and if
     //    it errors AFTER producing code (e.g. a slow timeout) we KEEP the partial
     //    result instead of throwing it away.
+    const wantEffort = effortOf(body.thinking); // user-chosen thinking level
     const streamer = makeFileStreamer(send);
-    const streamWith = async (mdef: typeof model, reasoning: boolean) => {
+    const streamWith = async (mdef: typeof model, eff: 'low' | 'medium' | 'high' | null) => {
       const ep = endpointFor(c.env, mdef);
       await chatStream(
         {
           baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
           temperature: 0.3, top_p: 0.95, max_tokens: 32768, timeoutMs: 600000,
-          ...(reasoning ? { extra: { reasoning_effort: 'high' } } : {}),
+          ...(eff ? { extra: { reasoning_effort: eff } } : {}),
         },
         async (delta) => { await streamer.feed(delta); await heartbeat(); },
         async (rr) => { await send('thinking', rr); await heartbeat(); },
@@ -401,20 +409,20 @@ export async function runBuild(
     };
     let activeModel = model;
     try {
-      await streamWith(model, true);
+      await streamWith(model, wantEffort);
     } catch (e) {
       if (streamer.produced) {
         await send('status', { stage: 'Finalizing what was built…' }); // keep partial output
       } else {
         try {
-          await streamWith(model, false); // model may have rejected the reasoning flag
+          await streamWith(model, null); // model may have rejected the reasoning flag
         } catch (e2) {
           const fb = resolveModel('deepseek-v4-flash');
           if (fb.id === model.id) throw e2;
           activeModel = fb;
           await send('status', { stage: `Switching to ${fb.label}` });
           await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'stable model' });
-          await streamWith(fb, false);
+          await streamWith(fb, null);
         }
       }
     }
@@ -438,7 +446,7 @@ export async function runBuild(
         (files.length ? `\n\nThe orchestrator already wrote these files — do NOT recreate them: ${files.map((f) => f.path).join(', ')}` : '');
       const results = await Promise.all(result.tasks.map(async (t) => {
         await send('status', { stage: `Agent ${t.name} working…` });
-        const res = await runSubAgent(c.env, t, sharedContext, send);
+        const res = await runSubAgent(c.env, t, sharedContext, send, wantEffort);
         await send('status', { stage: res.files.length ? `Agent ${t.name}: ${res.files.length} file(s) ✓` : `Agent ${t.name}: no output` });
         return res;
       }));
@@ -503,7 +511,7 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
   let project = body.projectId ? await getProject(c.env, body.projectId) : null;
   if (project && c.user && project.user_id !== c.user.id) return error(403, 'Not your project');
   if (!project && c.user) project = await createProject(c.env, c.user.id, prompt.slice(0, 60));
-  const startBody: GenBody = { prompt, model: body.model, projectId: project?.id };
+  const startBody: GenBody = { prompt, model: body.model, projectId: project?.id, thinking: body.thinking };
 
   // Preferred: run the build inside a Durable Object. The DO's lifetime is
   // independent of this HTTP request, so the build keeps running and SAVES even if

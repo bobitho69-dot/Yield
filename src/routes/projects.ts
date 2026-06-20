@@ -113,7 +113,10 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
   if (!file) return new Response('Not found', { status: 404 });
 
   const ext = path.split('.').pop()?.toLowerCase() || 'txt';
-  return new Response(file.content, {
+  // For HTML previews, inject a tiny reporter that forwards runtime errors to the
+  // builder (parent window) so it can detect broken code and auto-fix it.
+  const body = ext === 'html' ? REPORTER + file.content : file.content;
+  return new Response(body, {
     headers: {
       'content-type': CTYPES[ext] || 'text/plain; charset=utf-8',
       'cache-control': 'no-store',
@@ -122,3 +125,10 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
     },
   });
 }
+
+// Runs first inside the preview iframe; posts errors to the builder.
+const REPORTER = `<script>(function(){function r(k,m){try{parent.postMessage({__yield:true,kind:k,message:String(m).slice(0,500)},'*')}catch(e){}}
+window.addEventListener('error',function(e){r('error',(e.message||'Error')+(e.filename?(' @ '+(e.filename.split('/').pop())+':'+e.lineno):''))});
+window.addEventListener('unhandledrejection',function(e){r('rejection',(e.reason&&e.reason.message)||e.reason||'Unhandled promise rejection')});
+var ce=console.error;console.error=function(){r('console',[].map.call(arguments,String).join(' '));ce.apply(console,arguments)};
+try{parent.postMessage({__yield:true,kind:'ready'},'*')}catch(e){}})();</script>`;

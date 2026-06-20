@@ -2,7 +2,9 @@
 const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
   files: [], activeFile: 'index.html', streaming: false,
+  working: false, queue: [], autofixCount: 0, previewErrors: [],
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
+const MAX_AUTOFIX = 2;
 
 // ---------- Boot ----------
 init();
@@ -242,18 +244,18 @@ function addBubble(cls, html) {
   return div;
 }
 
-// ---------- Generation (SSE over fetch): chat + code split ----------
-async function send(prompt) {
-  if (state.streaming) return;
+// ---------- Generation (SSE over fetch): chat + multi-file ----------
+// Low-level: streams one prompt, returns whether files were produced.
+async function streamPrompt(prompt, opts = {}) {
   state.streaming = true;
-  $('#sendBtn').disabled = true;
-  addBubble('user', esc(prompt));
+  addBubble('user', opts.label ? `<span class="muted">${esc(opts.label)}</span>` : esc(prompt));
   const aiBubble = addBubble('ai streaming', '<div class="meta">thinking…</div><div class="body"><span class="dots">▌</span></div>');
   const setMeta = (t) => { const el = aiBubble.querySelector('.meta'); if (el) el.textContent = t; };
   const setBody = (html) => { const el = aiBubble.querySelector('.body'); if (el) el.innerHTML = html; };
 
   let chatAcc = '';
   let finished = false; // got a terminal event (done/error/blocked/gate)
+  let hasFiles = false;
 
   try {
     const res = await fetch('/api/generate', {
@@ -296,11 +298,12 @@ async function send(prompt) {
           if (payload.projectId) state.projectId = payload.projectId;
           if (payload.chat) chatAcc = payload.chat;
           if (payload.hasCode && Array.isArray(payload.files) && payload.files.length) {
+            hasFiles = true;
             state.files = payload.files;
             if (!state.files.find((f) => f.path === state.activeFile)) {
               state.activeFile = state.files.find((f) => f.path === 'index.html') ? 'index.html' : state.files[0].path;
             }
-            renderFileTree(); showActiveFile(); refreshPreview();
+            renderFileTree(); showActiveFile();
           }
           setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')));
         } else if (ev === 'blocked') {
@@ -330,8 +333,72 @@ async function send(prompt) {
     setMeta('error'); setBody(esc(String(e)));
   } finally {
     state.streaming = false;
-    $('#sendBtn').disabled = false;
   }
+  return hasFiles;
+}
+
+// ---------- Orchestration: lock while working + queue + auto bug-fix ----------
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function updateComposer() {
+  const btn = $('#sendBtn');
+  if (!btn) return;
+  btn.innerHTML = state.working ? '＋ Schedule' : 'Build ▸';
+  btn.title = state.working ? 'Yield is working — this prompt will run after the current build & bug-check' : '';
+}
+
+function renderQueue() {
+  const el = $('#queue');
+  if (!el) return;
+  if (!state.queue.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.classList.remove('hidden');
+  el.innerHTML = `<div class="qhead">Scheduled (${state.queue.length}) — runs after the current build &amp; bug-check</div>` +
+    state.queue.map((q, i) => `<div class="qitem"><span>${esc(q)}</span><button data-i="${i}" title="Remove">✕</button></div>`).join('');
+  el.querySelectorAll('button[data-i]').forEach((b) => b.addEventListener('click', () => { state.queue.splice(+b.dataset.i, 1); renderQueue(); }));
+}
+
+async function startUserPrompt(text) {
+  state.autofixCount = 0;
+  await runCycle(text, {});
+}
+
+async function runCycle(text, opts) {
+  state.working = true; updateComposer();
+  const hasFiles = await streamPrompt(text, opts);
+  if (hasFiles) {
+    const errors = await bugCheck();
+    if (errors.length && state.autofixCount < MAX_AUTOFIX) {
+      state.autofixCount++;
+      const fixPrompt = 'The running app reported these runtime errors. Find the bug and return the full updated file(s) that fix it:\n' + errors.join('\n');
+      await runCycle(fixPrompt, { label: `↻ Auto-fix ${state.autofixCount}/${MAX_AUTOFIX} — ${errors.length} runtime error(s)` });
+      return;
+    }
+  }
+  state.working = false; updateComposer();
+  // Run the next scheduled prompt, if any.
+  if (state.queue.length) {
+    const next = state.queue.shift();
+    renderQueue();
+    startUserPrompt(next);
+  }
+}
+
+// Reload the preview and watch for runtime errors for a short window.
+async function bugCheck() {
+  if (!state.projectId) return [];
+  state.previewErrors = [];
+  $('#guardNote').innerHTML = '<span class="checking">Checking the app for runtime errors…</span>';
+  refreshPreview();
+  await sleep(3200);
+  $('#guardNote').textContent = 'Prompts are screened by NVIDIA NeMoGuard.';
+  // De-dupe; only hard errors (error/rejection) trigger an auto-fix.
+  const seen = new Set();
+  const hard = [];
+  for (const e of state.previewErrors) {
+    if (seen.has(e.message)) continue; seen.add(e.message);
+    if (e.kind === 'error' || e.kind === 'rejection') hard.push(e.message);
+  }
+  return hard;
 }
 
 // ---------- Manual file editing ----------
@@ -477,16 +544,25 @@ function wireEvents() {
   $('#composer').addEventListener('submit', (e) => {
     e.preventDefault();
     const v = $('#prompt').value.trim();
-    if (v) {
-      send(v);
-      $('#prompt').value = '';
-      $('#autoPick').textContent = '';
-    }
+    if (!v) return;
+    $('#prompt').value = '';
+    $('#autoPick').textContent = '';
+    if (state.working) { state.queue.push(v); renderQueue(); }  // busy -> schedule it
+    else startUserPrompt(v);
   });
+  // Enter sends; Shift+Enter makes a new line.
   $('#prompt').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $('#composer').requestSubmit(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#composer').requestSubmit(); }
   });
   $('#prompt').addEventListener('input', maybeRecommend);
+  // Collect runtime errors reported by the preview iframe (for the bug-checker).
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || !d.__yield || d.kind === 'ready') return;
+    const fr = $('#preview');
+    if (fr && e.source !== fr.contentWindow) return;
+    state.previewErrors.push({ kind: d.kind, message: String(d.message || '').slice(0, 400) });
+  });
 
   // Mini AI selector open/close.
   $('#modelBtn').addEventListener('click', (e) => {

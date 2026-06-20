@@ -164,9 +164,15 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
   });
 }
 
-// Runs first inside the preview iframe; posts errors to the builder.
+// Runs first inside the preview iframe: posts errors to the builder (bug-checker)
+// and supports click-to-select-element (visual editing).
 const REPORTER = `<script>(function(){function r(k,m){try{parent.postMessage({__yield:true,kind:k,message:String(m).slice(0,500)},'*')}catch(e){}}
 window.addEventListener('error',function(e){r('error',(e.message||'Error')+(e.filename?(' @ '+(e.filename.split('/').pop())+':'+e.lineno):''))});
 window.addEventListener('unhandledrejection',function(e){r('rejection',(e.reason&&e.reason.message)||e.reason||'Unhandled promise rejection')});
 var ce=console.error;console.error=function(){r('console',[].map.call(arguments,String).join(' '));ce.apply(console,arguments)};
+var sel=false,hov=null;
+function lbl(t){var s=t.tagName.toLowerCase();if(t.id)s+='#'+t.id;if(t.className&&typeof t.className==='string'){var c=t.className.trim().split(/\\s+/).filter(Boolean).slice(0,3);if(c.length)s+='.'+c.join('.');}return s;}
+window.addEventListener('message',function(e){var d=e.data||{};if(d.__yieldcmd==='select'){sel=!!d.on;try{document.body.style.cursor=sel?'crosshair':'';}catch(x){}if(!sel&&hov){hov.style.outline='';hov=null;}}});
+document.addEventListener('mouseover',function(e){if(!sel)return;if(hov)hov.style.outline='';hov=e.target;try{hov.style.outline='2px solid #7c5cff';hov.style.outlineOffset='1px';}catch(x){}},true);
+document.addEventListener('click',function(e){if(!sel)return;e.preventDefault();e.stopPropagation();var t=e.target;parent.postMessage({__yield:true,kind:'selected',label:lbl(t),text:(t.textContent||'').trim().slice(0,80),html:(t.outerHTML||'').slice(0,400)},'*');if(hov){hov.style.outline='';hov=null;}sel=false;try{document.body.style.cursor='';}catch(x){}},true);
 try{parent.postMessage({__yield:true,kind:'ready'},'*')}catch(e){}})();</script>`;

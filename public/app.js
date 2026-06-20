@@ -2,7 +2,7 @@
 const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
   files: [], activeFile: 'index.html', streaming: false,
-  working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [],
+  working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 const MAX_AUTOFIX = 2;
 
@@ -444,9 +444,36 @@ function renderQueue() {
   el.querySelectorAll('button[data-i]').forEach((b) => b.addEventListener('click', () => { state.queue.splice(+b.dataset.i, 1); renderQueue(); }));
 }
 
-async function startUserPrompt(text) {
+async function startUserPrompt(text, label) {
   state.autofixCount = 0;
-  await runCycle(text, {});
+  await runCycle(text, label ? { label } : {});
+}
+
+// ---------- Visual select-to-edit ----------
+function postSelect(on) {
+  try { $('#preview').contentWindow.postMessage({ __yieldcmd: 'select', on }, '*'); } catch { /* not ready */ }
+}
+function onElementSelected(d) {
+  state.selected = { label: d.label || 'element', text: d.text || '', html: d.html || '' };
+  state.selectMode = false;
+  $('#selectBtn').classList.remove('active-tool');
+  renderSelChip();
+  $('#prompt').focus();
+}
+function renderSelChip() {
+  const c = $('#selChip');
+  if (!c) return;
+  if (!state.selected) { c.classList.add('hidden'); c.innerHTML = ''; return; }
+  c.classList.remove('hidden');
+  c.innerHTML = `🎯 Editing <b>${esc(state.selected.label)}</b>${state.selected.text ? ' — “' + esc(state.selected.text.slice(0, 40)) + '”' : ''} <button id="selClear" title="Clear selection">✕</button>`;
+  $('#selClear').onclick = clearSelection;
+}
+function clearSelection() { state.selected = null; renderSelChip(); }
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.tab === name));
+  ['preview', 'code', 'agents', 'settings'].forEach((n) => $('#' + n + 'Tab').classList.toggle('hidden', name !== n));
+  if (name === 'agents') renderAgentsPane();
+  if (name === 'settings') renderSettingsPane();
 }
 
 async function runCycle(text, opts) {
@@ -753,25 +780,41 @@ async function logout() {
 function wireEvents() {
   $('#composer').addEventListener('submit', (e) => {
     e.preventDefault();
-    const v = $('#prompt').value.trim();
-    if (!v) return;
+    const typed = $('#prompt').value.trim();
+    if (!typed) return;
     $('#prompt').value = '';
     $('#autoPick').textContent = '';
-    if (state.working) { state.queue.push(v); renderQueue(); updateComposer(); }  // busy -> schedule it
-    else startUserPrompt(v);
+    let text = typed, label = null;
+    if (state.selected) {
+      text = `Edit this specific element in the app and return the updated file(s) in full.\nElement: ${state.selected.label}\nIts current HTML: ${state.selected.html}\nChange requested: ${typed}`;
+      label = `🎯 ${state.selected.label}: ${typed}`;
+      clearSelection();
+    }
+    if (state.working) { state.queue.push(text); renderQueue(); updateComposer(); }  // busy -> schedule it
+    else startUserPrompt(text, label);
   });
   // Enter sends; Shift+Enter makes a new line.
   $('#prompt').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#composer').requestSubmit(); }
   });
   $('#prompt').addEventListener('input', () => { maybeRecommend(); if (state.working) updateComposer(); });
-  // Collect runtime errors reported by the preview iframe (for the bug-checker).
+  // Messages from the preview iframe: runtime errors + selected element.
   window.addEventListener('message', (e) => {
     const d = e.data;
-    if (!d || !d.__yield || d.kind === 'ready') return;
+    if (!d || !d.__yield) return;
     const fr = $('#preview');
     if (fr && e.source !== fr.contentWindow) return;
+    if (d.kind === 'ready') { if (state.selectMode) postSelect(true); return; }
+    if (d.kind === 'selected') { onElementSelected(d); return; }
     state.previewErrors.push({ kind: d.kind, message: String(d.message || '').slice(0, 400) });
+  });
+
+  // Visual select-to-edit.
+  $('#selectBtn').addEventListener('click', () => {
+    state.selectMode = !state.selectMode;
+    $('#selectBtn').classList.toggle('active-tool', state.selectMode);
+    if (state.selectMode) { switchTab('preview'); postSelect(true); }
+    else postSelect(false);
   });
 
   // Mini AI selector open/close.
@@ -802,13 +845,7 @@ function wireEvents() {
     if (state.user && state.projectId)
       await fetch(`/api/projects/${state.projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: $('#projectTitle').value }) });
   });
-  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
-    const tab = t.dataset.tab;
-    ['preview', 'code', 'agents', 'settings'].forEach((n) => $('#' + n + 'Tab').classList.toggle('hidden', tab !== n));
-    if (tab === 'agents') renderAgentsPane();
-    if (tab === 'settings') renderSettingsPane();
-  }));
+  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 }
 
 function handleQueryFlags() {

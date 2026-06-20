@@ -33,6 +33,18 @@ function effortOf(v: string | undefined): 'low' | 'medium' | 'high' {
   return v === 'low' || v === 'medium' || v === 'high' ? v : 'medium';
 }
 
+// Turn an upstream error into a short, user-facing reason for the fallback notice.
+function shortReason(e: unknown): string {
+  const msg = String((e as any)?.message || e || '');
+  const code = msg.match(/\b(4\d\d|5\d\d)\b/)?.[1] || '';
+  if (code === '401' || code === '403') return `${code} auth — check the API key`;
+  if (code === '404') return '404 model id not found';
+  if (code === '429') return '429 rate-limited';
+  if (code === '402') return '402 payment/credits required';
+  if (/abort/i.test(msg)) return 'timed out';
+  return code ? `error ${code}` : (msg.slice(0, 60) || 'error');
+}
+
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
 export async function routeModel(c: Ctx, prompt: string): Promise<{ id: string; reason: string }> {
   const menu = CODER_MODELS.map((m) => ({ id: m.id, tier: m.tier, blurb: m.blurb }));
@@ -464,27 +476,27 @@ export async function runBuild(
         if (streamer.produced) {
           await send('status', { stage: 'Finalizing what was built…' }); // keep partial output
         } else {
-          // The selected/routed model failed (unavailable id, rate limit, etc.). Try it
-          // PLAINLY first (in case it just rejected the reasoning flag), then fall back
-          // through known-good models — quality first — telling the user WHY it switched.
+          // The selected/routed model failed (unavailable id, rate limit, etc.). Retry
+          // it PLAINLY first (it may have only rejected the reasoning flag), then fall
+          // back through known-good models — quality first — telling the user WHY.
           const selectedLabel = activeModel.label;
-          const chain: [typeof model, 'low' | 'medium' | 'high' | null][] = [[activeModel, null]];
-          for (const id of ['qwen3-coder', 'deepseek-v4-flash', 'glm-5.1', 'auto']) {
-            const m = resolveModel(id);
-            if (m.id !== activeModel.id && !chain.some(([c]) => c.id === m.id)) chain.push([m, null]);
-          }
+          let selErr: unknown = e;
           let ok = false;
-          let lastErr: unknown = e;
-          for (const [mdef, eff] of chain) {
-            if (mdef.id !== activeModel.id) {
-              activeModel = mdef;
-              await send('status', { stage: `${selectedLabel} unavailable — using ${mdef.label}` });
-              await send('meta', { model: mdef.id, label: mdef.label, projectId: project?.id ?? null, routeReason: `${selectedLabel} unavailable` });
+          try { await streamWith(activeModel, null); ok = true; }
+          catch (e2) { if (streamer.produced) ok = true; else selErr = e2; }
+          if (!ok && !streamer.produced) {
+            const reason = shortReason(selErr);
+            for (const fbId of ['qwen3-coder', 'deepseek-v4-flash', 'glm-5.1', 'auto']) {
+              const fb = resolveModel(fbId);
+              if (fb.id === activeModel.id) continue;
+              activeModel = fb;
+              await send('status', { stage: `${selectedLabel} unavailable (${reason}) — using ${fb.label}` });
+              await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: `${selectedLabel} unavailable: ${reason}` });
+              try { await streamWith(fb, null); ok = true; break; }
+              catch { if (streamer.produced) { ok = true; break; } }
             }
-            try { await streamWith(mdef, eff); ok = true; break; }
-            catch (err) { if (streamer.produced) { ok = true; break; } lastErr = err; }
           }
-          if (!ok && !streamer.produced) throw lastErr;
+          if (!ok && !streamer.produced) throw selErr;
         }
       }
       await streamer.end();

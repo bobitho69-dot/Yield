@@ -180,10 +180,15 @@ function renderMessages(msgs) {
     .map((x) => {
       if (x.flagged) return `<div class="msg user flagged">${esc(x.content)}<div class="meta">⚠ blocked by safety guard</div></div>`;
       if (x.role === 'user') return `<div class="msg user">${esc(x.content)}</div>`;
-      return `<div class="msg ai"><div class="meta">${x.model || 'assistant'}</div>✓ app generated</div>`;
+      return `<div class="msg ai"><div class="meta">${esc(x.model || 'assistant')}</div><div class="body">${fmt(x.content || '')}</div></div>`;
     })
     .join('');
   m.scrollTop = m.scrollHeight;
+}
+
+// Minimal safe text formatting for chat: escape, then bold + line breaks.
+function fmt(s) {
+  return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
 }
 
 function addBubble(cls, html) {
@@ -198,16 +203,21 @@ function addBubble(cls, html) {
   return div;
 }
 
-// ---------- Generation (SSE over fetch) ----------
+// ---------- Generation (SSE over fetch): chat + code split ----------
 async function send(prompt) {
   if (state.streaming) return;
   state.streaming = true;
   $('#sendBtn').disabled = true;
   addBubble('user', esc(prompt));
-  const aiBubble = addBubble('ai streaming', '<div class="meta">thinking…</div><span class="dots">▌</span>');
+  const aiBubble = addBubble('ai streaming', '<div class="meta">thinking…</div><div class="body"><span class="dots">▌</span></div>');
+  const setMeta = (t) => { const el = aiBubble.querySelector('.meta'); if (el) el.textContent = t; };
+  const setBody = (html) => { const el = aiBubble.querySelector('.body'); if (el) el.innerHTML = html; };
 
-  let acc = '';
+  let chatAcc = '';
+  let codeAcc = '';
   let lastPaint = 0;
+  let finished = false; // got a terminal event (done/error/blocked/gate)
+
   try {
     const res = await fetch('/api/generate', {
       method: 'POST',
@@ -217,7 +227,7 @@ async function send(prompt) {
 
     if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) {
       const err = await res.json().catch(() => ({}));
-      handleGenError(res.status, err, aiBubble);
+      setMeta('error'); setBody(esc(err.error || `Request failed (${res.status})`));
       return;
     }
 
@@ -233,54 +243,60 @@ async function send(prompt) {
         const ev = /event: (.*)/.exec(frame)?.[1];
         const data = /data: ([\s\S]*)/.exec(frame)?.[1];
         if (!ev || data == null) continue;
-        const payload = JSON.parse(data);
+        let payload; try { payload = JSON.parse(data); } catch { continue; }
 
-        if (ev === 'meta') {
-          aiBubble.querySelector('.meta').textContent =
-            `${payload.label}${payload.routeReason ? ` · ${payload.routeReason}` : ''}`;
-          if (payload.projectId) { state.projectId = payload.projectId; }
-        } else if (ev === 'delta') {
-          acc += payload;
-          const nowT = performance.now();
-          if (nowT - lastPaint > 250) { livePreview(acc); lastPaint = nowT; }
-        } else if (ev === 'done') {
-          acc = payload.code || acc;
+        if (ev === 'status') {
+          setMeta(`${payload.stage}…`);
+        } else if (ev === 'meta') {
+          setMeta(`${payload.label}${payload.routeReason ? ` · ${payload.routeReason}` : ''}`);
           if (payload.projectId) state.projectId = payload.projectId;
+        } else if (ev === 'chat') {
+          chatAcc += payload;
+          setBody(fmt(chatAcc));
+          $('#messages').scrollTop = $('#messages').scrollHeight;
+        } else if (ev === 'code') {
+          codeAcc += payload;
+          const nowT = performance.now();
+          if (nowT - lastPaint > 250) { livePreview(codeAcc); $('#codeEditor').value = codeAcc; lastPaint = nowT; }
+        } else if (ev === 'done') {
+          finished = true;
+          if (payload.projectId) state.projectId = payload.projectId;
+          if (payload.chat) chatAcc = payload.chat;
+          if (payload.hasCode && (payload.code || codeAcc)) {
+            codeAcc = payload.code || codeAcc;
+            state.code = codeAcc;
+            $('#codeEditor').value = codeAcc;
+            updatePreview(codeAcc);
+          }
+          setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')));
+        } else if (ev === 'blocked') {
+          finished = true;
+          aiBubble.classList.add('flagged');
+          setMeta('⚠ blocked by NeMoGuard');
+          setBody(esc(payload.message || 'Blocked.') + (payload.detail ? `<div class="meta">${esc(payload.detail)}</div>` : ''));
+        } else if (ev === 'gate') {
+          finished = true;
+          let extra = '';
+          if (payload.code === 'high_usage') extra = ' <a href="#" id="bu" style="text-decoration:underline">Upgrade</a>';
+          else if (payload.code === 'login_required') extra = ' <a href="/login?redirect=/app" style="text-decoration:underline">Sign in</a>';
+          setMeta('paused'); setBody(esc(payload.message || '') + extra);
+          aiBubble.querySelector('#bu')?.addEventListener('click', (e) => { e.preventDefault(); upgrade(); });
         } else if (ev === 'error') {
-          aiBubble.innerHTML = `<div class="meta">error</div>${esc(payload.message || 'Generation failed')}`;
+          finished = true;
+          setMeta('error'); setBody(esc(payload.message || 'Generation failed'));
         }
       }
     }
 
-    // Finalize.
-    state.code = acc;
-    $('#codeEditor').value = acc;
-    updatePreview(acc);
+    if (!finished && !chatAcc && !codeAcc) setBody(esc('No response — try again.'));
     aiBubble.classList.remove('streaming');
-    aiBubble.innerHTML = `<div class="meta">${aiBubble.querySelector('.meta')?.textContent || 'done'}</div>✓ app generated`;
     loadStatus();
     if (state.user) loadProjects();
   } catch (e) {
-    aiBubble.innerHTML = `<div class="meta">error</div>${esc(String(e))}`;
+    setMeta('error'); setBody(esc(String(e)));
   } finally {
     state.streaming = false;
     $('#sendBtn').disabled = false;
-  }
-}
-
-function handleGenError(status, err, bubble) {
-  let msg = err.error || 'Something went wrong.';
-  bubble.classList.remove('streaming');
-  if (err.code === 'jailbreak_blocked') {
-    bubble.className = 'msg user flagged';
-    bubble.innerHTML = `${esc(msg)}<div class="meta">⚠ ${esc(err.detail || 'blocked by NeMoGuard')}</div>`;
-  } else if (err.code === 'high_usage') {
-    bubble.innerHTML = `<div class="meta">High Usage Time</div>${esc(msg)} <a href="#" id="bu" style="text-decoration:underline">Upgrade</a>`;
-    bubble.querySelector('#bu')?.addEventListener('click', (e) => { e.preventDefault(); upgrade(); });
-  } else if (err.code === 'login_required') {
-    bubble.innerHTML = `<div class="meta">Sign in</div>${esc(msg)} <a href="/login?redirect=/app" style="text-decoration:underline">Sign in</a>`;
-  } else {
-    bubble.innerHTML = `<div class="meta">error</div>${esc(msg)}`;
   }
 }
 

@@ -15,6 +15,7 @@ export interface ChatOptions {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
+  timeoutMs?: number; // abort if the request takes too long
 }
 
 function headers(apiKey: string): HeadersInit {
@@ -25,29 +26,42 @@ function headers(apiKey: string): HeadersInit {
   };
 }
 
+// AbortSignal that fires after `ms`, so a hung upstream can't freeze a request.
+function timeout(ms: number): { signal: AbortSignal; clear: () => void } {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return { signal: ctrl.signal, clear: () => clearTimeout(t) };
+}
+
 /** Non-streaming completion. Returns the full assistant text + token usage. */
 export async function chat(opts: ChatOptions): Promise<{ text: string; usage: { in: number; out: number } }> {
-  const res = await fetch(`${opts.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: headers(opts.apiKey),
-    body: JSON.stringify({
-      model: opts.model,
-      messages: opts.messages,
-      temperature: opts.temperature ?? 0.4,
-      top_p: opts.top_p ?? 0.9,
-      max_tokens: opts.max_tokens ?? 8192,
-      stream: false,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new NvidiaError(res.status, body);
+  const to = timeout(opts.timeoutMs ?? 30000);
+  try {
+    const res = await fetch(`${opts.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: headers(opts.apiKey),
+      signal: to.signal,
+      body: JSON.stringify({
+        model: opts.model,
+        messages: opts.messages,
+        temperature: opts.temperature ?? 0.4,
+        top_p: opts.top_p ?? 0.9,
+        max_tokens: opts.max_tokens ?? 8192,
+        stream: false,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new NvidiaError(res.status, body);
+    }
+    const data: any = await res.json();
+    return {
+      text: data?.choices?.[0]?.message?.content ?? '',
+      usage: { in: data?.usage?.prompt_tokens ?? 0, out: data?.usage?.completion_tokens ?? 0 },
+    };
+  } finally {
+    to.clear();
   }
-  const data: any = await res.json();
-  return {
-    text: data?.choices?.[0]?.message?.content ?? '',
-    usage: { in: data?.usage?.prompt_tokens ?? 0, out: data?.usage?.completion_tokens ?? 0 },
-  };
 }
 
 /**
@@ -58,9 +72,11 @@ export async function chatStream(
   opts: ChatOptions,
   onDelta: (delta: string) => void | Promise<void>,
 ): Promise<{ text: string }> {
+  const to = timeout(opts.timeoutMs ?? 90000);
   const res = await fetch(`${opts.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: headers(opts.apiKey),
+    signal: to.signal,
     body: JSON.stringify({
       model: opts.model,
       messages: opts.messages,
@@ -71,6 +87,7 @@ export async function chatStream(
     }),
   });
   if (!res.ok || !res.body) {
+    to.clear();
     const body = await res.text().catch(() => '');
     throw new NvidiaError(res.status, body);
   }
@@ -78,6 +95,7 @@ export async function chatStream(
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = '';
   let full = '';
+  try {
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -101,6 +119,9 @@ export async function chatStream(
         /* partial JSON across chunks — ignore, it'll complete next read */
       }
     }
+  }
+  } finally {
+    to.clear();
   }
   return { text: full };
 }

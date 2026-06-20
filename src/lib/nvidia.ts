@@ -73,6 +73,7 @@ export async function chat(opts: ChatOptions): Promise<{ text: string; usage: { 
 export async function chatStream(
   opts: ChatOptions,
   onDelta: (delta: string) => void | Promise<void>,
+  onReasoning?: (r: string) => void | Promise<void>,
 ): Promise<{ text: string }> {
   const to = timeout(opts.timeoutMs ?? 90000);
   const res = await fetch(`${opts.baseUrl}/chat/completions`, {
@@ -113,7 +114,10 @@ export async function chatStream(
       if (payload === '[DONE]') continue;
       try {
         const parsed = JSON.parse(payload);
-        const delta = parsed?.choices?.[0]?.delta?.content ?? '';
+        const d = parsed?.choices?.[0]?.delta ?? {};
+        const reasoning = d.reasoning_content ?? d.reasoning ?? '';
+        if (reasoning && onReasoning) await onReasoning(reasoning);
+        const delta = d.content ?? '';
         if (delta) {
           full += delta;
           await onDelta(delta);

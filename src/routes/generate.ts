@@ -69,6 +69,44 @@ export async function handleRoute(req: Request, c: Ctx): Promise<Response> {
   return json({ ...choice, label: model.label, tier: model.tier, pros: model.pros, cons: model.cons });
 }
 
+// Fallback: pull files out of a model reply that didn't use the === file: ===
+// format — markdown ```code fences, or a single raw HTML document.
+function guessName(before: string, lang: string, only: boolean): string {
+  const tail = before.split('\n').slice(-3).join('\n');
+  const named = tail.match(/([\w./-]+\.(?:html|css|js|mjs|json|svg|md|ts|jsx|tsx))/i);
+  if (named) return named[1].replace(/^\/+/, '');
+  const l = (lang || '').toLowerCase();
+  if (l === 'html' || (only && !l)) return 'index.html';
+  if (l === 'css') return 'styles.css';
+  if (l === 'js' || l === 'javascript') return 'app.js';
+  if (l === 'json') return 'data.json';
+  return `file.${l || 'txt'}`;
+}
+
+function extractFilesFromText(text: string): { chat: string; files: FileRow[] } {
+  const fenceRe = /```([a-zA-Z0-9.\-_/]*)[ \t]*\n([\s\S]*?)\n```/g;
+  const blocks: { lang: string; code: string; index: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = fenceRe.exec(text))) blocks.push({ lang: m[1], code: m[2], index: m.index });
+  if (blocks.length) {
+    const used = new Set<string>();
+    const files: FileRow[] = blocks.map((b, i) => {
+      let path = guessName(text.slice(0, b.index), b.lang, blocks.length === 1);
+      while (used.has(path)) path = path.replace(/(\.\w+)$/, `-${i}$1`);
+      used.add(path);
+      return { path, content: b.code };
+    });
+    const chat = text.replace(fenceRe, '').replace(/\n{3,}/g, '\n\n').trim();
+    return { chat, files };
+  }
+  // Raw HTML document with no fences.
+  const start = text.search(/<!DOCTYPE html>|<html[\s>]/i);
+  if (start !== -1) {
+    return { chat: text.slice(0, start).trim() || 'Here is your app.', files: [{ path: 'index.html', content: text.slice(start).trim() }] };
+  }
+  return { chat: text.trim(), files: [] };
+}
+
 // Strip an accidental surrounding ```lang fence from a file's content.
 function cleanFile(s: string): string {
   let t = s.replace(/^\n+|\n+$/g, '');
@@ -89,6 +127,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>)
   const AGENT = /^={2,}\s*agent:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
   let buf = '';
   let mode: 'chat' | 'file' | 'agent' = 'chat';
+  let inThink = false;
   let curFile: { path: string; lines: string[] } | null = null;
   let curAgent: { name: string; model: string | null; lines: string[] } | null = null;
   let lastStatus = '';
@@ -97,7 +136,27 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>)
   const agents: { name: string; model: string | null; lines: string[] }[] = [];
   const secrets: SecretReq[] = [];
 
-  async function handleLine(line: string) {
+  async function handleLine(line: string): Promise<void> {
+    // Route <think>…</think> reasoning to the Thinking panel.
+    if (inThink) {
+      const close = line.indexOf('</think>');
+      if (close === -1) { await send('thinking', line + '\n'); return; }
+      const before = line.slice(0, close);
+      if (before) await send('thinking', before + '\n');
+      inThink = false;
+      const after = line.slice(close + 8);
+      if (after.trim()) await handleLine(after);
+      return;
+    }
+    const open = line.indexOf('<think>');
+    if (open !== -1) {
+      const before = line.slice(0, open);
+      if (before.trim()) await handleLine(before);
+      inThink = true;
+      await handleLine(line.slice(open + 7)); // remainder is inside <think>
+      return;
+    }
+
     let m;
     if ((m = line.match(FILE))) {
       mode = 'file';
@@ -137,13 +196,22 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>)
     },
     get produced() { return chatLines.length > 0 || files.length > 0 || agents.length > 0; },
     result() {
-      const chat = chatLines.join('\n').trim();
-      const fs: FileRow[] = files
+      // Drop reasoning-model scratchpads if any leaked into the text.
+      let chat = chatLines.join('\n')
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+        .trim();
+      let fs: FileRow[] = files
         .map((f) => ({ path: f.path, content: cleanFile(f.lines.join('\n')) }))
         .filter((f) => f.path && f.content.trim());
       const ags: AgentReq[] = agents
         .map((a) => ({ name: a.name, model: a.model, system_prompt: cleanFile(a.lines.join('\n')) }))
         .filter((a) => a.name && a.system_prompt.trim());
+      // The model didn't use === file: === — recover code from fences / raw HTML.
+      if (fs.length === 0) {
+        const fb = extractFilesFromText(chat);
+        if (fb.files.length) { fs = fb.files; chat = fb.chat || 'Here is your app.'; }
+      }
       return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets };
     },
   };
@@ -247,6 +315,7 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
           await chatStream(
             { baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages, max_tokens: 32768, timeoutMs: 180000 },
             async (delta) => { await streamer.feed(delta); },
+            async (r) => { await send('thinking', r); },
           );
         };
         let activeModel = model;

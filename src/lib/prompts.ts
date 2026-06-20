@@ -59,6 +59,8 @@ FILE RULES:
 - Modern, clean, responsive, accessible UI with real, working interactivity.
 - When EDITING, output every file you change in full (you'll be given the current files). Unchanged files can be omitted.
 - Do NOT wrap file contents in markdown code fences. Just the raw content after the === file: === line.
+- CRITICAL: when you say you're building or updating the app, you MUST include the actual file contents in the
+  SAME reply. Never reply with only a sentence like "Here's the updated app" and no files — always output the code.
 
 Keep chat messages concise and proactive — suggest next steps.`;
 

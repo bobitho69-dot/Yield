@@ -279,6 +279,17 @@ async function streamPrompt(prompt, opts = {}) {
   const aiBubble = addBubble('ai streaming', '<div class="meta">thinking…</div><div class="body"><span class="dots">▌</span></div>');
   const setMeta = (t) => { const el = aiBubble.querySelector('.meta'); if (el) el.textContent = t; };
   const setBody = (html) => { const el = aiBubble.querySelector('.body'); if (el) el.innerHTML = html; };
+  let thinkAcc = '';
+  const ensureThink = () => {
+    let t = aiBubble.querySelector('.think');
+    if (!t) {
+      t = document.createElement('details');
+      t.className = 'think';
+      t.innerHTML = '<summary>💭 Thinking…</summary><div class="think-body"></div>';
+      aiBubble.insertBefore(t, aiBubble.querySelector('.body'));
+    }
+    return t;
+  };
 
   let chatAcc = '';
   let finished = false; // got a terminal event (done/error/blocked/gate)
@@ -311,7 +322,12 @@ async function streamPrompt(prompt, opts = {}) {
         if (!ev || data == null) continue;
         let payload; try { payload = JSON.parse(data); } catch { continue; }
 
-        if (ev === 'status') {
+        if (ev === 'thinking') {
+          thinkAcc += payload;
+          const tb = ensureThink().querySelector('.think-body');
+          tb.textContent = thinkAcc;
+          tb.scrollTop = tb.scrollHeight;
+        } else if (ev === 'status') {
           setMeta(`${payload.stage}…`);
         } else if (ev === 'meta') {
           setMeta(`${payload.label}${payload.routeReason ? ` · ${payload.routeReason}` : ''}`);
@@ -337,6 +353,7 @@ async function streamPrompt(prompt, opts = {}) {
           let extra = '';
           if (agentNames.length) extra += `<div class="meta">⚡ created agent(s): ${agentNames.map(esc).join(', ')}</div>`;
           setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')) + extra);
+          const ts = aiBubble.querySelector('.think summary'); if (ts) ts.textContent = '💭 Thinking';
         } else if (ev === 'blocked') {
           finished = true;
           aiBubble.classList.add('flagged');

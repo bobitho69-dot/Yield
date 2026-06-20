@@ -10,10 +10,11 @@ import type { Ctx, Env } from '../types';
 import { sse, json, error } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
-import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor } from '../config/models';
+import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, type ModelDef } from '../config/models';
 import { chat, chatStream } from '../lib/nvidia';
 import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
+import { verifyFiles } from '../lib/verify';
 import {
   addMessage, createAgent, createProject, getProject, getProjectFiles, listAgents, listMessages,
   logUsage, saveFiles, updateAgent, type FileRow,
@@ -359,6 +360,68 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
   return { name: task.name, files: [], error: lastErr };
 }
 
+// Verify the finished app actually holds together and auto-repair it once if not.
+// Static checks (broken links/missing pages, placeholder text, dead links, raw
+// dialogs) run with zero model calls; only if a HARD issue is found do we spend one
+// repair pass asking the model to fix exactly those problems and re-emit the files.
+// This is what makes multi-page apps "work" — it catches nav links to pages that
+// were never built, scripts pointing at missing files, and leftover placeholders.
+async function verifyAndRepair(
+  env: Env, model: ModelDef, files: FileRow[], send: SendFn,
+  heartbeat: () => Promise<void>, effort: 'low' | 'medium' | 'high',
+): Promise<FileRow[]> {
+  if (!files.length) return files;
+  const { hardIssues, softIssues } = verifyFiles(files);
+  if (!hardIssues.length) {
+    await send('status', { stage: 'Verified — checks passed ✓' });
+    return files;
+  }
+  await send('status', { stage: `Verifying — fixing ${hardIssues.length} issue(s)…` });
+  await heartbeat();
+  const dump = files.map((f) => `=== file: ${f.path} ===\n${f.content}`).join('\n\n');
+  const messages = [
+    { role: 'system' as const, content: CONVO_SYSTEM },
+    { role: 'system' as const, content: PLATFORM_GUIDE },
+    {
+      role: 'user' as const,
+      content:
+        `Here is the app that was just built:\n\n${dump}\n\n` +
+        `Automated verification found problems that MUST be fixed so the app actually works:\n` +
+        [...hardIssues, ...softIssues].map((i) => `- ${i}`).join('\n') +
+        `\n\nFix EVERY issue:\n` +
+        `- Create any page or file that a link/script references but is missing — build it FULLY (no "coming soon"). Every nav link must lead to a real, complete page.\n` +
+        `- Make every button, link and form do something real; remove dead links (href="#") and raw dialogs.\n` +
+        `- Remove ALL placeholder/stub text; use real content. Do NOT add mock/sample data unless the app was explicitly asked for it.\n` +
+        `Re-output IN FULL every file you change or add, using === file: path === blocks. Output ONLY files — no chat, no <think>.`,
+    },
+  ];
+  const repair = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, 'Verify');
+  const ep = endpointFor(env, model);
+  for (const eff of [effort, null] as const) {
+    try {
+      await chatStream(
+        {
+          baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+          temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
+          ...(eff ? { extra: { reasoning_effort: eff } } : {}),
+        },
+        async (delta) => { await repair.feed(delta); await heartbeat(); },
+        async (rr) => { await send('thinking', rr); await heartbeat(); },
+      );
+      break;
+    } catch { if (repair.produced) break; /* effort rejected -> retry plain -> give up */ }
+  }
+  await repair.end();
+  const fixed = repair.result().files;
+  if (!fixed.length) return files; // repair produced nothing — keep the original build
+  const byPath = new Map(files.map((f) => [f.path, f] as const));
+  for (const f of fixed) byPath.set(f.path, f);
+  const merged = [...byPath.values()];
+  const after = verifyFiles(merged);
+  await send('status', { stage: after.hardIssues.length ? `Verified — ${fixed.length} file(s) updated` : 'Verified — all checks passed ✓' });
+  return merged;
+}
+
 // The full build pipeline: jailbreak guard -> usage gate -> model route -> stream
 // -> parse files/agents/secrets -> persist (D1 + GitHub) -> 'done'. It streams SSE
 // events via `send` and calls `heartbeat` periodically (to keep a "building" flag
@@ -590,6 +653,13 @@ export async function runBuild(
       files = [...byPath.values()];
       const ok = results.filter((x) => x.files.length).map((x) => x.name);
       if (ok.length) agentNote = `\n\n🤖 Built in parallel by ${ok.length} agent${ok.length > 1 ? 's' : ''}: ${ok.join(', ')}.`;
+    }
+
+    // Verify the finished app and auto-repair broken links / missing pages /
+    // placeholders once (best-effort — never let it sink a delivered build).
+    if (files.length) {
+      try { files = await verifyAndRepair(c.env, activeModel, files, send, heartbeat, wantEffort); }
+      catch (e) { console.error('verify step failed:', e); }
     }
 
     const hasFiles = files.length > 0;

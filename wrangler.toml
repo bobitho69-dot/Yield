@@ -29,12 +29,12 @@ not_found_handling = "404-page"
 [[d1_databases]]
 binding = "DB"
 database_name = "yield-db"
-database_id = "PLACEHOLDER_D1_DATABASE_ID"
+database_id = "ff477f86-f456-45e5-be97-e64a1adbb64c"
 
 # --- KV: sessions, OAuth state, usage counters, feature flags ------------------
 [[kv_namespaces]]
 binding = "KV"
-id = "PLACEHOLDER_KV_NAMESPACE_ID"
+id = "22565cb87f544eb9aede82692e0681a9"
 
 # --- Non-secret vars (override per environment) --------------------------------
 [vars]

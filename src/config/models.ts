@@ -165,16 +165,37 @@ export function resolveModel(id: string, overridesJson?: string): ModelDef {
   return base;
 }
 
+function envGet(env: Env, name: string): string | undefined {
+  return (env as unknown as Record<string, string | undefined>)[name];
+}
+
 /** Look up an env var by name, falling back to the shared NVIDIA key. */
 export function keyFor(env: Env, apiKeyEnv: string): string {
-  const rec = env as unknown as Record<string, string | undefined>;
-  return rec[apiKeyEnv] || env.NVIDIA_API_KEY;
+  return envGet(env, apiKeyEnv) || env.NVIDIA_API_KEY;
+}
+
+/**
+ * Resolve a model's API key, trying several candidate secret names so it works
+ * whether you named the secret KIMI_API_KEY (recommended) or after the model id
+ * itself (e.g. "moonshotai/kimi-k2-instruct"). Falls back to NVIDIA_API_KEY.
+ */
+export function keyForModel(env: Env, model: ModelDef): string {
+  const candidates = [
+    model.provider.apiKeyEnv, // e.g. KIMI_API_KEY
+    model.modelId, // e.g. moonshotai/kimi-k2-instruct
+    model.modelId.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase(), // MOONSHOTAI_KIMI_K2_INSTRUCT
+  ];
+  for (const name of candidates) {
+    const v = name ? envGet(env, name) : undefined;
+    if (v) return v;
+  }
+  return env.NVIDIA_API_KEY;
 }
 
 /** Resolve a model's concrete API endpoint + key + id (each AI is its own API). */
 export function endpointFor(env: Env, model: ModelDef): { baseUrl: string; apiKey: string; modelId: string } {
   const baseUrl = model.provider.baseUrl || env.NVIDIA_CHAT_BASE;
-  return { baseUrl, apiKey: keyFor(env, model.provider.apiKeyEnv), modelId: model.modelId };
+  return { baseUrl, apiKey: keyForModel(env, model), modelId: model.modelId };
 }
 
 /** Public list for the model picker (Auto + coder models, with pros/cons). */

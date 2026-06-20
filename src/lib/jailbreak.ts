@@ -7,7 +7,7 @@
 // still "fails safe-ish" if the classifier endpoint is unavailable.
 
 import type { Env } from '../types';
-import { GUARD_MODEL, keyFor } from '../config/models';
+import { GUARD_MODEL, keyForModel } from '../config/models';
 
 export interface GuardResult {
   blocked: boolean;
@@ -40,8 +40,8 @@ export async function checkPrompt(env: Env, prompt: string): Promise<GuardResult
     const res = await fetch(env.NVIDIA_JAILBREAK_URL, {
       method: 'POST',
       headers: {
-        // Guard is its own API too: NEMOGUARD_API_KEY, falling back to NVIDIA_API_KEY.
-        authorization: `Bearer ${keyFor(env, GUARD_MODEL.provider.apiKeyEnv)}`,
+        // Guard is its own API too (NEMOGUARD_API_KEY / model-id name / NVIDIA_API_KEY).
+        authorization: `Bearer ${keyForModel(env, GUARD_MODEL)}`,
         'content-type': 'application/json',
         accept: 'application/json',
       },

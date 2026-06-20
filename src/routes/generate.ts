@@ -464,16 +464,27 @@ export async function runBuild(
         if (streamer.produced) {
           await send('status', { stage: 'Finalizing what was built…' }); // keep partial output
         } else {
-          try {
-            await streamWith(activeModel, null); // model may have rejected the reasoning flag
-          } catch (e2) {
-            const fb = resolveModel('deepseek-v4-flash');
-            if (fb.id === activeModel.id) throw e2;
-            activeModel = fb;
-            await send('status', { stage: `Switching to ${fb.label}` });
-            await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'stable model' });
-            await streamWith(fb, null);
+          // The selected/routed model failed (unavailable id, rate limit, etc.). Try it
+          // PLAINLY first (in case it just rejected the reasoning flag), then fall back
+          // through known-good models — quality first — telling the user WHY it switched.
+          const selectedLabel = activeModel.label;
+          const chain: [typeof model, 'low' | 'medium' | 'high' | null][] = [[activeModel, null]];
+          for (const id of ['qwen3-coder', 'deepseek-v4-flash', 'glm-5.1', 'auto']) {
+            const m = resolveModel(id);
+            if (m.id !== activeModel.id && !chain.some(([c]) => c.id === m.id)) chain.push([m, null]);
           }
+          let ok = false;
+          let lastErr: unknown = e;
+          for (const [mdef, eff] of chain) {
+            if (mdef.id !== activeModel.id) {
+              activeModel = mdef;
+              await send('status', { stage: `${selectedLabel} unavailable — using ${mdef.label}` });
+              await send('meta', { model: mdef.id, label: mdef.label, projectId: project?.id ?? null, routeReason: `${selectedLabel} unavailable` });
+            }
+            try { await streamWith(mdef, eff); ok = true; break; }
+            catch (err) { if (streamer.produced) { ok = true; break; } lastErr = err; }
+          }
+          if (!ok && !streamer.produced) throw lastErr;
         }
       }
       await streamer.end();

@@ -129,15 +129,15 @@ export const CODER_MODELS: ModelDef[] = [
   },
   {
     id: 'qwen3-coder',
-    label: 'Qwen3 Coder 480B',
-    // OpenRouter slug for Qwen3-Coder-480B-A35B-Instruct (use ":free" for the free tier).
-    modelId: 'qwen/qwen3-coder',
+    label: 'Qwen3 Coder 480B (free)',
+    // OpenRouter's FREE Qwen3-Coder-480B-A35B-Instruct (drop ":free" for the paid tier).
+    modelId: 'qwen/qwen3-coder:free',
     role: 'coder',
     tier: 'pro',
     speed: 2,
-    blurb: 'Massive 480B MoE coder (35B active) — elite code quality, via OpenRouter.',
-    pros: ['Elite coding & agentic ability', 'Excels at complex, multi-file apps', 'Huge knowledge + long context'],
-    cons: ['Slower (very large model)', 'Uses your OpenRouter credits', 'Overkill for tiny tweaks'],
+    blurb: 'Massive 480B MoE coder (35B active) — elite code quality, free via OpenRouter.',
+    pros: ['Free to use', 'Elite coding & agentic ability', 'Excels at complex, multi-file apps'],
+    cons: ['Slower (very large model)', 'Free tier is rate-limited', 'Overkill for tiny tweaks'],
     // Its own API on OpenRouter (OpenAI-compatible). Set OPENROUTER_API_KEY.
     provider: { apiKeyEnv: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1' },
   },

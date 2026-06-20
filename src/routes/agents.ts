@@ -92,9 +92,10 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
   }
   if (input) messages.push({ role: 'user', content: input });
 
-  // Try the agent's model, then resilient fallbacks (same idea as the builder), so
-  // a single unavailable/placeholder model id never breaks the agent at runtime.
-  const candidates = [agent.model, 'deepseek-v4-flash', 'glm-5.1', 'minimax-m3'];
+  // Try the agent's model, then resilient fallbacks ending with gpt-oss (the model
+  // the router already uses, so we know it works). A single unavailable/placeholder
+  // model id — or a reasoning model that returns empty content — never breaks it.
+  const candidates = [agent.model, 'deepseek-v4-flash', 'glm-5.1', 'minimax-m3', 'auto'];
   const seen = new Set<string>();
   let lastErr = 'No model was able to respond.';
   for (const cid of candidates) {
@@ -103,7 +104,8 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
     const m = resolveModel(cid);
     const e = endpointFor(c.env, m);
     try {
-      const { text } = await chat({ baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.modelId, messages, max_tokens: 2048, timeoutMs: 60000 });
+      // No token cap — a reasoning model needs room to answer AFTER thinking.
+      const { text } = await chat({ baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.modelId, messages, timeoutMs: 90000 });
       if (text && text.trim()) {
         await recordGeneration(c);
         await logUsage(c.env, { user_id: agent.user_id, kind: 'agent', model: m.id, high_usage: gate.usage.highUsage });

@@ -51,12 +51,12 @@ if a model id is off, calls automatically fall back to a working model).
 
 | Role | Yield name | `modelId` (edit to match catalog) | Its API key (env var) |
 |------|------------|------------------------------------|------------------------|
-| Coder | Kimi K2.6 | `moonshotai/kimi-k2-thinking` | `KIMI_API_KEY` |
-| Coder | MiniMax M3 | `minimaxai/minimax-m2.7` | `MINIMAX_API_KEY` |
+| Coder | Kimi K2.6 | `moonshotai/kimi-k2.6` | `KIMI_API_KEY` |
+| Coder | MiniMax M3 | `minimaxai/minimax-m3` | `MINIMAX_API_KEY` |
 | Coder | DeepSeek V4 Flash | `deepseek-ai/deepseek-v4-flash` | `DEEPSEEK_FLASH_API_KEY` |
-| Coder | Step 3.7 Flash | `stepfun-ai/step-3.5-flash` | `STEP_API_KEY` |
+| Coder | Step 3.7 Flash | `stepfun-ai/step-3.7-flash` | `STEP_API_KEY` |
 | Coder | DeepSeek V4 Pro | `deepseek-ai/deepseek-v4-pro` | `DEEPSEEK_PRO_API_KEY` |
-| Coder | GLM 5.1 | `z-ai/glm5.1` | `GLM_API_KEY` |
+| Coder | GLM 5.1 | `z-ai/glm-5.1` | `GLM_API_KEY` |
 | Coder | Qwen3 Coder 480B A35B (free) | `qwen/qwen3-coder:free` *(OpenRouter)* | `OPENROUTER_API_KEY` |
 | Auto router | gpt-oss-20b | `openai/gpt-oss-20b` | `GPTOSS_API_KEY` |
 | Jailbreak guard | JailbreakDetect | `nvidia/nemoguard-jailbreak-detect` | `NEMOGUARD_API_KEY` |

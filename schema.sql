@@ -37,10 +37,12 @@ CREATE TABLE IF NOT EXISTS projects (
   github_url     TEXT,                       -- html url of the repo
   github_branch  TEXT,                       -- default branch
   github_synced_at INTEGER,                  -- unix seconds of last push
+  slug         TEXT,                          -- readable share id (/p/<slug>)
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);
 
 -- ── Files (multi-file projects: one row per file in a project) ───────────────
 CREATE TABLE IF NOT EXISTS files (
@@ -83,6 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_created ON usage_events(created_at);
 CREATE TABLE IF NOT EXISTS agents (
   id            TEXT PRIMARY KEY,
   user_id       TEXT NOT NULL,
+  project_id    TEXT NOT NULL DEFAULT '',         -- '' = account-level, else per-app
   name          TEXT NOT NULL,
   description   TEXT,
   system_prompt TEXT NOT NULL,
@@ -92,14 +95,28 @@ CREATE TABLE IF NOT EXISTS agents (
   updated_at    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_agents_user ON agents(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agents_project ON agents(project_id);
 
--- ── Secrets (user config; values AES-GCM encrypted at rest) ───────────────────
+-- ── Secrets (config; values AES-GCM encrypted at rest; per-app or account) ────
 CREATE TABLE IF NOT EXISTS secrets (
   id          TEXT PRIMARY KEY,
   user_id     TEXT NOT NULL,
+  project_id  TEXT NOT NULL DEFAULT '',           -- '' = account-level, else per-app
   name        TEXT NOT NULL,
   value_enc   TEXT NOT NULL,
   created_at  INTEGER NOT NULL,
-  UNIQUE (user_id, name)
+  UNIQUE (user_id, project_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_secrets_user ON secrets(user_id);
+
+-- ── App data / entities (fallback store when a project isn't GitHub-linked) ───
+-- When a project IS linked, records live as JSON in the repo (.yield/data/*.json).
+CREATE TABLE IF NOT EXISTS app_data (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL,
+  entity      TEXT NOT NULL,
+  data        TEXT NOT NULL,                 -- JSON record
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_app_data ON app_data(project_id, entity);

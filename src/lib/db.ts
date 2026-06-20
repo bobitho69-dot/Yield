@@ -29,8 +29,13 @@ export interface ProjectRow {
   github_url: string | null;
   github_branch: string | null;
   github_synced_at: number | null;
+  slug: string | null;
   created_at: number;
   updated_at: number;
+}
+
+function slugify(s: string): string {
+  return (s || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'app';
 }
 
 // --- Users --------------------------------------------------------------------
@@ -156,14 +161,19 @@ export async function clearProjectGithub(env: Env, id: string): Promise<void> {
 export async function createProject(env: Env, userId: string, title: string): Promise<ProjectRow> {
   const id = newId();
   const t = now();
-  await env.DB.prepare('INSERT INTO projects (id,user_id,title,code,created_at,updated_at) VALUES (?,?,?,?,?,?)')
-    .bind(id, userId, title || 'Untitled app', '', t, t)
+  const slug = `${slugify(title)}-${id.slice(0, 6)}`;
+  await env.DB.prepare('INSERT INTO projects (id,user_id,title,code,slug,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
+    .bind(id, userId, title || 'Untitled app', '', slug, t, t)
     .run();
   return (await getProject(env, id))!;
 }
 
 export function getProject(env: Env, id: string): Promise<ProjectRow | null> {
   return env.DB.prepare('SELECT * FROM projects WHERE id = ?').bind(id).first<ProjectRow>();
+}
+
+export function getProjectBySlug(env: Env, slug: string): Promise<ProjectRow | null> {
+  return env.DB.prepare('SELECT * FROM projects WHERE slug = ?').bind(slug).first<ProjectRow>();
 }
 
 export function listProjects(env: Env, userId: string): Promise<{ results: any[] }> {
@@ -183,7 +193,8 @@ export async function saveProjectCode(env: Env, id: string, code: string, model:
 }
 
 export async function renameProject(env: Env, id: string, title: string): Promise<void> {
-  await env.DB.prepare('UPDATE projects SET title=?, updated_at=? WHERE id=?').bind(title, now(), id).run();
+  const slug = `${slugify(title)}-${id.slice(0, 6)}`;
+  await env.DB.prepare('UPDATE projects SET title=?, slug=?, updated_at=? WHERE id=?').bind(title, slug, now(), id).run();
 }
 
 export async function deleteProject(env: Env, id: string): Promise<void> {
@@ -270,6 +281,7 @@ export async function logUsage(
 export interface AgentRow {
   id: string;
   user_id: string;
+  project_id: string;
   name: string;
   description: string | null;
   system_prompt: string;
@@ -279,7 +291,13 @@ export interface AgentRow {
   updated_at: number;
 }
 
-export function listAgents(env: Env, userId: string): Promise<{ results: AgentRow[] }> {
+// projectId: when set, return that app's agents plus account-level ('') ones.
+export function listAgents(env: Env, userId: string, projectId?: string): Promise<{ results: AgentRow[] }> {
+  if (projectId) {
+    return env.DB.prepare("SELECT * FROM agents WHERE user_id=? AND (project_id=? OR project_id='') ORDER BY updated_at DESC LIMIT 100")
+      .bind(userId, projectId)
+      .all<AgentRow>();
+  }
   return env.DB.prepare('SELECT * FROM agents WHERE user_id=? ORDER BY updated_at DESC LIMIT 100').bind(userId).all<AgentRow>();
 }
 
@@ -290,14 +308,14 @@ export function getAgent(env: Env, id: string): Promise<AgentRow | null> {
 export async function createAgent(
   env: Env,
   userId: string,
-  a: { name: string; description?: string; system_prompt: string; model: string; is_public?: boolean },
+  a: { name: string; description?: string; system_prompt: string; model: string; is_public?: boolean; project_id?: string },
 ): Promise<AgentRow> {
   const id = newId();
   const t = now();
   await env.DB.prepare(
-    'INSERT INTO agents (id,user_id,name,description,system_prompt,model,is_public,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO agents (id,user_id,project_id,name,description,system_prompt,model,is_public,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
   )
-    .bind(id, userId, a.name, a.description ?? null, a.system_prompt, a.model, a.is_public === false ? 0 : 1, t, t)
+    .bind(id, userId, a.project_id ?? '', a.name, a.description ?? null, a.system_prompt, a.model, a.is_public === false ? 0 : 1, t, t)
     .run();
   return (await getAgent(env, id))!;
 }
@@ -321,19 +339,19 @@ export async function deleteAgent(env: Env, id: string): Promise<void> {
   await env.DB.prepare('DELETE FROM agents WHERE id=?').bind(id).run();
 }
 
-// --- Secrets (values stored AES-GCM encrypted) --------------------------------
-export function listSecrets(env: Env, userId: string): Promise<{ results: { id: string; name: string; created_at: number }[] }> {
-  return env.DB.prepare('SELECT id,name,created_at FROM secrets WHERE user_id=? ORDER BY name')
-    .bind(userId)
+// --- Secrets (values stored AES-GCM encrypted; per-app or account-level) -------
+export function listSecrets(env: Env, userId: string, projectId = ''): Promise<{ results: { id: string; name: string; created_at: number }[] }> {
+  return env.DB.prepare('SELECT id,name,created_at FROM secrets WHERE user_id=? AND project_id=? ORDER BY name')
+    .bind(userId, projectId)
     .all<{ id: string; name: string; created_at: number }>();
 }
 
-export async function upsertSecret(env: Env, userId: string, name: string, valueEnc: string): Promise<void> {
+export async function upsertSecret(env: Env, userId: string, projectId: string, name: string, valueEnc: string): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO secrets (id,user_id,name,value_enc,created_at) VALUES (?,?,?,?,?)
-     ON CONFLICT(user_id,name) DO UPDATE SET value_enc=excluded.value_enc`,
+    `INSERT INTO secrets (id,user_id,project_id,name,value_enc,created_at) VALUES (?,?,?,?,?,?)
+     ON CONFLICT(user_id,project_id,name) DO UPDATE SET value_enc=excluded.value_enc`,
   )
-    .bind(newId(), userId, name, valueEnc, now())
+    .bind(newId(), userId, projectId, name, valueEnc, now())
     .run();
 }
 
@@ -341,8 +359,9 @@ export async function deleteSecret(env: Env, userId: string, id: string): Promis
   await env.DB.prepare('DELETE FROM secrets WHERE id=? AND user_id=?').bind(id, userId).run();
 }
 
-export function getSecretRows(env: Env, userId: string): Promise<{ results: { name: string; value_enc: string }[] }> {
-  return env.DB.prepare('SELECT name,value_enc FROM secrets WHERE user_id=?')
-    .bind(userId)
+// Encrypted secret rows for a project (+ account-level), for server-side use/injection.
+export function getSecretRows(env: Env, userId: string, projectId: string): Promise<{ results: { name: string; value_enc: string }[] }> {
+  return env.DB.prepare("SELECT name,value_enc FROM secrets WHERE user_id=? AND (project_id=? OR project_id='')")
+    .bind(userId, projectId)
     .all<{ name: string; value_enc: string }>();
 }

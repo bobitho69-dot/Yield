@@ -24,10 +24,18 @@ export function sse(): { response: Response; send: (event: string, data: unknown
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
   const enc = new TextEncoder();
+  let dead = false; // client disconnected — keep working server-side, stop streaming
   const send = async (event: string, data: unknown) => {
-    await writer.write(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+    if (dead) return;
+    try {
+      await writer.write(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+    } catch {
+      dead = true; // tab closed mid-build; generation still completes + saves
+    }
   };
   const close = async () => {
+    if (dead) return;
+    dead = true;
     try { await writer.close(); } catch { /* already closed */ }
   };
   const response = new Response(readable, {

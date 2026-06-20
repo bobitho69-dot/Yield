@@ -2,7 +2,7 @@
 const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
   files: [], activeFile: 'index.html', streaming: false,
-  working: false, queue: [], autofixCount: 0, previewErrors: [],
+  working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 const MAX_AUTOFIX = 2;
 
@@ -16,7 +16,8 @@ async function init() {
   renderFileTree();
   // Open a specific project if requested (?project=ID from the dashboard).
   const wanted = new URLSearchParams(location.search).get('project');
-  if (wanted && state.user) await openProject(wanted).catch(() => {});
+  if (wanted && state.user) await openProject(wanted).catch(() => { renderEmptyChat(); });
+  else renderEmptyChat();
   handleQueryFlags();
 }
 
@@ -116,8 +117,9 @@ async function loadProjects() {
 }
 
 async function openProject(id) {
-  const { project, messages } = await fetch(`/api/projects/${id}`).then((r) => r.json());
+  const { project, messages, building } = await fetch(`/api/projects/${id}`).then((r) => r.json());
   state.projectId = project.id;
+  setProjectUrl();
   state.githubRepo = project.github_repo || null;
   state.githubUrl = project.github_url || null;
   $('#projectTitle').value = project.title;
@@ -125,6 +127,28 @@ async function openProject(id) {
   await loadFiles();
   refreshPreview();
   loadProjects();
+  if (building) resumeBuild();
+}
+
+// If a build is still running server-side (e.g. you closed the tab mid-build),
+// watch for it to finish and pull in the saved result.
+let buildWatchTimer = null;
+function startBuildWatch() {
+  if (buildWatchTimer || !state.projectId) return;
+  const note = addBubble('ai', '<div class="meta">background build</div>⏳ Still building in the background — this updates automatically.');
+  let polls = 0;
+  const finish = async (msg) => {
+    clearInterval(buildWatchTimer); buildWatchTimer = null;
+    await loadFiles(); refreshPreview();
+    note.innerHTML = `<div class="meta">background build</div>${msg}`;
+  };
+  buildWatchTimer = setInterval(async () => {
+    polls++;
+    let building = true;
+    try { building = (await fetch(`/api/projects/${state.projectId}`).then((r) => r.json())).building; } catch { /* retry */ }
+    if (!building) return finish('✓ Background build finished and saved.');
+    if (polls >= 50) return finish('Loaded the latest saved version.'); // ~2.5 min hard stop
+  }, 3000);
 }
 
 // ---------- Files / editor ----------
@@ -152,6 +176,13 @@ function showActiveFile() {
   const f = (state.files || []).find((x) => x.path === state.activeFile);
   $('#codeEditor').value = f ? f.content : '';
   $('#activePath').textContent = f ? f.path : '';
+}
+
+// Keep the current app in the URL so reopening the tab resumes it.
+function setProjectUrl() {
+  if (state.projectId && location.search.indexOf('project=' + state.projectId) === -1) {
+    try { history.replaceState(null, '', '/app?project=' + state.projectId); } catch { /* ignore */ }
+  }
 }
 
 function refreshPreview() {
@@ -232,6 +263,28 @@ function fmt(s) {
   return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
 }
 
+const EXAMPLES = [
+  ['📋', 'Project tracker', 'A kanban project tracker with draggable cards, columns, labels, and data saved to the database'],
+  ['💬', 'AI chatbot', 'A sleek AI chatbot app with message bubbles and a typing indicator, powered by an AI agent that answers questions'],
+  ['🛒', 'Storefront', 'A modern product storefront with a responsive grid, a slide-out cart, and a checkout summary'],
+  ['📊', 'Dashboard', 'An analytics dashboard with KPI cards, charts, a sidebar, and a clean modern design'],
+  ['📝', 'Notes app', 'A beautiful notes app with tags, search, markdown, and notes saved to the database'],
+  ['🎮', 'Game', 'A polished browser game: 2048 with smooth tile animations, a score, and a best score'],
+];
+function renderEmptyChat() {
+  const m = $('#messages');
+  m.innerHTML = `<div class="empty-chat">
+    <h2>What do you want to build?</h2>
+    <p>Describe an app, or start from an example:</p>
+    <div class="examples">${EXAMPLES.map((e, i) => `<button class="example" data-i="${i}"><span class="ex-emoji">${e[0]}</span> ${esc(e[1])}</button>`).join('')}</div>
+  </div>`;
+  m.querySelectorAll('.example').forEach((b) => b.addEventListener('click', () => {
+    const e = EXAMPLES[+b.dataset.i];
+    if (state.working) { state.queue.push(e[2]); renderQueue(); }
+    else startUserPrompt(e[2]);
+  }));
+}
+
 function addBubble(cls, html) {
   const m = $('#messages');
   const empty = m.querySelector('.empty-chat');
@@ -249,27 +302,54 @@ function addBubble(cls, html) {
 async function streamPrompt(prompt, opts = {}) {
   state.streaming = true;
   addBubble('user', opts.label ? `<span class="muted">${esc(opts.label)}</span>` : esc(prompt));
-  const aiBubble = addBubble('ai streaming', '<div class="meta">thinking…</div><div class="body"><span class="dots">▌</span></div>');
-  const setMeta = (t) => { const el = aiBubble.querySelector('.meta'); if (el) el.textContent = t; };
-  const setBody = (html) => { const el = aiBubble.querySelector('.body'); if (el) el.innerHTML = html; };
-
-  let chatAcc = '';
-  let finished = false; // got a terminal event (done/error/blocked/gate)
-  let hasFiles = false;
-
   try {
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId }),
     });
-
     if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) {
       const err = await res.json().catch(() => ({}));
-      setMeta('error'); setBody(esc(err.error || `Request failed (${res.status})`));
-      return;
+      const b = addBubble('ai', '');
+      b.innerHTML = `<div class="meta">error</div><div class="body">${esc(err.error || `Request failed (${res.status})`)}</div>`;
+      return false;
     }
+    return await consumeStream(res, opts);
+  } catch (e) {
+    const b = addBubble('ai', '');
+    b.innerHTML = `<div class="meta">error</div><div class="body">${esc(String(e))}</div>`;
+    return false;
+  } finally {
+    state.streaming = false;
+  }
+}
 
+// Consume a build's SSE stream into a fresh AI bubble. Works for both a live POST
+// to /api/generate and a reconnect GET to /api/projects/:id/stream (the Durable
+// Object replays everything that happened, then streams live). Returns hasFiles.
+async function consumeStream(res, opts = {}) {
+  const aiBubble = addBubble('ai streaming',
+    (opts.resume ? '<div class="meta">↻ reconnected to your build…</div>' : '<div class="meta">thinking…</div>') +
+    '<div class="body"><span class="dots">▌</span></div>');
+  const setMeta = (t) => { const el = aiBubble.querySelector('.meta'); if (el) el.textContent = t; };
+  const setBody = (html) => { const el = aiBubble.querySelector('.body'); if (el) el.innerHTML = html; };
+  let thinkAcc = '';
+  const ensureThink = () => {
+    let t = aiBubble.querySelector('.think');
+    if (!t) {
+      t = document.createElement('details');
+      t.className = 'think';
+      t.innerHTML = '<summary>💭 Thinking…</summary><div class="think-body"></div>';
+      aiBubble.insertBefore(t, aiBubble.querySelector('.body'));
+    }
+    return t;
+  };
+
+  let chatAcc = '';
+  let finished = false; // got a terminal event (done/error/blocked/gate/end)
+  let hasFiles = false;
+
+  try {
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buf = '';
     for (;;) {
@@ -282,20 +362,26 @@ async function streamPrompt(prompt, opts = {}) {
         const ev = /event: (.*)/.exec(frame)?.[1];
         const data = /data: ([\s\S]*)/.exec(frame)?.[1];
         if (!ev || data == null) continue;
+        if (ev === 'end') { finished = true; continue; } // Durable Object: build is over
         let payload; try { payload = JSON.parse(data); } catch { continue; }
 
-        if (ev === 'status') {
+        if (ev === 'thinking') {
+          thinkAcc += payload;
+          const tb = ensureThink().querySelector('.think-body');
+          tb.textContent = thinkAcc;
+          tb.scrollTop = tb.scrollHeight;
+        } else if (ev === 'status') {
           setMeta(`${payload.stage}…`);
         } else if (ev === 'meta') {
           setMeta(`${payload.label}${payload.routeReason ? ` · ${payload.routeReason}` : ''}`);
-          if (payload.projectId) state.projectId = payload.projectId;
+          if (payload.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
         } else if (ev === 'chat') {
           chatAcc += payload;
           setBody(fmt(chatAcc));
           $('#messages').scrollTop = $('#messages').scrollHeight;
         } else if (ev === 'done') {
           finished = true;
-          if (payload.projectId) state.projectId = payload.projectId;
+          if (payload.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
           if (payload.chat) chatAcc = payload.chat;
           if (payload.hasCode && Array.isArray(payload.files) && payload.files.length) {
             hasFiles = true;
@@ -305,7 +391,12 @@ async function streamPrompt(prompt, opts = {}) {
             }
             renderFileTree(); showActiveFile();
           }
-          setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')));
+          state.pendingSecrets = Array.isArray(payload.secretsNeeded) ? payload.secretsNeeded : [];
+          const agentNames = payload.agents ? Object.keys(payload.agents) : [];
+          let extra = '';
+          if (agentNames.length) extra += `<div class="meta">⚡ created agent(s): ${agentNames.map(esc).join(', ')}</div>`;
+          setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')) + extra);
+          const ts = aiBubble.querySelector('.think summary'); if (ts) ts.textContent = '💭 Thinking';
         } else if (ev === 'blocked') {
           finished = true;
           aiBubble.classList.add('flagged');
@@ -324,17 +415,30 @@ async function streamPrompt(prompt, opts = {}) {
         }
       }
     }
-
-    if (!finished && !chatAcc) setBody(esc('No response — try again.'));
-    aiBubble.classList.remove('streaming');
-    loadStatus();
-    if (state.user) loadProjects();
   } catch (e) {
-    setMeta('error'); setBody(esc(String(e)));
-  } finally {
-    state.streaming = false;
+    // Stream interrupted (network/refresh). The build keeps running server-side.
+    if (!finished) setMeta('connection lost — build continues in the background');
   }
+
+  if (!finished && !chatAcc) setBody(esc(opts.resume ? 'Loaded the latest saved version.' : 'No response — try again.'));
+  aiBubble.classList.remove('streaming');
+  loadStatus();
+  if (state.user) loadProjects();
   return hasFiles;
+}
+
+// Reconnect a refreshed/reopened tab to an in-progress build (Durable Object).
+// Falls back to polling if the live stream isn't available.
+async function resumeBuild() {
+  if (!state.projectId) return;
+  try {
+    const res = await fetch(`/api/projects/${state.projectId}/stream`);
+    if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) return startBuildWatch();
+    await consumeStream(res, { resume: true });
+    await loadFiles(); refreshPreview();
+  } catch {
+    startBuildWatch();
+  }
 }
 
 // ---------- Orchestration: lock while working + queue + auto bug-fix ----------
@@ -342,9 +446,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function updateComposer() {
   const btn = $('#sendBtn');
+  const prompt = $('#prompt');
+  const composer = $('#composer');
   if (!btn) return;
-  btn.innerHTML = state.working ? '＋ Schedule' : 'Build ▸';
-  btn.title = state.working ? 'Yield is working — this prompt will run after the current build & bug-check' : '';
+  composer && composer.classList.toggle('busy', state.working);
+  if (state.working) {
+    const hasText = prompt && prompt.value.trim().length > 0;
+    btn.innerHTML = hasText ? '＋ Schedule' : '<span class="spin"></span> Working…';
+    btn.classList.toggle('working-btn', !hasText);
+    btn.title = 'Yield is working — your message will be scheduled to run after this.';
+    if (prompt) prompt.placeholder = 'Yield is working… your message will be scheduled.';
+  } else {
+    btn.innerHTML = 'Build ▸';
+    btn.classList.remove('working-btn');
+    btn.title = '';
+    if (prompt) prompt.placeholder = 'Describe your app, or ask for a change…';
+  }
 }
 
 function renderQueue() {
@@ -357,14 +474,42 @@ function renderQueue() {
   el.querySelectorAll('button[data-i]').forEach((b) => b.addEventListener('click', () => { state.queue.splice(+b.dataset.i, 1); renderQueue(); }));
 }
 
-async function startUserPrompt(text) {
+async function startUserPrompt(text, label) {
   state.autofixCount = 0;
-  await runCycle(text, {});
+  await runCycle(text, label ? { label } : {});
+}
+
+// ---------- Visual select-to-edit ----------
+function postSelect(on) {
+  try { $('#preview').contentWindow.postMessage({ __yieldcmd: 'select', on }, '*'); } catch { /* not ready */ }
+}
+function onElementSelected(d) {
+  state.selected = { label: d.label || 'element', text: d.text || '', html: d.html || '' };
+  state.selectMode = false;
+  $('#selectBtn').classList.remove('active-tool');
+  renderSelChip();
+  $('#prompt').focus();
+}
+function renderSelChip() {
+  const c = $('#selChip');
+  if (!c) return;
+  if (!state.selected) { c.classList.add('hidden'); c.innerHTML = ''; return; }
+  c.classList.remove('hidden');
+  c.innerHTML = `🎯 Editing <b>${esc(state.selected.label)}</b>${state.selected.text ? ' — “' + esc(state.selected.text.slice(0, 40)) + '”' : ''} <button id="selClear" title="Clear selection">✕</button>`;
+  $('#selClear').onclick = clearSelection;
+}
+function clearSelection() { state.selected = null; renderSelChip(); }
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.tab === name));
+  ['preview', 'code', 'agents', 'settings'].forEach((n) => $('#' + n + 'Tab').classList.toggle('hidden', name !== n));
+  if (name === 'agents') renderAgentsPane();
+  if (name === 'settings') renderSettingsPane();
 }
 
 async function runCycle(text, opts) {
   state.working = true; updateComposer();
   const hasFiles = await streamPrompt(text, opts);
+  if (state.pendingSecrets.length) await promptForSecrets();
   if (hasFiles) {
     const errors = await bugCheck();
     if (errors.length && state.autofixCount < MAX_AUTOFIX) {
@@ -381,6 +526,22 @@ async function runCycle(text, opts) {
     renderQueue();
     startUserPrompt(next);
   }
+}
+
+// The AI asked for secrets — prompt the user, save them (encrypted), refresh.
+async function promptForSecrets() {
+  const needed = state.pendingSecrets; state.pendingSecrets = [];
+  if (!state.projectId) return;
+  for (const s of needed) {
+    const val = window.prompt(`This app needs a secret:\n\n${s.name}${s.description ? '\n(' + s.description + ')' : ''}\n\nEnter the value (stored encrypted for this app):`);
+    if (val) {
+      await fetch(`/api/secrets?project=${state.projectId}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: s.name, value: val }),
+      });
+      addBubble('ai', `<div class="meta">secret saved</div>🔒 <b>${esc(s.name)}</b> saved &amp; available to this app.`);
+    }
+  }
+  refreshPreview();
 }
 
 // Reload the preview and watch for runtime errors for a short window.
@@ -435,6 +596,112 @@ async function deleteActiveFile() {
   state.activeFile = state.files[0]?.path || 'index.html';
   renderFileTree(); showActiveFile(); refreshPreview();
   if (state.projectId) await fetch(`/api/projects/${state.projectId}/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+}
+
+// ---------- Per-app Agents panel ----------
+async function renderAgentsPane() {
+  const el = $('#agentsPane');
+  if (!state.projectId) { el.innerHTML = '<h3>Agents</h3><p class="sub">Build something first, then add AI agents tailored to this app.</p>'; return; }
+  const models = state.models.filter((m) => m.id !== 'auto');
+  const { agents } = await fetch(`/api/agents?project=${state.projectId}`).then((r) => r.json()).catch(() => ({ agents: [] }));
+  el.innerHTML = `<h3>Agents for this app</h3>
+    <p class="sub">AI helpers powered by your models. This app can call them at <span class="endpoint">/api/agents/&lt;id&gt;/run</span>.</p>
+    <div>${(agents || []).map(agentCard).join('') || '<p class="sub">No agents yet.</p>'}</div>
+    <div class="pane-card"><b>New agent</b>
+      <div class="pane-form">
+        <input id="agName" placeholder="Name (e.g. Recommender)" />
+        <input id="agDesc" placeholder="Description (optional)" />
+        <select id="agModel">${models.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('')}</select>
+        <textarea id="agPrompt" rows="4" placeholder="System prompt — how should it behave?"></textarea>
+        <button class="btn primary sm" id="agCreate" style="justify-self:start">Create agent</button>
+        <div id="agMsg" class="sub"></div>
+      </div></div>`;
+  $('#agCreate').onclick = createProjectAgent;
+  el.querySelectorAll('[data-del-agent]').forEach((b) => (b.onclick = () => delProjectAgent(b.dataset.delAgent)));
+  el.querySelectorAll('.copy').forEach((b) => (b.onclick = () => navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy)));
+}
+function agentCard(a) {
+  return `<div class="pane-card"><div class="row"><b>${esc(a.name)}</b>
+    <span class="tier-badge">${esc(a.model)}</span>
+    <button class="btn ghost sm" data-del-agent="${a.id}">Delete</button></div>
+    <div class="sub" style="margin:.3rem 0 0">${esc(a.description || '')}</div>
+    <div class="endpoint">/api/agents/${a.id}/run <span class="copy" data-copy="/api/agents/${a.id}/run">copy</span></div></div>`;
+}
+async function createProjectAgent() {
+  const body = { name: $('#agName').value.trim(), description: $('#agDesc').value.trim(), model: $('#agModel').value, system_prompt: $('#agPrompt').value.trim() };
+  if (!body.name || !body.system_prompt) { $('#agMsg').textContent = 'Name and system prompt required.'; return; }
+  const r = await fetch(`/api/agents?project=${state.projectId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { $('#agMsg').textContent = d.error || 'Failed'; return; }
+  renderAgentsPane();
+}
+async function delProjectAgent(id) { if (!confirm('Delete agent?')) return; await fetch('/api/agents/' + id, { method: 'DELETE' }); renderAgentsPane(); }
+
+// ---------- Per-app Settings panel ----------
+async function renderSettingsPane() {
+  const el = $('#settingsPane');
+  if (!state.projectId) { el.innerHTML = '<h3>App settings</h3><p class="sub">Build something first to configure this app.</p>'; return; }
+  const { secrets } = await fetch(`/api/secrets?project=${state.projectId}`).then((r) => r.json()).catch(() => ({ secrets: [] }));
+  const proj = await fetch(`/api/projects/${state.projectId}`).then((r) => r.json()).then((d) => d.project).catch(() => ({ slug: state.projectId }));
+  const share = location.origin + '/p/' + (proj.slug || state.projectId);
+  el.innerHTML = `<h3>App settings</h3><p class="sub">Settings &amp; secrets tailored to this app.</p>
+    <div class="pane-card"><b>Project</b>
+      <div class="pane-form"><input id="setTitle" value="${esc($('#projectTitle').value)}" placeholder="App name" />
+        <button class="btn ghost sm" id="setRename" style="justify-self:start">Rename</button></div></div>
+    <div class="pane-card"><b>Share &amp; export</b>
+      <div class="endpoint" style="margin:.4rem 0">${esc(share)} <span class="copy" data-copy="${esc(share)}">copy</span></div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <a class="btn ghost sm" href="/p/${esc(proj.slug || state.projectId)}/" target="_blank">Open app ↗</a>
+        <a class="btn ghost sm" href="/api/projects/${state.projectId}/export">Download .zip</a>
+      </div>
+      <details style="margin-top:.6rem"><summary class="sub" style="cursor:pointer">Deploy to your own Cloudflare (free)</summary>
+        <ol class="sub" style="margin:.5rem 0 0 1.1rem;line-height:1.7">
+          <li>Connect this app to GitHub (below) so its code lives in a repo.</li>
+          <li>Cloudflare → Workers &amp; Pages → Create → <b>Connect to Git</b> → pick the repo.</li>
+          <li>If the build fails, copy the log and paste it to Yield in chat — it'll fix the code.</li>
+          <li>Add a custom domain later from the Worker → Settings → Domains.</li>
+        </ol>
+      </details></div>
+    <div class="pane-card"><b>GitHub</b><div class="sub" id="setGh" style="margin-top:.4rem">…</div></div>
+    <div class="pane-card"><b>Secrets (this app)</b>
+      <div class="sub">Encrypted at rest; for this app's agents / server use.</div>
+      <div id="setSecrets" style="margin:.4rem 0">${(secrets || []).map((s) => `<div class="row" style="margin-top:.3rem">🔒 <b>${esc(s.name)}</b><button class="btn ghost sm" data-del-secret="${s.id}">Delete</button></div>`).join('') || '<div class="sub">None yet.</div>'}</div>
+      <div class="pane-form" style="grid-template-columns:1fr 1fr auto"><input id="secName" placeholder="NAME" /><input id="secVal" type="password" placeholder="value" /><button class="btn primary sm" id="secAdd">Save</button></div>
+      <div id="secMsg" class="sub"></div></div>
+    <div class="pane-card"><b>Version history</b>
+      <div class="sub">Each build is a commit in your repo — restore any version.</div>
+      <div id="setVersions" style="margin-top:.4rem"><span class="sub">Loading…</span></div></div>`;
+  $('#setRename').onclick = async () => { const t = $('#setTitle').value.trim(); if (t) { await fetch(`/api/projects/${state.projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: t }) }); $('#projectTitle').value = t; loadProjects(); } };
+  $('#secAdd').onclick = async () => { const name = $('#secName').value.trim(), value = $('#secVal').value; const r = await fetch(`/api/secrets?project=${state.projectId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, value }) }); const d = await r.json(); if (!r.ok) { $('#secMsg').textContent = d.error || 'Failed'; return; } renderSettingsPane(); };
+  el.querySelectorAll('[data-del-secret]').forEach((b) => (b.onclick = async () => { await fetch('/api/secrets/' + b.dataset.delSecret, { method: 'DELETE' }); renderSettingsPane(); }));
+  el.querySelectorAll('.copy').forEach((b) => (b.onclick = () => navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy)));
+  const gh = await fetch('/api/github/status').then((r) => r.json()).catch(() => ({ connected: false }));
+  $('#setGh').innerHTML = gh.connected
+    ? `Connected as @${esc(gh.login)}. ${state.githubRepo ? `Repo: <a href="${state.githubUrl}" target="_blank" style="color:var(--brand-2)">${esc(state.githubRepo)}</a>` : '<button class="btn ghost sm" id="setGhPush">Save this app to a repo</button>'}`
+    : `<a class="btn primary sm" href="${ghRedirect()}">Connect GitHub</a>`;
+  const gp = $('#setGhPush'); if (gp) gp.onclick = openGithubDialog;
+  populateVersions();
+}
+
+async function populateVersions() {
+  const box = $('#setVersions'); if (!box) return;
+  const res = await fetch(`/api/projects/${state.projectId}/versions`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { box.innerHTML = `<span class="sub">${esc(data.error || 'Connect GitHub to enable version history.')}</span>`; return; }
+  const commits = data.commits || [];
+  if (!commits.length) { box.innerHTML = '<span class="sub">No versions yet.</span>'; return; }
+  box.innerHTML = commits.map((cm) => `<div class="row" style="margin-top:.35rem">
+    <span style="flex:1;overflow:hidden;text-overflow:ellipsis"><span class="endpoint">${cm.sha.slice(0, 7)}</span> ${esc((cm.message || '').split('\n')[0]).slice(0, 64)}</span>
+    <button class="btn ghost sm" data-restore="${cm.sha}">Restore</button></div>`).join('');
+  box.querySelectorAll('[data-restore]').forEach((b) => (b.onclick = () => restoreVersion(b.dataset.restore)));
+}
+async function restoreVersion(sha) {
+  if (!confirm('Restore the app to this version? Current files are overwritten, but a new commit is created so nothing is lost.')) return;
+  const r = await fetch(`/api/projects/${state.projectId}/versions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sha }) });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || 'Restore failed'); return; }
+  await loadFiles(); refreshPreview();
+  addBubble('ai', `<div class="meta">restored</div>↩ Restored to ${esc(sha.slice(0, 7))} (${d.restored} files).`);
 }
 
 // ---------- GitHub code storage ----------
@@ -543,25 +810,41 @@ async function logout() {
 function wireEvents() {
   $('#composer').addEventListener('submit', (e) => {
     e.preventDefault();
-    const v = $('#prompt').value.trim();
-    if (!v) return;
+    const typed = $('#prompt').value.trim();
+    if (!typed) return;
     $('#prompt').value = '';
     $('#autoPick').textContent = '';
-    if (state.working) { state.queue.push(v); renderQueue(); }  // busy -> schedule it
-    else startUserPrompt(v);
+    let text = typed, label = null;
+    if (state.selected) {
+      text = `Edit this specific element in the app and return the updated file(s) in full.\nElement: ${state.selected.label}\nIts current HTML: ${state.selected.html}\nChange requested: ${typed}`;
+      label = `🎯 ${state.selected.label}: ${typed}`;
+      clearSelection();
+    }
+    if (state.working) { state.queue.push(text); renderQueue(); updateComposer(); }  // busy -> schedule it
+    else startUserPrompt(text, label);
   });
   // Enter sends; Shift+Enter makes a new line.
   $('#prompt').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#composer').requestSubmit(); }
   });
-  $('#prompt').addEventListener('input', maybeRecommend);
-  // Collect runtime errors reported by the preview iframe (for the bug-checker).
+  $('#prompt').addEventListener('input', () => { maybeRecommend(); if (state.working) updateComposer(); });
+  // Messages from the preview iframe: runtime errors + selected element.
   window.addEventListener('message', (e) => {
     const d = e.data;
-    if (!d || !d.__yield || d.kind === 'ready') return;
+    if (!d || !d.__yield) return;
     const fr = $('#preview');
     if (fr && e.source !== fr.contentWindow) return;
+    if (d.kind === 'ready') { if (state.selectMode) postSelect(true); return; }
+    if (d.kind === 'selected') { onElementSelected(d); return; }
     state.previewErrors.push({ kind: d.kind, message: String(d.message || '').slice(0, 400) });
+  });
+
+  // Visual select-to-edit.
+  $('#selectBtn').addEventListener('click', () => {
+    state.selectMode = !state.selectMode;
+    $('#selectBtn').classList.toggle('active-tool', state.selectMode);
+    if (state.selectMode) { switchTab('preview'); postSelect(true); }
+    else postSelect(false);
   });
 
   // Mini AI selector open/close.
@@ -575,7 +858,8 @@ function wireEvents() {
   $('#newBtn').addEventListener('click', () => {
     state.projectId = null; state.files = []; state.activeFile = 'index.html'; $('#codeEditor').value = '';
     $('#projectTitle').value = 'Untitled app';
-    $('#messages').innerHTML = '<div class="empty-chat"><h2>What do you want to build?</h2><p>Describe an app and Yield will generate it.</p></div>';
+    try { history.replaceState(null, '', '/app'); } catch { /* ignore */ }
+    renderEmptyChat();
     renderFileTree(); refreshPreview(); loadProjects();
   });
   $('#applyCode').addEventListener('click', saveFile);
@@ -591,13 +875,7 @@ function wireEvents() {
     if (state.user && state.projectId)
       await fetch(`/api/projects/${state.projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: $('#projectTitle').value }) });
   });
-  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
-    t.classList.add('active');
-    const tab = t.dataset.tab;
-    $('#previewTab').classList.toggle('hidden', tab !== 'preview');
-    $('#codeTab').classList.toggle('hidden', tab !== 'code');
-  }));
+  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 }
 
 function handleQueryFlags() {

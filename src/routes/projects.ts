@@ -12,10 +12,12 @@
 import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
 import {
-  createProject, deleteProject, deleteFileRow, getProject, getProjectFiles, listFiles, listMessages,
-  listProjects, renameProject, saveFiles, upsertFile,
+  createProject, deleteProject, deleteFileRow, getProject, getProjectBySlug, getProjectFiles, getSecretRows,
+  listAgents, listFiles, listMessages, listProjects, renameProject, saveFiles, upsertFile,
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
+import { decryptToken } from '../lib/github';
+import { zip } from '../lib/zip';
 
 export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: string): Promise<Response> {
   // Preview file serving is the only route allowed without auth (public/owned).
@@ -67,10 +69,23 @@ export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: st
     return error(405, 'Method not allowed');
   }
 
+  // Export the whole app as a .zip download.
+  if (sub === 'export' && req.method === 'GET') {
+    const files = await getProjectFiles(c.env, project);
+    const data = zip(files.length ? files : [{ path: 'index.html', content: project.code || '' }]);
+    return new Response(data, {
+      headers: {
+        'content-type': 'application/zip',
+        'content-disposition': `attachment; filename="${project.slug || project.id}.zip"`,
+      },
+    });
+  }
+
   // ---- Project ----
   if (req.method === 'GET') {
     const { results } = await listMessages(c.env, id);
-    return json({ project, messages: results });
+    const building = !!(await c.env.KV.get(`build:${id}`).catch(() => null));
+    return json({ project, messages: results, building });
   }
   if (req.method === 'PUT') {
     const body = (await req.json().catch(() => ({}))) as { title?: string };
@@ -98,7 +113,10 @@ const CTYPES: Record<string, string> = {
 // Serve a single project file for the preview iframe. Each response is sandboxed
 // (opaque origin) so untrusted generated code can't touch Yield or its cookies.
 export async function serveProjectFile(c: Ctx, projectId: string, filePath: string): Promise<Response> {
-  const project = await getProject(c.env, projectId);
+  // /p/ accepts either the raw id or a readable slug.
+  const project = /^[a-f0-9]{32}$/.test(projectId)
+    ? await getProject(c.env, projectId)
+    : await getProjectBySlug(c.env, projectId);
   if (!project) return new Response('Not found', { status: 404 });
   const owns = c.user && project.user_id === c.user.id;
   if (!owns && !project.is_public) return new Response('Forbidden', { status: 403 });
@@ -113,9 +131,30 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
   if (!file) return new Response('Not found', { status: 404 });
 
   const ext = path.split('.').pop()?.toLowerCase() || 'txt';
-  // For HTML previews, inject a tiny reporter that forwards runtime errors to the
-  // builder (parent window) so it can detect broken code and auto-fix it.
-  const body = ext === 'html' ? REPORTER + file.content : file.content;
+  // For HTML, inject window.YIELD (agent ids for the app; secrets for the owner)
+  // plus the error reporter for the auto bug-checker.
+  let inject = '';
+  if (ext === 'html') {
+    const agentMap: Record<string, string> = {};
+    const { results: ags } = await listAgents(c.env, project.user_id, project.id);
+    for (const a of ags) if (a.is_public) agentMap[a.name] = a.id;
+    const secretMap: Record<string, string> = {};
+    if (owns) {
+      const { results: srows } = await getSecretRows(c.env, project.user_id, project.id);
+      for (const s of srows) { try { secretMap[s.name] = await decryptToken(c.env, s.value_enc); } catch { /* skip */ } }
+    }
+    const sdk =
+      `window.YIELD=Object.assign(window.YIELD||{},{secrets:${JSON.stringify(secretMap)},agents:${JSON.stringify(agentMap)}});` +
+      `window.YIELD.entities=(function(P){var H={'content-type':'application/json'},B='/api/apps/'+P+'/entities/';function jr(r){return r.json();}return{` +
+      `list:function(e){return fetch(B+e).then(jr).then(function(d){return d.records||[];});},` +
+      `create:function(e,d){return fetch(B+e,{method:'POST',headers:H,body:JSON.stringify(d||{})}).then(jr).then(function(x){return x.record;});},` +
+      `get:function(e,i){return fetch(B+e+'/'+i).then(jr).then(function(x){return x.record;});},` +
+      `update:function(e,i,d){return fetch(B+e+'/'+i,{method:'PUT',headers:H,body:JSON.stringify(d||{})}).then(jr).then(function(x){return x.record;});},` +
+      `delete:function(e,i){return fetch(B+e+'/'+i,{method:'DELETE'}).then(jr);}};})(${JSON.stringify(project.id)});` +
+      `window.YIELD.image=function(p,o){return fetch('/api/media/image',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({prompt:p},o||{}))}).then(function(r){return r.json();}).then(function(d){return d.url||d;});};`;
+    inject = `<script>${sdk}</script>`;
+  }
+  const body = ext === 'html' ? REPORTER + inject + file.content : file.content;
   return new Response(body, {
     headers: {
       'content-type': CTYPES[ext] || 'text/plain; charset=utf-8',
@@ -126,9 +165,15 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
   });
 }
 
-// Runs first inside the preview iframe; posts errors to the builder.
+// Runs first inside the preview iframe: posts errors to the builder (bug-checker)
+// and supports click-to-select-element (visual editing).
 const REPORTER = `<script>(function(){function r(k,m){try{parent.postMessage({__yield:true,kind:k,message:String(m).slice(0,500)},'*')}catch(e){}}
 window.addEventListener('error',function(e){r('error',(e.message||'Error')+(e.filename?(' @ '+(e.filename.split('/').pop())+':'+e.lineno):''))});
 window.addEventListener('unhandledrejection',function(e){r('rejection',(e.reason&&e.reason.message)||e.reason||'Unhandled promise rejection')});
 var ce=console.error;console.error=function(){r('console',[].map.call(arguments,String).join(' '));ce.apply(console,arguments)};
+var sel=false,hov=null;
+function lbl(t){var s=t.tagName.toLowerCase();if(t.id)s+='#'+t.id;if(t.className&&typeof t.className==='string'){var c=t.className.trim().split(/\\s+/).filter(Boolean).slice(0,3);if(c.length)s+='.'+c.join('.');}return s;}
+window.addEventListener('message',function(e){var d=e.data||{};if(d.__yieldcmd==='select'){sel=!!d.on;try{document.body.style.cursor=sel?'crosshair':'';}catch(x){}if(!sel&&hov){hov.style.outline='';hov=null;}}});
+document.addEventListener('mouseover',function(e){if(!sel)return;if(hov)hov.style.outline='';hov=e.target;try{hov.style.outline='2px solid #7c5cff';hov.style.outlineOffset='1px';}catch(x){}},true);
+document.addEventListener('click',function(e){if(!sel)return;e.preventDefault();e.stopPropagation();var t=e.target;parent.postMessage({__yield:true,kind:'selected',label:lbl(t),text:(t.textContent||'').trim().slice(0,80),html:(t.outerHTML||'').slice(0,400)},'*');if(hov){hov.style.outline='';hov=null;}sel=false;try{document.body.style.cursor='';}catch(x){}},true);
 try{parent.postMessage({__yield:true,kind:'ready'},'*')}catch(e){}})();</script>`;

@@ -78,18 +78,68 @@ export async function createRepo(token: string, name: string, isPrivate: boolean
   return { full_name: data.full_name, html_url: data.html_url, default_branch: data.default_branch || 'main', private: data.private };
 }
 
+// Encode each path segment but keep slashes (GitHub contents API wants literal /).
+function encPath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
 async function getFileSha(token: string, owner: string, repo: string, path: string, branch: string): Promise<string | null> {
-  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${branch}`);
+  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encPath(path)}?ref=${branch}`);
   if (!r.ok) return null;
   const data: any = await r.json();
   return data?.sha ?? null;
+}
+
+// Read a file's text content + sha from a repo (null if missing).
+export async function getRepoFile(token: string, fullName: string, branch: string, path: string): Promise<{ content: string; sha: string } | null> {
+  const [owner, repo] = fullName.split('/');
+  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encPath(path)}?ref=${branch}`);
+  if (!r.ok) return null;
+  const data: any = await r.json();
+  if (typeof data?.content !== 'string') return null;
+  return { content: DEC.decode(unb64(data.content.replace(/\n/g, ''))), sha: data.sha };
+}
+
+// Create/overwrite a file in a repo (reads current sha first).
+export async function putRepoFile(token: string, fullName: string, branch: string, path: string, content: string, message: string): Promise<void> {
+  const [owner, repo] = fullName.split('/');
+  await putFile(token, owner, repo, path, content, message, branch);
+}
+
+export interface Commit { sha: string; message: string; date: string | null; author: string | null }
+
+// List recent commits on a branch (version history).
+export async function listCommits(token: string, fullName: string, branch: string, perPage = 30): Promise<Commit[]> {
+  const [owner, repo] = fullName.split('/');
+  const r = await gh(token, `/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=${perPage}`);
+  if (!r.ok) return [];
+  const arr: any[] = await r.json();
+  return arr.map((c) => ({ sha: c.sha, message: c.commit?.message || '', date: c.commit?.author?.date || null, author: c.commit?.author?.name || null }));
+}
+
+// Read all app files (excluding runtime data + README) at a specific commit.
+export async function getCommitFiles(token: string, fullName: string, sha: string): Promise<{ path: string; content: string }[]> {
+  const [owner, repo] = fullName.split('/');
+  const tr = await gh(token, `/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`);
+  if (!tr.ok) return [];
+  const tree: any = await tr.json();
+  const blobs = (tree.tree || []).filter((t: any) => t.type === 'blob' && !t.path.startsWith('.yield/data/') && t.path !== 'README.md').slice(0, 100);
+  const files: { path: string; content: string }[] = [];
+  for (const b of blobs) {
+    const br = await gh(token, `/repos/${owner}/${repo}/git/blobs/${b.sha}`);
+    if (!br.ok) continue;
+    const blob: any = await br.json();
+    if (typeof blob.content !== 'string') continue;
+    files.push({ path: b.path, content: DEC.decode(unb64(blob.content.replace(/\n/g, ''))) });
+  }
+  return files;
 }
 
 async function putFile(
   token: string, owner: string, repo: string, path: string, content: string, message: string, branch: string,
 ): Promise<void> {
   const sha = await getFileSha(token, owner, repo, path, branch);
-  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, {
+  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encPath(path)}`, {
     method: 'PUT',
     body: JSON.stringify({
       message,

@@ -9,10 +9,10 @@
 import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
 import {
-  getGithubAuth, getProject, getProjectFiles, setProjectGithub, markGithubSynced, clearProjectGithub,
+  getGithubAuth, getProject, getProjectFiles, saveFiles, setProjectGithub, markGithubSynced, clearProjectGithub,
   type ProjectRow, type FileRow,
 } from '../lib/db';
-import { decryptToken, createRepo, listRepos, pushFiles, slugify } from '../lib/github';
+import { decryptToken, createRepo, getCommitFiles, listCommits, listRepos, pushFiles, slugify } from '../lib/github';
 
 export async function handleGithubStatus(c: Ctx): Promise<Response> {
   if (!c.user) return json({ connected: false });
@@ -76,6 +76,40 @@ export async function handleProjectGithub(req: Request, c: Ctx, projectId: strin
     }
 
     return error(400, 'Unknown action');
+  } catch (e: any) {
+    return error(502, `GitHub error: ${String(e?.message || e).slice(0, 200)}`);
+  }
+}
+
+// GET  /api/projects/:id/versions        list commits (version history)
+// POST /api/projects/:id/versions  {sha} restore the app to that commit
+export async function handleVersions(req: Request, c: Ctx, projectId: string): Promise<Response> {
+  if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
+  const project = await getProject(c.env, projectId);
+  if (!project) return error(404, 'Project not found');
+  if (project.user_id !== c.user.id) return error(403, 'Not your project');
+  if (!project.github_repo) return error(400, 'Connect this app to GitHub to use version history.', { code: 'github_not_connected' });
+
+  const auth = await getGithubAuth(c.env, c.user.id);
+  if (!auth) return error(400, 'GitHub not connected.', { code: 'github_not_connected' });
+  const token = await decryptToken(c.env, auth.tokenEnc);
+  const branch = project.github_branch || 'main';
+
+  try {
+    if (req.method === 'GET') {
+      return json({ commits: await listCommits(token, project.github_repo, branch, 30) });
+    }
+    if (req.method === 'POST') {
+      const { sha } = (await req.json().catch(() => ({}))) as { sha?: string };
+      if (!sha) return error(400, 'sha required');
+      const files = await getCommitFiles(token, project.github_repo, sha);
+      if (!files.length) return error(400, 'No restorable files at that version.');
+      await saveFiles(c.env, project.id, files, null);
+      await pushFiles(token, project.github_repo, branch, project.title, files);
+      await markGithubSynced(c.env, project.id);
+      return json({ ok: true, restored: files.length });
+    }
+    return error(405, 'Method not allowed');
   } catch (e: any) {
     return error(502, `GitHub error: ${String(e?.message || e).slice(0, 200)}`);
   }

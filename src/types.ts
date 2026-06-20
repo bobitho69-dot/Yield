@@ -6,6 +6,9 @@ export interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   KV: KVNamespace;
+  // Durable Object that runs app builds independently of any browser tab, so a
+  // build keeps running (and saves) even if the user refreshes or closes the page.
+  BUILDER: DurableObjectNamespace;
 
   // Vars
   APP_NAME: string;
@@ -18,6 +21,10 @@ export interface Env {
   HIGH_USAGE_OVERRIDE: string; // 'auto' | 'on' | 'off'
   AUTH_ENABLED: string; // 'true' = require login; 'false' = open testing mode (guest)
   STRIPE_PRICE_ID: string;
+
+  // AI image generation (optional). Apps call window.YIELD.image().
+  IMAGE_API_URL?: string;
+  IMAGE_API_MODEL?: string;
 
   // Secrets
   NVIDIA_API_KEY: string; // shared default + fallback for every AI below
@@ -39,6 +46,8 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
+
+  IMAGE_API_KEY?: string;
 }
 
 export interface SessionUser {

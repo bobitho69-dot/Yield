@@ -34,3 +34,8 @@ GOOGLE_CLIENT_SECRET=
 # --- Stripe (required for the $20/mo plan) -------------------------------------
 STRIPE_SECRET_KEY=sk_test_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx
+
+# --- AI image generation (optional) --------------------------------------------
+# Endpoint URL goes in wrangler.toml [vars] (IMAGE_API_URL); the key is a secret.
+# Leave blank to reuse NVIDIA_API_KEY for NVIDIA FLUX image generation.
+IMAGE_API_KEY=

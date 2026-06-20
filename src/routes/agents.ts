@@ -30,9 +30,10 @@ export async function handleAgents(req: Request, c: Ctx, id?: string, sub?: stri
 
   if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
 
+  const project = c.url.searchParams.get('project') || undefined;
   if (!id) {
     if (req.method === 'GET') {
-      const { results } = await listAgents(c.env, c.user.id);
+      const { results } = await listAgents(c.env, c.user.id, project);
       return json({ agents: results });
     }
     if (req.method === 'POST') {
@@ -44,6 +45,7 @@ export async function handleAgents(req: Request, c: Ctx, id?: string, sub?: stri
         system_prompt: String(b.system_prompt).slice(0, 8000),
         model: b.model || 'glm-5.1',
         is_public: b.is_public !== false,
+        project_id: b.project_id || project || '',
       });
       return json({ agent }, { status: 201 });
     }

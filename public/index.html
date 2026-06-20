@@ -3,19 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Yield — Build apps by chatting. Free.</title>
-  <meta name="description" content="Yield turns your prompts into working web apps. Chat, edit, preview — free, powered by NVIDIA-hosted models." />
+  <title>Yield — Build full apps by chatting. Free.</title>
+  <meta name="description" content="Yield turns a sentence into a real, multi-file web app — live preview, AI agents, your code on GitHub, version history. Everything base44, Lovable and Replit do, free. Powered by NVIDIA models." />
+  <meta property="og:title" content="Yield — Build full apps by chatting. Free." />
+  <meta property="og:description" content="Describe an app, watch it build live. Multi-file, AI agents, your code on GitHub, version history — free." />
+  <meta property="og:type" content="website" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body class="landing">
-  <header class="nav">
+  <header class="nav lp-nav">
     <a class="brand" href="/">
       <span class="logo">◆</span> Yield
     </a>
     <nav class="nav-links">
-      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#compare">Why Yield</a>
       <a href="#models">Models</a>
-      <a href="/pricing">Pricing</a>
+      <a href="#pricing">Pricing</a>
       <a href="/dashboard">Projects</a>
       <a class="btn ghost" href="/login">Sign in</a>
       <a class="btn primary" href="/app">Start building →</a>
@@ -23,53 +27,198 @@
   </header>
 
   <main>
-    <section class="hero">
-      <div class="pill">100% free · paused only during High Usage Times</div>
-      <h1>Describe an app.<br /><span class="grad">Yield builds it.</span></h1>
+    <!-- ============================ HERO ============================ -->
+    <section class="hero lp-hero">
+      <div class="pill">100% free · only paused during High Usage Times</div>
+      <h1>Describe an app.<br /><span class="grad">Yield builds the whole thing.</span></h1>
       <p class="sub">
-        Chat your idea, watch it appear in a live preview, then tweak it by talking or
-        editing the code yourself. Powered by NVIDIA-hosted models, guarded against abuse,
-        and hosted on Cloudflare.
+        Not just a single page — real, multi-file apps with a backend, a database,
+        AI agents and live preview. Your code lives on <b>your GitHub</b>, with full
+        version history. Everything base44, Lovable and Replit do — <b>free</b>.
       </p>
       <div class="hero-cta">
-        <a class="btn primary lg" href="/app">Open the builder</a>
-        <a class="btn ghost lg" href="#how">See how it works</a>
+        <a class="btn primary lg" href="/app">Open the builder →</a>
+        <a class="btn ghost lg" href="#features">See what it can do</a>
       </div>
-      <div class="hero-demo">
-        <div class="demo-chat">
-          <div class="bubble user">make a pomodoro timer with a tomato that fills up</div>
-          <div class="bubble ai">Building with <b>Auto → DeepSeek V4 Pro</b>… ✓ done</div>
+      <div class="trust-row">
+        <span>✓ No credit card</span>
+        <span>✓ Your code on GitHub</span>
+        <span>✓ NVIDIA-hosted models</span>
+        <span>✓ Jailbreak-guarded</span>
+      </div>
+
+      <!-- Faux browser showing chat -> live preview -->
+      <div class="window">
+        <div class="window-chrome">
+          <i class="dot r"></i><i class="dot y"></i><i class="dot g"></i>
+          <div class="url-bar">yield.app/p/pomodoro-timer</div>
+          <div class="chrome-tag">live preview</div>
         </div>
-        <div class="demo-preview">▶ live preview</div>
+        <div class="window-body">
+          <div class="wb-chat">
+            <div class="bubble user">make a pomodoro timer with a tomato that fills up as time passes</div>
+            <div class="bubble ai">
+              <span class="ai-step">Routing → <b>DeepSeek V4 Pro</b></span>
+              <span class="ai-step">Planning files…</span>
+              <span class="ai-step ok">index.html · app.js · styles.css ✓</span>
+              <span class="ai-step ok">Done — preview is live →</span>
+            </div>
+          </div>
+          <div class="wb-preview">
+            <div class="mini-app">
+              <div class="ma-title">🍅 Focus Timer</div>
+              <div class="tomato">
+                <div class="tomato-fill"></div>
+                <span class="tomato-time">17:42</span>
+              </div>
+              <div class="ma-btns"><span class="ma-btn primary">Start</span><span class="ma-btn">Reset</span></div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section id="how" class="band">
+    <!-- ====================== POSITIONING BAR ====================== -->
+    <section class="logos">
+      <p>A free alternative to</p>
+      <div class="logo-row">
+        <span class="vs-logo">base44</span>
+        <span class="vs-logo">Lovable</span>
+        <span class="vs-logo">Replit</span>
+      </div>
+      <p class="logos-note">— with your code on GitHub and nothing locked behind a paywall.</p>
+    </section>
+
+    <!-- ========================= FEATURES ========================= -->
+    <section id="features" class="band">
+      <h2>Everything you need to ship a real app</h2>
+      <p class="band-sub">Yield isn't a toy that spits out one HTML file. It builds, debugs and version-controls complete applications.</p>
+      <div class="feature-grid">
+        <div class="feat">
+          <div class="feat-ic">🧩</div>
+          <h3>Multi-file apps</h3>
+          <p>A real file tree — HTML, JS, CSS, components, a worker backend. Edit any file by hand or just ask the AI.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">🐙</div>
+          <h3>Your code on GitHub</h3>
+          <p>Link a repo and every build is committed to <b>your</b> GitHub. Storage is yours, not ours — and it's truly portable.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">⏪</div>
+          <h3>Version history & rollback</h3>
+          <p>Every change is a commit. Browse past versions and roll back to any point in one click.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">🤖</div>
+          <h3>AI agents per app</h3>
+          <p>The AI can create helper agents your app calls at runtime — chatbots, classifiers, generators — wired in automatically.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">🗄️</div>
+          <h3>Database & backend</h3>
+          <p>Entities for storing data, end-user login via Supabase, and Cloudflare Worker backends for anything heavier.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">🎨</div>
+          <h3>AI image generation</h3>
+          <p>Apps generate real images on the fly with <code>window.YIELD.image()</code> — powered by NVIDIA FLUX, no setup.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">🎯</div>
+          <h3>Click-to-edit</h3>
+          <p>Point at any element in the preview and tell the AI what to change. No hunting through code.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">🛟</div>
+          <h3>Auto bug-checker</h3>
+          <p>Runtime errors are caught and fed back to the AI, which fixes them itself — before you even notice.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">🌙</div>
+          <h3>Background builds</h3>
+          <p>Close the tab — the build keeps going. Queue follow-up prompts and come back to a finished app.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">🧠</div>
+          <h3>See the thinking</h3>
+          <p>Watch the AI's plan and reasoning as it works, so you always know what it's about to build.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">🔀</div>
+          <h3>Pick your model</h3>
+          <p>Six coder models plus an Auto router that reads your prompt and picks the best one — with pros & cons shown.</p>
+        </div>
+        <div class="feat">
+          <div class="feat-ic">📦</div>
+          <h3>Export & deploy</h3>
+          <p>Download the whole app as a <code>.zip</code>, or follow the guide to deploy it free on Cloudflare.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= HOW IT WORKS ======================= -->
+    <section id="how" class="band alt">
       <h2>How it works</h2>
       <div class="grid3">
-        <div class="card"><div class="num">1</div><h3>Chat your idea</h3><p>Type what you want. Pick a model, or let <b>Auto</b> choose the best one for your prompt.</p></div>
-        <div class="card"><div class="num">2</div><h3>Preview & edit</h3><p>The app renders instantly in a sandboxed preview. Refine by chatting, or edit the code directly.</p></div>
-        <div class="card"><div class="num">3</div><h3>Save & share</h3><p>Sign in to keep your projects and share a public preview link.</p></div>
+        <div class="card"><div class="num">1</div><h3>Chat your idea</h3><p>Describe what you want in plain English. Pick a model, or let <b>Auto</b> choose the best one for the job.</p></div>
+        <div class="card"><div class="num">2</div><h3>Watch it build</h3><p>See the plan, the files appearing, and the app rendering live in a sandboxed preview as it's written.</p></div>
+        <div class="card"><div class="num">3</div><h3>Refine, save, ship</h3><p>Tweak by chatting or by editing code, save to GitHub with full history, then export or deploy for free.</p></div>
       </div>
     </section>
 
+    <!-- ======================== COMPARISON ======================== -->
+    <section id="compare" class="band">
+      <h2>Why Yield</h2>
+      <p class="band-sub">The same superpowers as the paid app builders — without the paywall, and with your code in your hands.</p>
+      <div class="compare-wrap">
+        <table class="compare">
+          <thead>
+            <tr>
+              <th></th>
+              <th class="me">◆ Yield</th>
+              <th>base44</th>
+              <th>Lovable</th>
+              <th>Replit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Price to start</td><td class="me"><b>Free</b></td><td>Paid</td><td>Paid</td><td>Paid</td></tr>
+            <tr><td>Full multi-file apps</td><td class="me">✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Your code on your GitHub</td><td class="me">✓</td><td>Partial</td><td>✓</td><td>Partial</td></tr>
+            <tr><td>Version history & rollback</td><td class="me">✓</td><td>✓</td><td>Partial</td><td>✓</td></tr>
+            <tr><td>AI agents per app</td><td class="me">✓</td><td>Partial</td><td>—</td><td>—</td></tr>
+            <tr><td>AI image generation built in</td><td class="me">✓</td><td>Partial</td><td>Partial</td><td>—</td></tr>
+            <tr><td>Background builds (close the tab)</td><td class="me">✓</td><td>—</td><td>—</td><td>Partial</td></tr>
+            <tr><td>Auto bug-fix loop</td><td class="me">✓</td><td>Partial</td><td>✓</td><td>Partial</td></tr>
+            <tr><td>Export as .zip</td><td class="me">✓</td><td>Partial</td><td>✓</td><td>✓</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="fineprint compare-note">Comparison reflects each product's standard free experience at the time of writing; competitors' paid tiers add more. Yield's goal: keep the essentials free for everyone.</p>
+    </section>
+
+    <!-- ========================== MODELS ========================== -->
     <section id="models" class="band alt">
       <h2>Models, via NVIDIA</h2>
       <p class="band-sub">Six coder models plus an Auto router that picks the best one per prompt. Every prompt is screened by NVIDIA's NeMoGuard jailbreak detector first.</p>
       <div class="models" id="modelChips"></div>
     </section>
 
+    <!-- ========================= PRICING ========================= -->
     <section id="pricing" class="band">
       <h2>Pricing</h2>
+      <p class="band-sub">Free for everyone. One simple paid tier keeps the lights on during the busiest times.</p>
       <div class="grid2">
         <div class="card price">
           <h3>Free</h3>
           <div class="amount">$0</div>
           <ul>
-            <li>✓ All coder models + Auto</li>
+            <li>✓ All coder models + Auto router</li>
+            <li>✓ Multi-file apps, agents & database</li>
             <li>✓ Live preview & manual editing</li>
-            <li>✓ Save projects (when signed in)</li>
-            <li>✓ Jailbreak-guarded</li>
+            <li>✓ Your code on GitHub + version history</li>
+            <li>✓ AI image generation</li>
             <li>· Paused during High Usage Times</li>
           </ul>
           <a class="btn ghost" href="/app">Start free</a>
@@ -83,6 +232,7 @@
             <li>✓ <b>Works during High Usage Times</b></li>
             <li>✓ Unlimited daily generations</li>
             <li>✓ Priority queue</li>
+            <li>✓ Directly funds the free tier</li>
           </ul>
           <a class="btn primary" href="/app?upgrade=1">Get Priority</a>
         </div>
@@ -94,10 +244,48 @@
         those busy periods. No surprise bills, and the app stays free the rest of the time.
       </p>
     </section>
+
+    <!-- =========================== FAQ =========================== -->
+    <section class="band alt">
+      <h2>Questions</h2>
+      <div class="faq">
+        <details>
+          <summary>Is it really free?</summary>
+          <p>Yes. Building, previewing, editing, saving to GitHub and exporting are all free. The only limit is during High Usage Times, when free generation pauses to keep hosting costs sane — Priority Access ($20/mo) stays on through those windows.</p>
+        </details>
+        <details>
+          <summary>Where does my code live?</summary>
+          <p>On <b>your</b> GitHub. Link or create a repo and every build is committed there, so you own your code, your history, and you can clone or deploy it anywhere — no lock-in.</p>
+        </details>
+        <details>
+          <summary>How does Yield compare to base44, Lovable and Replit?</summary>
+          <p>Same core idea — chat to build real apps — but free, with your code on GitHub by default, plus extras like per-app AI agents, background builds and a built-in AI image generator. See the comparison above.</p>
+        </details>
+        <details>
+          <summary>Which AI models does it use?</summary>
+          <p>Six coder models hosted by NVIDIA (Kimi, MiniMax, DeepSeek V4 Flash/Pro, Step, GLM) plus a gpt-oss router that auto-picks the best one for your prompt. You can always override the choice yourself.</p>
+        </details>
+        <details>
+          <summary>Do I need an account?</summary>
+          <p>No — you can start building immediately. Sign in (email + password) when you want to save projects, link GitHub, or keep your work across devices.</p>
+        </details>
+        <details>
+          <summary>Is it safe?</summary>
+          <p>Every prompt is screened by NVIDIA's NeMoGuard jailbreak detector, and generated apps run in a sandboxed, opaque-origin preview so they can't touch Yield or your account.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ======================== FINAL CTA ======================== -->
+    <section class="cta-band">
+      <h2>Build your first app in the next minute.</h2>
+      <p>No setup, no card, no catch. Just describe it.</p>
+      <a class="btn primary lg" href="/app">Open the builder →</a>
+    </section>
   </main>
 
   <footer class="foot">
-    <span>◆ Yield — free AI coder</span>
+    <span>◆ Yield — free AI app builder</span>
     <span>
       <a class="toplink" href="/pricing">Pricing</a> ·
       <a class="toplink" href="/dashboard">Projects</a> ·
@@ -111,8 +299,9 @@
     // Populate model chips from the API.
     fetch('/api/models').then(r => r.json()).then(({ models }) => {
       const el = document.getElementById('modelChips');
+      if (!el) return;
       el.innerHTML = (models || []).map(m =>
-        `<div class="chip"><b>${m.label}</b><span>${m.blurb}</span></div>`).join('');
+        `<div class="chip"><b>${m.label}</b><span>${m.blurb || ''}</span></div>`).join('');
     }).catch(() => {});
   </script>
 </body>

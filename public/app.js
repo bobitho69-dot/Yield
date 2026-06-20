@@ -134,17 +134,20 @@ async function openProject(id) {
 let buildWatchTimer = null;
 function startBuildWatch() {
   if (buildWatchTimer || !state.projectId) return;
-  addBubble('ai', '<div class="meta">background build</div>⏳ This app is still building in the background — it’ll update here when done.');
+  const note = addBubble('ai', '<div class="meta">background build</div>⏳ Still building in the background — this updates automatically.');
+  let polls = 0;
+  const finish = async (msg) => {
+    clearInterval(buildWatchTimer); buildWatchTimer = null;
+    await loadFiles(); refreshPreview();
+    note.innerHTML = `<div class="meta">background build</div>${msg}`;
+  };
   buildWatchTimer = setInterval(async () => {
-    try {
-      const { building } = await fetch(`/api/projects/${state.projectId}`).then((r) => r.json());
-      if (!building) {
-        clearInterval(buildWatchTimer); buildWatchTimer = null;
-        await loadFiles(); refreshPreview();
-        addBubble('ai', '<div class="meta">background build</div>✓ Background build finished and saved.');
-      }
-    } catch { /* keep watching */ }
-  }, 4000);
+    polls++;
+    let building = true;
+    try { building = (await fetch(`/api/projects/${state.projectId}`).then((r) => r.json())).building; } catch { /* retry */ }
+    if (!building) return finish('✓ Background build finished and saved.');
+    if (polls >= 50) return finish('Loaded the latest saved version.'); // ~2.5 min hard stop
+  }, 3000);
 }
 
 // ---------- Files / editor ----------

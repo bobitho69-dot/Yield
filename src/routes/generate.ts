@@ -227,6 +227,13 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
   // The work runs in waitUntil, so it finishes + saves even if the tab is closed.
   const { response, send, close } = sse();
   let buildKey: string | null = null;
+  let lastBeat = 0;
+  // Heartbeat: refresh the short-lived build flag while work is actively happening,
+  // so a crashed/evicted build's flag self-expires within ~60s (no stuck "building").
+  const beat = async () => {
+    const t = Date.now();
+    if (buildKey && t - lastBeat > 15000) { lastBeat = t; await c.env.KV.put(buildKey, String(t), { expirationTtl: 60 }).catch(() => {}); }
+  };
   c.ctx.waitUntil(
     (async () => {
       try {
@@ -268,7 +275,7 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
         if (!project && c.user) project = await createProject(c.env, c.user.id, prompt.slice(0, 60));
 
         // Mark this app as "building" so a reopened tab knows work is in progress.
-        if (project) { buildKey = `build:${project.id}`; await c.env.KV.put(buildKey, String(Date.now()), { expirationTtl: 900 }).catch(() => {}); }
+        if (project) { buildKey = `build:${project.id}`; lastBeat = Date.now(); await c.env.KV.put(buildKey, String(lastBeat), { expirationTtl: 60 }).catch(() => {}); }
 
         await send('meta', { model: model.id, label: model.label, projectId: project?.id ?? null, routeReason });
 
@@ -314,8 +321,8 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
           const ep = endpointFor(c.env, mdef);
           await chatStream(
             { baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages, max_tokens: 32768, timeoutMs: 180000 },
-            async (delta) => { await streamer.feed(delta); },
-            async (r) => { await send('thinking', r); },
+            async (delta) => { await streamer.feed(delta); await beat(); },
+            async (r) => { await send('thinking', r); await beat(); },
           );
         };
         let activeModel = model;

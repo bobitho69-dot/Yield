@@ -162,6 +162,20 @@ export const CODER_MODELS: ModelDef[] = [
     // OpenRouter provider + key (OpenAI-compatible).
     provider: { apiKeyEnv: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1' },
   },
+  {
+    id: 'nemotron-3-ultra',
+    label: 'Nemotron 3 Ultra 550B',
+    modelId: 'nvidia/nemotron-3-ultra-550b-a55b',
+    role: 'coder',
+    tier: 'pro',
+    speed: 1,
+    blurb: "NVIDIA's flagship Nemotron 3 Ultra (550B) — top-tier reasoning & code.",
+    pros: ['Elite reasoning & code quality', 'Excels at complex, multi-file apps', 'Huge knowledge'],
+    cons: ['Slowest (very large model)', 'Heavier token use', 'Overkill for tiny tweaks'],
+    // NVIDIA endpoint (default base URL). The key resolver also matches a secret
+    // named exactly after the modelId, and falls back to NVIDIA_API_KEY.
+    provider: { apiKeyEnv: 'NEMOTRON_API_KEY' },
+  },
 ];
 
 // Auto router — analyzes the prompt and picks the best coder model.

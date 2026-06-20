@@ -84,8 +84,6 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
   const input = (body.input || '').toString().slice(0, 12000);
   if (!input && !body.messages?.length) return json({ error: 'input required' }, { status: 400, headers: CORS });
 
-  const model = resolveModel(agent.model);
-  const ep = endpointFor(c.env, model);
   const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
     { role: 'system', content: agent.system_prompt },
   ];
@@ -94,12 +92,27 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
   }
   if (input) messages.push({ role: 'user', content: input });
 
-  try {
-    const { text } = await chat({ baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages, max_tokens: 2048, timeoutMs: 60000 });
-    await recordGeneration(c);
-    await logUsage(c.env, { user_id: agent.user_id, kind: 'agent', model: model.id, high_usage: gate.usage.highUsage });
-    return json({ output: text, agent: agent.name, model: model.id }, { headers: CORS });
-  } catch (e: any) {
-    return json({ error: String(e?.message || e).slice(0, 300) }, { status: 502, headers: CORS });
+  // Try the agent's model, then resilient fallbacks (same idea as the builder), so
+  // a single unavailable/placeholder model id never breaks the agent at runtime.
+  const candidates = [agent.model, 'deepseek-v4-flash', 'glm-5.1', 'minimax-m3'];
+  const seen = new Set<string>();
+  let lastErr = 'No model was able to respond.';
+  for (const cid of candidates) {
+    if (!cid || seen.has(cid)) continue;
+    seen.add(cid);
+    const m = resolveModel(cid);
+    const e = endpointFor(c.env, m);
+    try {
+      const { text } = await chat({ baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.modelId, messages, max_tokens: 2048, timeoutMs: 60000 });
+      if (text && text.trim()) {
+        await recordGeneration(c);
+        await logUsage(c.env, { user_id: agent.user_id, kind: 'agent', model: m.id, high_usage: gate.usage.highUsage });
+        return json({ output: text, agent: agent.name, model: m.id }, { headers: CORS });
+      }
+      lastErr = `Empty response from ${m.id}.`;
+    } catch (err: any) {
+      lastErr = String(err?.message || err);
+    }
   }
+  return json({ error: lastErr.slice(0, 300) }, { status: 502, headers: CORS });
 }

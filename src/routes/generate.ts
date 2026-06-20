@@ -12,6 +12,7 @@ import { gateGeneration, recordGeneration } from '../lib/usage';
 import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor } from '../config/models';
 import { chat, chatStream } from '../lib/nvidia';
 import { CONVO_SYSTEM, routerSystem } from '../lib/prompts';
+import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import {
   addMessage, createAgent, createProject, getProject, getProjectFiles, getSecretRows, listAgents, listMessages,
   logUsage, saveFiles, updateAgent, type FileRow,
@@ -278,9 +279,12 @@ export async function runBuild(
 
     await send('meta', { model: model.id, label: model.label, projectId: project?.id ?? null, routeReason });
 
-    // 5) Build the message list: system + current app + recent history + new turn.
+    // 5) Build the message list: system + platform reference + current app +
+    //    recent history + new turn. The platform guide tells the model exactly how
+    //    Yield's runtime (entities, agents, secrets, image, workers) actually works.
     const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       { role: 'system', content: CONVO_SYSTEM },
+      { role: 'system', content: PLATFORM_GUIDE },
     ];
     if (project) {
       const curFiles = await getProjectFiles(c.env, project);

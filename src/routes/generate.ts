@@ -248,6 +248,11 @@ export type SendFn = (event: string, data: unknown) => Promise<void>;
 // live (tagged with the agent's name via `send`) and returns the file(s) it built.
 // Falls back through stable models so one bad model id doesn't waste the agent.
 async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn): Promise<{ name: string; files: FileRow[]; error?: string }> {
+  const messages = [
+    { role: 'system' as const, content: SUBAGENT_SYSTEM },
+    { role: 'system' as const, content: sharedContext },
+    { role: 'user' as const, content: `Your task ("${task.name}"):\n\n${task.instructions}` },
+  ];
   const order = [task.model, 'deepseek-v4-flash', 'glm-5.1'].filter(Boolean) as string[];
   const seen = new Set<string>();
   let lastErr = 'agent produced nothing';
@@ -256,27 +261,28 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
     seen.add(cid);
     const model = resolveModel(cid);
     const ep = endpointFor(env, model);
-    // Forward only the agent's live code (already tagged with its name) to the user.
-    const sub = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, task.name);
-    try {
-      await chatStream(
-        {
-          baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId,
-          messages: [
-            { role: 'system', content: SUBAGENT_SYSTEM },
-            { role: 'system', content: sharedContext },
-            { role: 'user', content: `Your task ("${task.name}"):\n\n${task.instructions}` },
-          ],
-          max_tokens: 16000, timeoutMs: 150000,
-        },
-        async (delta) => { await sub.feed(delta); },
-      );
-      await sub.end();
-      const files = sub.result().files;
-      if (files.length) return { name: task.name, files };
-      lastErr = `no files from ${model.id}`;
-    } catch (e: any) {
-      lastErr = String(e?.message || e);
+    // Try with MAX reasoning first; if the model rejects the flag, retry plainly.
+    for (const reasoning of [true, false]) {
+      // Forward only the agent's live code (already tagged with its name).
+      const sub = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, task.name);
+      try {
+        await chatStream(
+          {
+            baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+            temperature: 0.3, max_tokens: 24000, timeoutMs: 300000,
+            ...(reasoning ? { extra: { reasoning_effort: 'high' } } : {}),
+          },
+          async (delta) => { await sub.feed(delta); },
+        );
+        await sub.end();
+        const files = sub.result().files;
+        if (files.length) return { name: task.name, files };
+        lastErr = `no files from ${model.id}`;
+        break; // got a clean response but no files — move to the next model
+      } catch (e: any) {
+        lastErr = String(e?.message || e);
+        // reasoning=true failed -> loop retries plainly; plain failed -> next model
+      }
     }
   }
   return { name: task.name, files: [], error: lastErr };
@@ -374,28 +380,43 @@ export async function runBuild(
     }
     messages.push({ role: 'user', content: prompt });
 
-    // 6) Stream: separate chat from multi-file output. Retry once with a safe
-    //    model if the chosen one errors before producing anything.
+    // 6) Stream: separate chat from multi-file output. Coder models run with MAX
+    //    reasoning (reasoning_effort: high) and a long timeout for thorough code.
+    //    Resilience: if a model rejects the reasoning flag we retry it plainly; if
+    //    it errors before producing anything we fall back to a stable model; and if
+    //    it errors AFTER producing code (e.g. a slow timeout) we KEEP the partial
+    //    result instead of throwing it away.
     const streamer = makeFileStreamer(send);
-    const streamWith = async (mdef: typeof model) => {
+    const streamWith = async (mdef: typeof model, reasoning: boolean) => {
       const ep = endpointFor(c.env, mdef);
       await chatStream(
-        { baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages, max_tokens: 32768, timeoutMs: 180000 },
+        {
+          baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+          temperature: 0.3, top_p: 0.95, max_tokens: 32768, timeoutMs: 600000,
+          ...(reasoning ? { extra: { reasoning_effort: 'high' } } : {}),
+        },
         async (delta) => { await streamer.feed(delta); await heartbeat(); },
-        async (r) => { await send('thinking', r); await heartbeat(); },
+        async (rr) => { await send('thinking', rr); await heartbeat(); },
       );
     };
     let activeModel = model;
     try {
-      await streamWith(model);
+      await streamWith(model, true);
     } catch (e) {
-      if (streamer.produced) throw e; // already streaming — don't double up
-      const fb = resolveModel('deepseek-v4-flash');
-      if (fb.id === model.id) throw e;
-      activeModel = fb;
-      await send('status', { stage: `Switching to ${fb.label}` });
-      await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'stable model' });
-      await streamWith(fb);
+      if (streamer.produced) {
+        await send('status', { stage: 'Finalizing what was built…' }); // keep partial output
+      } else {
+        try {
+          await streamWith(model, false); // model may have rejected the reasoning flag
+        } catch (e2) {
+          const fb = resolveModel('deepseek-v4-flash');
+          if (fb.id === model.id) throw e2;
+          activeModel = fb;
+          await send('status', { stage: `Switching to ${fb.label}` });
+          await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'stable model' });
+          await streamWith(fb, false);
+        }
+      }
     }
     await streamer.end();
 

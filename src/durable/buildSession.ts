@@ -62,16 +62,23 @@ export class BuildSession extends DurableObject<Env> {
     return new Response('Not found', { status: 404 });
   }
 
-  // Persist the job and schedule an immediate alarm to run it. Returns fast.
+  // Persist the job and schedule an immediate alarm to run it. Returns fast. The
+  // build runs in alarm()/waitUntil — never in the inbound request — so a tab
+  // refresh can't abort its model call.
   private async begin(job: Job): Promise<void> {
     this.building = true;
     this.events = [];
     this.projectId = job.body.projectId || null;
-    await this.ctx.storage.put({ building: true, projectId: this.projectId, job });
+    await this.ctx.storage.put({ building: true, projectId: this.projectId, job }).catch(() => {});
     if (this.projectId) {
       await this.env.KV.put(`build:${this.projectId}`, String(Date.now()), { expirationTtl: 3600 }).catch(() => {});
     }
-    await this.ctx.storage.setAlarm(Date.now()); // fire ASAP, in its own context
+    try {
+      await this.ctx.storage.setAlarm(Date.now()); // fire ASAP, in its own context
+    } catch {
+      // If scheduling fails, run it now but detached from this request.
+      this.ctx.waitUntil(this.alarm());
+    }
   }
 
   // Runs the entire build. Independent of any client request, so a tab refresh

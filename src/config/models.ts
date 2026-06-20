@@ -149,6 +149,19 @@ export const CODER_MODELS: ModelDef[] = [
     // Same OpenRouter provider + key as Qwen (OpenAI-compatible).
     provider: { apiKeyEnv: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1' },
   },
+  {
+    id: 'laguna-m1',
+    label: 'Laguna M.1 (free)',
+    modelId: 'poolside/laguna-m.1:free',
+    role: 'coder',
+    tier: 'standard',
+    speed: 3,
+    blurb: "Poolside's Laguna M.1 — a code-specialist model, free via OpenRouter.",
+    pros: ['Free to use', 'Built specifically for code', 'Good at app logic'],
+    cons: ['Newer / less battle-tested', 'Free tier is rate-limited'],
+    // OpenRouter provider + key (OpenAI-compatible).
+    provider: { apiKeyEnv: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1' },
+  },
 ];
 
 // Auto router — analyzes the prompt and picks the best coder model.

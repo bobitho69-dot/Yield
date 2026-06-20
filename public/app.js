@@ -1,6 +1,6 @@
 // Yield builder — client logic.
 const $ = (s) => document.querySelector(s);
-const state = { user: null, models: [], projectId: null, code: '', streaming: false, dirty: false,
+const state = { user: null, models: [], model: 'auto', recommended: null, projectId: null, code: '', streaming: false, dirty: false,
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 
 // ---------- Boot ----------
@@ -28,9 +28,72 @@ async function loadStatus() {
 async function loadModels() {
   const { models } = await fetch('/api/models').then((r) => r.json());
   state.models = models || [];
-  $('#modelSelect').innerHTML = state.models
-    .map((m) => `<option value="${m.id}">${m.label}${m.id === 'auto' ? '' : ` · ${m.tier}`}</option>`)
-    .join('');
+  renderModelPanel();
+  updateModelButton();
+}
+
+// ---------- Mini AI selector ----------
+function modelById(id) { return state.models.find((m) => m.id === id); }
+
+function speedBars(n) {
+  return `<span class="speed" title="Speed">${[1,2,3,4,5].map((i) => `<i class="${i <= (n||3) ? 'on' : ''}"></i>`).join('')}</span>`;
+}
+
+function renderModelPanel() {
+  const panel = $('#modelPanel');
+  panel.innerHTML = `<div class="panel-head">Choose an AI · or let Auto pick</div>` + state.models.map((m) => {
+    const isAuto = m.id === 'auto';
+    const active = state.model === m.id ? 'active' : '';
+    const rec = state.model === 'auto' && state.recommended === m.id ? 'recommended' : '';
+    const recTag = rec ? `<span class="rec-tag">Auto pick</span>` : '';
+    const pros = (m.pros || []).map((p) => `<div class="pc pro">✓ ${esc(p)}</div>`).join('');
+    const cons = (m.cons || []).map((c) => `<div class="pc con">– ${esc(c)}</div>`).join('');
+    return `<div class="model-row ${active} ${rec}" data-id="${m.id}">
+      <div class="mr-top">
+        <span class="mr-name">${esc(m.label)}</span>
+        ${isAuto ? '' : `<span class="tier-badge ${m.tier}">${m.tier}</span>`}
+        ${recTag || (isAuto ? '' : speedBars(m.speed))}
+      </div>
+      <div class="mr-blurb">${esc(m.blurb)}</div>
+      ${(pros || cons) ? `<div class="proscons">${pros}${cons}</div>` : ''}
+    </div>`;
+  }).join('');
+  panel.querySelectorAll('.model-row').forEach((row) => row.addEventListener('click', () => selectModel(row.dataset.id)));
+}
+
+function updateModelButton() {
+  const m = modelById(state.model);
+  $('#modelBtnLabel').textContent = m ? m.label : 'Auto';
+}
+
+function selectModel(id) {
+  state.model = id;
+  updateModelButton();
+  renderModelPanel();
+  $('#modelPanel').classList.add('hidden');
+  if (id === 'auto') maybeRecommend();
+  else $('#autoPick').textContent = '';
+}
+
+// Live: when Auto is selected, ask gpt-oss-20b which model fits the current prompt.
+let recTimer = null;
+function maybeRecommend() {
+  clearTimeout(recTimer);
+  if (state.model !== 'auto') { $('#autoPick').textContent = ''; return; }
+  const prompt = $('#prompt').value.trim();
+  if (prompt.length < 12) { $('#autoPick').textContent = ''; state.recommended = null; renderModelPanel(); return; }
+  $('#autoPick').innerHTML = '<span class="muted">analyzing…</span>';
+  recTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/route', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt }),
+      }).then((x) => x.json());
+      if (state.model !== 'auto') return;
+      state.recommended = r.model;
+      $('#autoPick').innerHTML = `Auto → <b>${esc(r.label || r.model)}</b> · ${esc(r.reason || '')}`;
+      renderModelPanel();
+    } catch { $('#autoPick').textContent = ''; }
+  }, 600);
 }
 
 async function loadProjects() {
@@ -140,7 +203,7 @@ async function send(prompt) {
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt, model: $('#modelSelect').value, projectId: state.projectId }),
+      body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId }),
     });
 
     if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) {
@@ -338,10 +401,24 @@ function wireEvents() {
   $('#composer').addEventListener('submit', (e) => {
     e.preventDefault();
     const v = $('#prompt').value.trim();
-    if (v) { send(v); $('#prompt').value = ''; }
+    if (v) {
+      send(v);
+      $('#prompt').value = '';
+      $('#autoPick').textContent = '';
+    }
   });
   $('#prompt').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $('#composer').requestSubmit(); }
+  });
+  $('#prompt').addEventListener('input', maybeRecommend);
+
+  // Mini AI selector open/close.
+  $('#modelBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('#modelPanel').classList.toggle('hidden');
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.model-mini')) $('#modelPanel').classList.add('hidden');
   });
   $('#newBtn').addEventListener('click', () => {
     state.projectId = null; state.code = ''; $('#codeEditor').value = '';

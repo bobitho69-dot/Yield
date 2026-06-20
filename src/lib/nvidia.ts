@@ -1,7 +1,6 @@
-// NVIDIA inference client (OpenAI-compatible chat completions).
-// Base: https://integrate.api.nvidia.com/v1  — auth: Bearer nvapi-...
-
-import type { Env } from '../types';
+// OpenAI-compatible inference client. Each model is its own API: callers pass the
+// resolved `baseUrl` + `apiKey` (from endpointFor) so different models can live on
+// different endpoints/providers. Default is NVIDIA's integrate.api.nvidia.com/v1.
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -9,26 +8,28 @@ export interface ChatMessage {
 }
 
 export interface ChatOptions {
-  model: string; // NVIDIA model id
+  baseUrl: string; // e.g. https://integrate.api.nvidia.com/v1
+  apiKey: string;
+  model: string; // provider model id
   messages: ChatMessage[];
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
 }
 
-function headers(env: Env): HeadersInit {
+function headers(apiKey: string): HeadersInit {
   return {
-    authorization: `Bearer ${env.NVIDIA_API_KEY}`,
+    authorization: `Bearer ${apiKey}`,
     'content-type': 'application/json',
     accept: 'application/json',
   };
 }
 
 /** Non-streaming completion. Returns the full assistant text + token usage. */
-export async function chat(env: Env, opts: ChatOptions): Promise<{ text: string; usage: { in: number; out: number } }> {
-  const res = await fetch(`${env.NVIDIA_CHAT_BASE}/chat/completions`, {
+export async function chat(opts: ChatOptions): Promise<{ text: string; usage: { in: number; out: number } }> {
+  const res = await fetch(`${opts.baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: headers(env),
+    headers: headers(opts.apiKey),
     body: JSON.stringify({
       model: opts.model,
       messages: opts.messages,
@@ -54,13 +55,12 @@ export async function chat(env: Env, opts: ChatOptions): Promise<{ text: string;
  * the full text once the stream closes.
  */
 export async function chatStream(
-  env: Env,
   opts: ChatOptions,
   onDelta: (delta: string) => void | Promise<void>,
 ): Promise<{ text: string }> {
-  const res = await fetch(`${env.NVIDIA_CHAT_BASE}/chat/completions`, {
+  const res = await fetch(`${opts.baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: headers(env),
+    headers: headers(opts.apiKey),
     body: JSON.stringify({
       model: opts.model,
       messages: opts.messages,

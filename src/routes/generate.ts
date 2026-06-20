@@ -8,7 +8,7 @@ import type { Ctx } from '../types';
 import { sse, json, error, now } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
-import { CODER_MODELS, ROUTER_MODEL, resolveModel } from '../config/models';
+import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor } from '../config/models';
 import { chat, chatStream, extractHtml } from '../lib/nvidia';
 import { CODEGEN_SYSTEM, editInstruction, routerSystem } from '../lib/prompts';
 import { addMessage, createProject, getProject, logUsage, saveProjectCode } from '../lib/db';
@@ -25,8 +25,11 @@ export async function routeModel(c: Ctx, prompt: string): Promise<{ id: string; 
   const menu = CODER_MODELS.map((m) => ({ id: m.id, tier: m.tier, blurb: m.blurb }));
   try {
     const router = resolveModel(ROUTER_MODEL.id);
-    const { text } = await chat(c.env, {
-      model: router.nvidiaId,
+    const ep = endpointFor(c.env, router);
+    const { text } = await chat({
+      baseUrl: ep.baseUrl,
+      apiKey: ep.apiKey,
+      model: ep.modelId,
       messages: [
         { role: 'system', content: routerSystem(menu) },
         { role: 'user', content: prompt.slice(0, 4000) },
@@ -55,7 +58,8 @@ export async function handleRoute(req: Request, c: Ctx): Promise<Response> {
   const body = (await req.json().catch(() => ({}))) as GenBody;
   if (!body.prompt) return error(400, 'prompt required');
   const choice = await routeModel(c, body.prompt);
-  return json(choice);
+  const model = resolveModel(choice.id);
+  return json({ ...choice, label: model.label, tier: model.tier, pros: model.pros, cons: model.cons });
 }
 
 export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
@@ -117,9 +121,11 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
     (async () => {
       try {
         await send('meta', { model: model.id, label: model.label, projectId: project?.id ?? null, routeReason });
-        const { text } = await chatStream(c.env, { model: model.nvidiaId, messages, max_tokens: 16384 }, async (delta) => {
-          await send('delta', delta);
-        });
+        const ep = endpointFor(c.env, model);
+        const { text } = await chatStream(
+          { baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages, max_tokens: 16384 },
+          async (delta) => { await send('delta', delta); },
+        );
         const code = extractHtml(text);
         await send('done', { code, projectId: project?.id ?? null });
 

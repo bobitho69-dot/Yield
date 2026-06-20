@@ -4,7 +4,17 @@
 
 # --- NVIDIA (required) ---------------------------------------------------------
 # Free key from https://build.nvidia.com -> open any model -> "Get API Key".
+# This is the default API for every model.
 NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# --- Per-model APIs (optional) -------------------------------------------------
+# Each AI is its own API. To run a specific model on a different endpoint/key,
+# set provider.baseUrl + provider.apiKeyEnv for it in src/config/models.ts, then
+# add the matching secret here. Example:
+#   KIMI_API_KEY=...
+#   DEEPSEEK_API_KEY=...
+#   GLM_API_KEY=...
+# If a model's apiKeyEnv is unset, it falls back to NVIDIA_API_KEY above.
 
 # --- Session signing (required) ------------------------------------------------
 # Any long random string. Generate: `openssl rand -hex 32`

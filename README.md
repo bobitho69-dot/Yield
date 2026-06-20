@@ -1,109 +1,118 @@
-# ◆ Yield — a free AI coder
+# ◆ Yield — a free AI app builder
 
-Yield turns chat prompts into working web apps. You describe an app, an NVIDIA-hosted
-model generates it, you see it live in a sandboxed preview, and you refine it by chatting
-or editing the code directly. Every prompt is screened by NVIDIA NeMoGuard for jailbreak
-attempts, your code is saved to your own GitHub repos, and the whole thing runs on
-Cloudflare Workers — free, with a "High Usage Times" model so it never costs you a surprise bill.
+Yield turns chat prompts into real, working web apps. You describe an app, a frontier AI
+model builds it — **multi-file, with a database, AI agents, and live preview** — you watch
+the code being written, and you refine it by chatting or editing the code directly. Every
+prompt is screened by an automatic jailbreak guard, your code is saved to your own GitHub
+repos, and builds run server-side so they finish even if you close the tab. It's free, with a
+"High Usage Times" model so it never costs you a surprise bill.
 
-> Like base44 / Lovable / Bolt, but free, Cloudflare-hosted, and funded only when it has to be.
+> Everything base44 / Lovable / Replit do — free, with your code on GitHub and nothing locked behind a paywall.
 
 ---
 
-## How it works (in one minute)
+## What it can do
 
-1. **Chat** your idea in the builder. Pick a model, or let **Auto** choose the best one.
-2. Yield runs the prompt through **NeMoGuard** (jailbreak detector). If it's clean and you're
-   within limits, it streams a complete single-file app back, live into the preview.
-3. **Edit** by chatting again ("make the button blue") or in the **Code** tab.
-4. Sign in to **save** projects, and connect **GitHub** to push every build to your own repo.
-5. When Cloudflare usage would start costing money, Yield enters **High Usage Times**: free
-   generation pauses for the month, **Priority** members ($20/mo) keep full access — their
-   subscription is what funds the busy periods.
+- **Chat → full app.** Not a single HTML file — real multi-file projects (HTML/CSS/JS, components, a worker backend) shown in a file tree + editor.
+- **Live code view.** Watch each file being written in real time, labelled by which AI is writing it.
+- **Pick your thinking level.** 🧠 Fast / Balanced / Max controls how hard the models reason.
+- **Builds run in the background.** Each build runs inside a Durable Object, independent of your tab — refresh or close the page and it keeps going (and saves). A reopened tab re-attaches to the live build.
+- **Helper AIs (research).** The coder can launch other AIs to research/plan a tricky part first (a data schema, an algorithm), then build with their findings.
+- **Parallel build agents.** For big apps the coder can fan out to several agents that write different files at the same time.
+- **AI agents per app.** The coder can create runtime agents your app calls (chatbots, generators, classifiers).
+- **Built-in database, secrets, image generation** — exposed to generated apps via `window.YIELD` (see below).
+- **Your code on GitHub** with full version history + rollback, plus a timestamped prompt log at `.yield/prompts.txt`.
+- **Auto bug-fixer, select-to-edit, export as .zip, share links.**
+
+---
+
+## The `window.YIELD` runtime (injected into every generated app)
+
+Generated apps run in a sandboxed iframe with a small runtime injected. This is what the coder builds against (full reference is served at **`GET /api/docs`** and lives in [`src/lib/platformGuide.ts`](src/lib/platformGuide.ts)):
+
+| API | Purpose |
+|-----|---------|
+| `window.YIELD.entities.{list,create,get,update,delete}(entity, …)` | Free built-in database (records persist to GitHub / D1) |
+| `window.YIELD.agents["Name"]` → `POST /api/agents/<id>/run` | Call an AI agent the coder created |
+| `window.YIELD.secrets.NAME` | Owner-provided API keys/secrets (requested via `=== secret: … ===`) |
+| `await window.YIELD.image(prompt)` | AI image generation (FLUX), returns an image URL |
+
+The coder also uses build-time directives in its output: `=== file: path ===` (a file), `=== agent: Name | model ===` (a runtime agent), `=== secret: NAME — why ===` (request a secret), `=== research: Name ===` (a helper AI), `=== task: Name | model ===` (a parallel build agent).
 
 ---
 
 ## The AIs — each is its own API
 
-Configured in [`src/config/models.ts`](src/config/models.ts). **Every AI is wired as its own API:**
-it has its own key env var (and can have its own base URL), resolved per-request. Unset keys fall
-back to `NVIDIA_API_KEY`, so you can start with one NVIDIA key and split them out later with no code
-changes. **Verify each `modelId` at https://build.nvidia.com** (a few versions you named are ahead of
-the public catalog, so they're swappable placeholders).
+Configured in [`src/config/models.ts`](src/config/models.ts). **Every AI is wired as its own API:** it has its
+own key env var (and can have its own base URL), resolved per-request. Unset keys fall back to `NVIDIA_API_KEY`,
+so you can start with one key and split them out later with no code changes. **Verify each `modelId` at
+https://build.nvidia.com** (a few versions are ahead of the public catalog, so they're swappable placeholders —
+if a model id is off, calls automatically fall back to a working model).
 
 | Role | Yield name | `modelId` (edit to match catalog) | Its API key (env var) |
 |------|------------|------------------------------------|------------------------|
-| Coder | Kimi K2.6 | `moonshotai/kimi-k2-instruct` | `KIMI_API_KEY` |
-| Coder | MiniMax M3 | `minimaxai/minimax-m3` | `MINIMAX_API_KEY` |
+| Coder | Kimi K2.6 | `moonshotai/kimi-k2-thinking` | `KIMI_API_KEY` |
+| Coder | MiniMax M3 | `minimaxai/minimax-m2.7` | `MINIMAX_API_KEY` |
 | Coder | DeepSeek V4 Flash | `deepseek-ai/deepseek-v4-flash` | `DEEPSEEK_FLASH_API_KEY` |
-| Coder | Step 3.7 Flash | `stepfun-ai/step-3.7-flash` | `STEP_API_KEY` |
-| Coder | DeepSeek V4 Pro | `deepseek-ai/deepseek-v4` | `DEEPSEEK_PRO_API_KEY` |
-| Coder | GLM 5.1 | `zai/glm-5.1` | `GLM_API_KEY` |
+| Coder | Step 3.7 Flash | `stepfun-ai/step-3.5-flash` | `STEP_API_KEY` |
+| Coder | DeepSeek V4 Pro | `deepseek-ai/deepseek-v4-pro` | `DEEPSEEK_PRO_API_KEY` |
+| Coder | GLM 5.1 | `z-ai/glm5.1` | `GLM_API_KEY` |
 | Auto router | gpt-oss-20b | `openai/gpt-oss-20b` | `GPTOSS_API_KEY` |
-| Jailbreak guard | NeMoGuard JailbreakDetect | `nvidia/nemoguard-jailbreak-detect` | `NEMOGUARD_API_KEY` |
+| Jailbreak guard | JailbreakDetect | `nvidia/nemoguard-jailbreak-detect` | `NEMOGUARD_API_KEY` |
 
-> All keys fall back to `NVIDIA_API_KEY` if unset. To run an AI on a *different provider*, also set
-> `provider.baseUrl` for it in `src/config/models.ts`.
-
----
-
-## ☑️ External APIs / accounts you need to create
-
-These are the third-party services Yield calls. Create each, then put the keys in
-`wrangler secret put …` (production) or `.dev.vars` (local). See `.dev.vars.example`.
-
-| # | Service | What to create | Secret(s) to set | Where |
-|---|---------|----------------|------------------|-------|
-| 1 | **NVIDIA NIM** | One free developer key powers all 8 AIs | `NVIDIA_API_KEY` (`nvapi-…`) | https://build.nvidia.com → open a model → *Get API Key* |
-| 2 | **Per-AI keys** *(optional)* | Separate key per AI if you want isolated quotas/accounts | `KIMI_API_KEY`, `MINIMAX_API_KEY`, `DEEPSEEK_FLASH_API_KEY`, `STEP_API_KEY`, `DEEPSEEK_PRO_API_KEY`, `GLM_API_KEY`, `GPTOSS_API_KEY`, `NEMOGUARD_API_KEY` | https://build.nvidia.com |
-| 3 | **GitHub OAuth App** | Login + code storage. Callback: `https://<your-app>/api/auth/github/callback` | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | https://github.com/settings/developers |
-| 4 | **Google OAuth Client** | Login. Redirect: `https://<your-app>/api/auth/google/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | https://console.cloud.google.com/apis/credentials |
-| 5 | **Stripe** | A $20/mo recurring **Price** + a **Webhook** to `…/api/billing/webhook` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_ID` (var) | https://dashboard.stripe.com |
-| 6 | **Session secret** | Any random string for signing cookies / encrypting GitHub tokens | `SESSION_SECRET` (`openssl rand -hex 32`) | generate locally |
-
-Cloudflare resources you create (no third-party key, just IDs into `wrangler.toml`):
-**D1 database** (`npm run db:create`) and **KV namespace** (`npm run kv:create`).
+> Calls run with no `max_tokens` cap (no truncation) and a user-selected reasoning effort. To run an AI on a
+> *different provider*, set `provider.baseUrl` for it in `src/config/models.ts`.
 
 ---
 
-## 🔌 The HTTP API (endpoints Yield serves)
+## ☑️ Keys / accounts you need to create
 
-Full reference in [`docs/API.md`](docs/API.md). Summary:
+Put keys in `wrangler secret put …` (production) or `.dev.vars` (local). See `.dev.vars.example`.
 
-### Auth
-- `GET  /api/auth/:provider/login` — start GitHub/Google OAuth (`?scope=repo&store_token=1` to also connect code storage)
-- `GET  /api/auth/:provider/callback` — OAuth callback → creates session
-- `POST /api/auth/logout`
-- `GET  /api/auth/me` — current user
+| # | Service | What to create | Secret(s) to set |
+|---|---------|----------------|------------------|
+| 1 | **NVIDIA NIM** | One free developer key powers all the AIs + image gen | `NVIDIA_API_KEY` (`nvapi-…`) — https://build.nvidia.com |
+| 2 | **Per-AI keys** *(optional)* | Separate key per AI for isolated quotas | `KIMI_API_KEY`, `MINIMAX_API_KEY`, `DEEPSEEK_FLASH_API_KEY`, `STEP_API_KEY`, `DEEPSEEK_PRO_API_KEY`, `GLM_API_KEY`, `GPTOSS_API_KEY`, `NEMOGUARD_API_KEY` |
+| 3 | **GitHub OAuth App** | Login + code storage. Callback: `…/api/auth/github/callback` | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` |
+| 4 | **Google OAuth Client** *(optional)* | Login. Redirect: `…/api/auth/google/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| 5 | **Stripe** *(optional)* | A $20/mo recurring Price + a webhook to `…/api/billing/webhook` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` (var) |
+| 6 | **Session secret** | Random string for cookies / encrypting GitHub tokens | `SESSION_SECRET` (`openssl rand -hex 32`) |
+
+Non-secret vars in `wrangler.toml [vars]`: `APP_URL`, `IMAGE_API_URL` (preset for FLUX), `DONATE_URL`
+(optional — a Ko-fi/Stripe Payment Link/etc.; shows "Support Yield" buttons when set), `AUTH_ENABLED`,
+and the High-Usage tuning knobs.
+
+Cloudflare resources you create (IDs go into `wrangler.toml`): a **D1 database** (`npm run db:create`),
+a **KV namespace** (`npm run kv:create`), and a **Durable Object** (the `BuildSession` binding + `v1`
+migration are already declared — free on the Workers Free plan).
+
+---
+
+## 🔌 The HTTP API
+
+Full reference in [`docs/API.md`](docs/API.md). Highlights:
 
 ### AI / generation
-- `POST /api/generate` — **prompt → app**, streamed as SSE (jailbreak guard → gate → auto-route → codegen → save → GitHub sync)
-- `POST /api/route` — auto-pick the best coder model for a prompt (gpt-oss-20b)
-- `GET  /api/models` — list pickable models (+ Auto)
+- `POST /api/generate` — **prompt → app**, streamed as SSE. Body: `{ prompt, model?, projectId?, thinking? }` (`thinking` = `low`|`medium`|`high`). Runs in a Durable Object so it survives a tab close. Events: `status`, `meta`, `thinking`, `research`, `code`, `chat`, `done`, plus `blocked`/`gate`/`error`/`end`.
+- `GET  /api/projects/:id/stream` — reconnect a refreshed tab to an in-progress build (SSE).
+- `POST /api/route` — auto-pick the best coder model (gpt-oss-20b).
+- `GET  /api/models` — pickable models (+ Auto). · `GET /api/docs` — the coder's platform reference.
 
-### Projects
-- `GET    /api/projects` — list your projects
-- `POST   /api/projects` — create
-- `GET    /api/projects/:id` — get project + chat history
-- `PUT    /api/projects/:id` — save manual code edits / rename
-- `DELETE /api/projects/:id` — delete
-- `GET    /api/projects/:id/preview` — sandboxed HTML for the preview iframe
-- `GET    /p/:id` — public preview (if shared)
+### Apps' runtime
+- `POST /api/agents/:id/run` — run an AI agent (CORS-enabled; called from generated apps).
+- `GET/POST/PUT/DELETE /api/apps/:id/entities/:entity[/:recordId]` — the built-in database.
+- `POST /api/media/image` — AI image generation (FLUX).
 
-### GitHub code storage
-- `GET  /api/github/status` — connected? which login?
-- `GET  /api/github/repos` — your repos (to link an existing one)
-- `POST /api/projects/:id/github` — `{action: create | link | push | unlink}`
+### Projects, files, history
+- `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/:id`
+- `GET/PUT/DELETE /api/projects/:id/files` — multi-file CRUD · `GET /api/projects/:id/export` — .zip
+- `GET/POST /api/projects/:id/versions` — version history + rollback (GitHub commits)
+- `GET /api/projects/:id/prompts` — timestamped prompt history (mirrored to `.yield/prompts.txt`)
+- `GET /p/:id/<path>` — public sandboxed preview
 
-### Billing ($20/mo Priority)
-- `POST /api/billing/checkout` — Stripe Checkout
-- `POST /api/billing/portal` — manage/cancel
-- `POST /api/billing/webhook` — Stripe events
-- `GET  /api/billing/status` — plan + renewal
-
-### System
-- `GET /api/status` — High-Usage state, plan, remaining daily quota
-- `GET /api/health`
+### Account
+- Auth: `…/api/auth/:provider/login|callback`, `/api/auth/logout`, email signup/login.
+- `…/api/github/*`, `…/api/agents`, `…/api/secrets`, `…/api/billing/*`, `/api/status`, `/api/health`.
 
 ---
 
@@ -112,82 +121,61 @@ Full reference in [`docs/API.md`](docs/API.md). Summary:
 ```bash
 npm install
 
-# 1. Create Cloudflare resources, paste the IDs into wrangler.toml
-npm run db:create        # -> copy database_id
-npm run kv:create        # -> copy id
+npm run db:create        # -> paste database_id into wrangler.toml
+npm run kv:create        # -> paste id into wrangler.toml
+npm run db:init          # apply schema (or db:init:local)
 
-# 2. Apply the database schema
-npm run db:init          # remote   (or db:init:local for local dev)
-
-# 3. Set secrets (see the table above)
 wrangler secret put NVIDIA_API_KEY
 wrangler secret put SESSION_SECRET
-wrangler secret put GITHUB_CLIENT_ID
-wrangler secret put GITHUB_CLIENT_SECRET
-wrangler secret put GOOGLE_CLIENT_ID
-wrangler secret put GOOGLE_CLIENT_SECRET
-wrangler secret put STRIPE_SECRET_KEY
-wrangler secret put STRIPE_WEBHOOK_SECRET
-# and set STRIPE_PRICE_ID + APP_URL in wrangler.toml [vars]
+# + GitHub/Google/Stripe secrets if you enable those features
 
-# 4. Run locally / deploy
-npm run dev
-npm run deploy
+npm run dev              # local
+npm run deploy           # production
 ```
+
+> **Deploy note:** Yield uses a **Durable Object migration**, which can only be applied by a full
+> `wrangler deploy` — **not** `wrangler versions upload`. If you deploy via the Cloudflare Git
+> integration, set the build's **Deploy command** to `npx wrangler deploy`. See [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 Local dev: copy `.dev.vars.example` → `.dev.vars` and fill it in.
 
-**Hosting by linking GitHub → Cloudflare:** see [`docs/DEPLOY.md`](docs/DEPLOY.md) — connect the
-repo once in the Cloudflare dashboard ("Connect to Git") and every push auto-deploys. An optional
-GitHub Actions workflow is included too.
-
 ---
 
-## 💸 "High Usage Times" — how the cost guard works
+## 💸 "High Usage Times" — the cost guard
 
-The whole point: **Yield stays free** and **you never get a surprise Cloudflare bill.**
-
-- A monthly counter (`usage:month:<YYYY-MM>` in KV) tracks generations.
-- When it exceeds `FREE_REQUEST_BUDGET` (set comfortably under Cloudflare's free allowance),
-  Yield flips to **High Usage Mode**: free + anonymous users are paused until next month;
-  **Priority** users keep going.
-- Manual control any time without a redeploy: set KV key `flag:high_usage` to `on`/`off`,
-  or the `HIGH_USAGE_OVERRIDE` var to `on`/`off`/`auto`.
-- Free users also get a per-day cap (`FREE_DAILY_LIMIT`); anonymous trials get `ANON_DAILY_LIMIT`.
-
-Tune all of these in `wrangler.toml [vars]`.
+**Yield stays free** and **you never get a surprise bill.** A monthly KV counter tracks generations; when it
+exceeds `FREE_REQUEST_BUDGET` (set under your free hosting allowance), free + anonymous users pause until next
+month while **Priority** ($20/mo) keeps going. Manual control without a redeploy: KV key `flag:high_usage`
+(`on`/`off`) or the `HIGH_USAGE_OVERRIDE` var (`on`/`off`/`auto`). Free users also get `FREE_DAILY_LIMIT`;
+anonymous trials get `ANON_DAILY_LIMIT`. Tune in `wrangler.toml [vars]`.
 
 ---
 
 ## 🔐 Auth (toggleable)
 
-Login is built three ways and gated behind one switch — `AUTH_ENABLED` in `wrangler.toml [vars]`:
+Gated behind one switch — `AUTH_ENABLED` in `wrangler.toml [vars]`:
 
-- **`AUTH_ENABLED = "false"` (current — testing mode):** no login required. Everyone acts as a
-  shared **guest**, all limits/gating are off. Perfect for trying things out.
-- **`AUTH_ENABLED = "true"`:** accounts required. Then these turn on automatically:
-  - **Email + password** (`POST /api/auth/email/signup` · `/login`) — works with zero extra setup.
-  - **GitHub / Google OAuth** — *optional*. They're placeholder vars in `wrangler.toml`; the login
-    UI auto-hides each provider until you replace its Client ID + add its secret. `/api/auth/providers`
-    reports what's enabled.
+- **`"false"` (testing mode):** no login required; everyone acts as a shared **guest**, limits off.
+- **`"true"`:** accounts required — email + password (zero extra setup) and optional GitHub/Google OAuth
+  (auto-hidden in the UI until you add each Client ID + secret).
 
-Passwords are hashed with PBKDF2-SHA256 (WebCrypto). Flip the one flag whenever you're ready.
+Passwords are hashed with PBKDF2-SHA256; GitHub tokens are AES-GCM encrypted at rest (key from `SESSION_SECRET`).
 
 ## 🛡️ Safety
 
-- Every prompt → **NeMoGuard JailbreakDetect** (plus a local prefilter). Blocked prompts are
-  flagged in chat and never reach the coder model.
-- Generated apps render inside a **sandboxed iframe** with a strict `sandbox` CSP — untrusted
-  generated code can't touch Yield, your cookies, or your account.
-- GitHub access tokens are **AES-GCM encrypted at rest** (key derived from `SESSION_SECRET`).
+- Every prompt is screened by an automatic jailbreak guard (plus a local prefilter); blocked prompts never reach the coder.
+- Generated apps render in a **sandboxed, opaque-origin iframe** — they can't touch Yield, your cookies, or your account.
+- GitHub tokens and app secrets are **encrypted at rest**.
 
 ## Architecture
 
 ```
-public/        static frontend (landing, builder, dashboard, account, pricing, legal)
-src/index.ts   Worker entry + router
-src/config/    model registry
-src/lib/       nvidia, jailbreak, auth, db (D1), usage gate, billing (Stripe), github
-src/routes/    generate, projects, auth, billing, github, misc
-schema.sql     D1 schema
+public/          static frontend (landing, builder, dashboard, account, pricing, donate, legal)
+src/index.ts     Worker entry + router (exports the BuildSession Durable Object)
+src/durable/     BuildSession — runs each build in the background, survives tab close/refresh
+src/config/      model registry
+src/lib/         nvidia, jailbreak, auth, db (D1), usage gate, billing, github, appdata,
+                 prompts (coder/sub-agent/research/router), platformGuide (/api/docs), promptlog
+src/routes/      generate, projects, agents, secrets, appdata, media, auth, billing, github, misc
+schema.sql       D1 schema
 ```

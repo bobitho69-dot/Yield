@@ -189,9 +189,9 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
             messages.push({ role: 'system', content: `The current project files are:\n\n${dump}` });
           }
         }
-        // Make the user's AI agents available to apps you build.
+        // Make this app's AI agents (+ account-level) available to apps you build.
         if (c.user) {
-          const { results: agents } = await listAgents(c.env, c.user.id);
+          const { results: agents } = await listAgents(c.env, c.user.id, project?.id);
           if (agents.length) {
             const list = agents.map((a) => `- "${a.name}" (id: ${a.id})${a.description ? ` — ${a.description}` : ''}`).join('\n');
             messages.push({

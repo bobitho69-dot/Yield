@@ -173,6 +173,17 @@ a { color: inherit; text-decoration: none; }
 .tab.active { background: var(--panel); color: var(--text); }
 .tab-spacer { flex: 1; }
 .tab-panel { flex: 1; min-height: 0; position: relative; }
+.pane-scroll { position: absolute; inset: 0; overflow-y: auto; padding: 1rem 1.2rem; }
+.pane-scroll h3 { margin: .2rem 0 .2rem; }
+.pane-scroll .sub { color: var(--muted); font-size: .85rem; margin: 0 0 1rem; }
+.pane-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem; margin-bottom: .7rem; }
+.pane-card .row { display: flex; align-items: center; gap: .5rem; }
+.pane-card .row b { flex: 1; }
+.pane-form { display: grid; gap: .5rem; margin-top: .6rem; }
+.pane-form input, .pane-form textarea, .pane-form select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: .5rem .6rem; font-size: .88rem; font-family: inherit; }
+.pane-form input:focus, .pane-form textarea:focus { outline: none; border-color: var(--brand); }
+.endpoint { font-family: ui-monospace, Menlo, monospace; font-size: .72rem; color: var(--muted); }
+.copy { cursor: pointer; color: var(--brand-2); }
 .preview-frame { width: 100%; height: 100%; border: none; background: #fff; }
 .code-wrap { display: grid; grid-template-columns: 180px 1fr; height: 100%; min-height: 0; }
 .file-tree { border-right: 1px solid var(--line); background: var(--bg-2); overflow-y: auto; min-height: 0; }

@@ -12,9 +12,10 @@ import { encryptToken } from '../lib/github';
 export async function handleSecrets(req: Request, c: Ctx, id?: string): Promise<Response> {
   if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
 
+  const project = c.url.searchParams.get('project') || '';
   if (!id) {
     if (req.method === 'GET') {
-      const { results } = await listSecrets(c.env, c.user.id);
+      const { results } = await listSecrets(c.env, c.user.id, project);
       return json({ secrets: results });
     }
     if (req.method === 'POST') {
@@ -23,7 +24,7 @@ export async function handleSecrets(req: Request, c: Ctx, id?: string): Promise<
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return error(400, 'Name must be a valid identifier (letters, digits, underscore).');
       if (!b.value) return error(400, 'value required');
       const enc = await encryptToken(c.env, String(b.value));
-      await upsertSecret(c.env, c.user.id, name, enc);
+      await upsertSecret(c.env, c.user.id, project, name, enc);
       return json({ ok: true });
     }
     return error(405, 'Method not allowed');

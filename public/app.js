@@ -437,6 +437,71 @@ async function deleteActiveFile() {
   if (state.projectId) await fetch(`/api/projects/${state.projectId}/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 }
 
+// ---------- Per-app Agents panel ----------
+async function renderAgentsPane() {
+  const el = $('#agentsPane');
+  if (!state.projectId) { el.innerHTML = '<h3>Agents</h3><p class="sub">Build something first, then add AI agents tailored to this app.</p>'; return; }
+  const models = state.models.filter((m) => m.id !== 'auto');
+  const { agents } = await fetch(`/api/agents?project=${state.projectId}`).then((r) => r.json()).catch(() => ({ agents: [] }));
+  el.innerHTML = `<h3>Agents for this app</h3>
+    <p class="sub">AI helpers powered by your models. This app can call them at <span class="endpoint">/api/agents/&lt;id&gt;/run</span>.</p>
+    <div>${(agents || []).map(agentCard).join('') || '<p class="sub">No agents yet.</p>'}</div>
+    <div class="pane-card"><b>New agent</b>
+      <div class="pane-form">
+        <input id="agName" placeholder="Name (e.g. Recommender)" />
+        <input id="agDesc" placeholder="Description (optional)" />
+        <select id="agModel">${models.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('')}</select>
+        <textarea id="agPrompt" rows="4" placeholder="System prompt — how should it behave?"></textarea>
+        <button class="btn primary sm" id="agCreate" style="justify-self:start">Create agent</button>
+        <div id="agMsg" class="sub"></div>
+      </div></div>`;
+  $('#agCreate').onclick = createProjectAgent;
+  el.querySelectorAll('[data-del-agent]').forEach((b) => (b.onclick = () => delProjectAgent(b.dataset.delAgent)));
+  el.querySelectorAll('.copy').forEach((b) => (b.onclick = () => navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy)));
+}
+function agentCard(a) {
+  return `<div class="pane-card"><div class="row"><b>${esc(a.name)}</b>
+    <span class="tier-badge">${esc(a.model)}</span>
+    <button class="btn ghost sm" data-del-agent="${a.id}">Delete</button></div>
+    <div class="sub" style="margin:.3rem 0 0">${esc(a.description || '')}</div>
+    <div class="endpoint">/api/agents/${a.id}/run <span class="copy" data-copy="/api/agents/${a.id}/run">copy</span></div></div>`;
+}
+async function createProjectAgent() {
+  const body = { name: $('#agName').value.trim(), description: $('#agDesc').value.trim(), model: $('#agModel').value, system_prompt: $('#agPrompt').value.trim() };
+  if (!body.name || !body.system_prompt) { $('#agMsg').textContent = 'Name and system prompt required.'; return; }
+  const r = await fetch(`/api/agents?project=${state.projectId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { $('#agMsg').textContent = d.error || 'Failed'; return; }
+  renderAgentsPane();
+}
+async function delProjectAgent(id) { if (!confirm('Delete agent?')) return; await fetch('/api/agents/' + id, { method: 'DELETE' }); renderAgentsPane(); }
+
+// ---------- Per-app Settings panel ----------
+async function renderSettingsPane() {
+  const el = $('#settingsPane');
+  if (!state.projectId) { el.innerHTML = '<h3>App settings</h3><p class="sub">Build something first to configure this app.</p>'; return; }
+  const { secrets } = await fetch(`/api/secrets?project=${state.projectId}`).then((r) => r.json()).catch(() => ({ secrets: [] }));
+  el.innerHTML = `<h3>App settings</h3><p class="sub">Settings &amp; secrets tailored to this app.</p>
+    <div class="pane-card"><b>Project</b>
+      <div class="pane-form"><input id="setTitle" value="${esc($('#projectTitle').value)}" placeholder="App name" />
+        <button class="btn ghost sm" id="setRename" style="justify-self:start">Rename</button></div>
+      <div class="endpoint" style="margin-top:.5rem">Live URL: /p/${state.projectId}/</div></div>
+    <div class="pane-card"><b>GitHub</b><div class="sub" id="setGh" style="margin-top:.4rem">…</div></div>
+    <div class="pane-card"><b>Secrets (this app)</b>
+      <div class="sub">Encrypted at rest; for this app's agents / server use.</div>
+      <div id="setSecrets" style="margin:.4rem 0">${(secrets || []).map((s) => `<div class="row" style="margin-top:.3rem">🔒 <b>${esc(s.name)}</b><button class="btn ghost sm" data-del-secret="${s.id}">Delete</button></div>`).join('') || '<div class="sub">None yet.</div>'}</div>
+      <div class="pane-form" style="grid-template-columns:1fr 1fr auto"><input id="secName" placeholder="NAME" /><input id="secVal" type="password" placeholder="value" /><button class="btn primary sm" id="secAdd">Save</button></div>
+      <div id="secMsg" class="sub"></div></div>`;
+  $('#setRename').onclick = async () => { const t = $('#setTitle').value.trim(); if (t) { await fetch(`/api/projects/${state.projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: t }) }); $('#projectTitle').value = t; loadProjects(); } };
+  $('#secAdd').onclick = async () => { const name = $('#secName').value.trim(), value = $('#secVal').value; const r = await fetch(`/api/secrets?project=${state.projectId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, value }) }); const d = await r.json(); if (!r.ok) { $('#secMsg').textContent = d.error || 'Failed'; return; } renderSettingsPane(); };
+  el.querySelectorAll('[data-del-secret]').forEach((b) => (b.onclick = async () => { await fetch('/api/secrets/' + b.dataset.delSecret, { method: 'DELETE' }); renderSettingsPane(); }));
+  const gh = await fetch('/api/github/status').then((r) => r.json()).catch(() => ({ connected: false }));
+  $('#setGh').innerHTML = gh.connected
+    ? `Connected as @${esc(gh.login)}. ${state.githubRepo ? `Repo: <a href="${state.githubUrl}" target="_blank" style="color:var(--brand-2)">${esc(state.githubRepo)}</a>` : '<button class="btn ghost sm" id="setGhPush">Save this app to a repo</button>'}`
+    : `<a class="btn primary sm" href="${ghRedirect()}">Connect GitHub</a>`;
+  const gp = $('#setGhPush'); if (gp) gp.onclick = openGithubDialog;
+}
+
 // ---------- GitHub code storage ----------
 function ghRedirect() {
   const back = state.projectId ? `/app?project=${state.projectId}` : '/app';
@@ -592,11 +657,11 @@ function wireEvents() {
       await fetch(`/api/projects/${state.projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: $('#projectTitle').value }) });
   });
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
-    t.classList.add('active');
+    document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
     const tab = t.dataset.tab;
-    $('#previewTab').classList.toggle('hidden', tab !== 'preview');
-    $('#codeTab').classList.toggle('hidden', tab !== 'code');
+    ['preview', 'code', 'agents', 'settings'].forEach((n) => $('#' + n + 'Tab').classList.toggle('hidden', tab !== n));
+    if (tab === 'agents') renderAgentsPane();
+    if (tab === 'settings') renderSettingsPane();
   }));
 }
 

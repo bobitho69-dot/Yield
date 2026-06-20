@@ -83,6 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_created ON usage_events(created_at);
 CREATE TABLE IF NOT EXISTS agents (
   id            TEXT PRIMARY KEY,
   user_id       TEXT NOT NULL,
+  project_id    TEXT NOT NULL DEFAULT '',         -- '' = account-level, else per-app
   name          TEXT NOT NULL,
   description   TEXT,
   system_prompt TEXT NOT NULL,
@@ -92,14 +93,16 @@ CREATE TABLE IF NOT EXISTS agents (
   updated_at    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_agents_user ON agents(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agents_project ON agents(project_id);
 
--- ── Secrets (user config; values AES-GCM encrypted at rest) ───────────────────
+-- ── Secrets (config; values AES-GCM encrypted at rest; per-app or account) ────
 CREATE TABLE IF NOT EXISTS secrets (
   id          TEXT PRIMARY KEY,
   user_id     TEXT NOT NULL,
+  project_id  TEXT NOT NULL DEFAULT '',           -- '' = account-level, else per-app
   name        TEXT NOT NULL,
   value_enc   TEXT NOT NULL,
   created_at  INTEGER NOT NULL,
-  UNIQUE (user_id, name)
+  UNIQUE (user_id, project_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_secrets_user ON secrets(user_id);

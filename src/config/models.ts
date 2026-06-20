@@ -53,7 +53,8 @@ export const CODER_MODELS: ModelDef[] = [
   {
     id: 'kimi-k2.6',
     label: 'Kimi K2.6',
-    modelId: 'moonshotai/kimi-k2-instruct',
+    modelId: 'moonshotai/kimi-k2-thinking',
+    keyName: 'moonshotai/kimi-k2-instruct',
     role: 'coder',
     tier: 'pro',
     speed: 2,
@@ -103,7 +104,8 @@ export const CODER_MODELS: ModelDef[] = [
   {
     id: 'deepseek-v4-pro',
     label: 'DeepSeek V4 Pro',
-    modelId: 'deepseek-ai/deepseek-v4',
+    modelId: 'deepseek-ai/deepseek-v4-pro',
+    keyName: 'deepseek-ai/deepseek-v4',
     role: 'coder',
     tier: 'pro',
     speed: 2,
@@ -115,7 +117,8 @@ export const CODER_MODELS: ModelDef[] = [
   {
     id: 'glm-5.1',
     label: 'GLM 5.1',
-    modelId: 'zai/glm-5.1',
+    modelId: 'z-ai/glm5.1',
+    keyName: 'zai/glm-5.1',
     role: 'coder',
     tier: 'standard',
     speed: 3,

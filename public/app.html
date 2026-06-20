@@ -66,6 +66,8 @@
       <div class="tabs">
         <button class="tab active" data-tab="preview">Preview</button>
         <button class="tab" data-tab="code">Code</button>
+        <button class="tab" data-tab="agents">Agents</button>
+        <button class="tab" data-tab="settings">Settings</button>
         <div class="tab-spacer"></div>
         <button id="refreshBtn" class="btn ghost sm">↻ Refresh</button>
         <button id="openBtn" class="btn ghost sm">↗ Open</button>
@@ -75,6 +77,8 @@
           sandbox="allow-scripts allow-forms allow-modals allow-popups"
           title="App preview"></iframe>
       </div>
+      <div id="agentsTab" class="tab-panel hidden"><div class="pane-scroll" id="agentsPane"></div></div>
+      <div id="settingsTab" class="tab-panel hidden"><div class="pane-scroll" id="settingsPane"></div></div>
       <div id="codeTab" class="tab-panel hidden">
         <div class="code-wrap">
           <aside class="file-tree">

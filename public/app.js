@@ -127,7 +127,7 @@ async function openProject(id) {
   await loadFiles();
   refreshPreview();
   loadProjects();
-  if (building) startBuildWatch();
+  if (building) resumeBuild();
 }
 
 // If a build is still running server-side (e.g. you closed the tab mid-build),
@@ -302,7 +302,35 @@ function addBubble(cls, html) {
 async function streamPrompt(prompt, opts = {}) {
   state.streaming = true;
   addBubble('user', opts.label ? `<span class="muted">${esc(opts.label)}</span>` : esc(prompt));
-  const aiBubble = addBubble('ai streaming', '<div class="meta">thinking…</div><div class="body"><span class="dots">▌</span></div>');
+  try {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId }),
+    });
+    if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) {
+      const err = await res.json().catch(() => ({}));
+      const b = addBubble('ai', '');
+      b.innerHTML = `<div class="meta">error</div><div class="body">${esc(err.error || `Request failed (${res.status})`)}</div>`;
+      return false;
+    }
+    return await consumeStream(res, opts);
+  } catch (e) {
+    const b = addBubble('ai', '');
+    b.innerHTML = `<div class="meta">error</div><div class="body">${esc(String(e))}</div>`;
+    return false;
+  } finally {
+    state.streaming = false;
+  }
+}
+
+// Consume a build's SSE stream into a fresh AI bubble. Works for both a live POST
+// to /api/generate and a reconnect GET to /api/projects/:id/stream (the Durable
+// Object replays everything that happened, then streams live). Returns hasFiles.
+async function consumeStream(res, opts = {}) {
+  const aiBubble = addBubble('ai streaming',
+    (opts.resume ? '<div class="meta">↻ reconnected to your build…</div>' : '<div class="meta">thinking…</div>') +
+    '<div class="body"><span class="dots">▌</span></div>');
   const setMeta = (t) => { const el = aiBubble.querySelector('.meta'); if (el) el.textContent = t; };
   const setBody = (html) => { const el = aiBubble.querySelector('.body'); if (el) el.innerHTML = html; };
   let thinkAcc = '';
@@ -318,22 +346,10 @@ async function streamPrompt(prompt, opts = {}) {
   };
 
   let chatAcc = '';
-  let finished = false; // got a terminal event (done/error/blocked/gate)
+  let finished = false; // got a terminal event (done/error/blocked/gate/end)
   let hasFiles = false;
 
   try {
-    const res = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId }),
-    });
-
-    if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) {
-      const err = await res.json().catch(() => ({}));
-      setMeta('error'); setBody(esc(err.error || `Request failed (${res.status})`));
-      return;
-    }
-
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buf = '';
     for (;;) {
@@ -346,6 +362,7 @@ async function streamPrompt(prompt, opts = {}) {
         const ev = /event: (.*)/.exec(frame)?.[1];
         const data = /data: ([\s\S]*)/.exec(frame)?.[1];
         if (!ev || data == null) continue;
+        if (ev === 'end') { finished = true; continue; } // Durable Object: build is over
         let payload; try { payload = JSON.parse(data); } catch { continue; }
 
         if (ev === 'thinking') {
@@ -398,17 +415,30 @@ async function streamPrompt(prompt, opts = {}) {
         }
       }
     }
-
-    if (!finished && !chatAcc) setBody(esc('No response — try again.'));
-    aiBubble.classList.remove('streaming');
-    loadStatus();
-    if (state.user) loadProjects();
   } catch (e) {
-    setMeta('error'); setBody(esc(String(e)));
-  } finally {
-    state.streaming = false;
+    // Stream interrupted (network/refresh). The build keeps running server-side.
+    if (!finished) setMeta('connection lost — build continues in the background');
   }
+
+  if (!finished && !chatAcc) setBody(esc(opts.resume ? 'Loaded the latest saved version.' : 'No response — try again.'));
+  aiBubble.classList.remove('streaming');
+  loadStatus();
+  if (state.user) loadProjects();
   return hasFiles;
+}
+
+// Reconnect a refreshed/reopened tab to an in-progress build (Durable Object).
+// Falls back to polling if the live stream isn't available.
+async function resumeBuild() {
+  if (!state.projectId) return;
+  try {
+    const res = await fetch(`/api/projects/${state.projectId}/stream`);
+    if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) return startBuildWatch();
+    await consumeStream(res, { resume: true });
+    await loadFiles(); refreshPreview();
+  } catch {
+    startBuildWatch();
+  }
 }
 
 // ---------- Orchestration: lock while working + queue + auto bug-fix ----------

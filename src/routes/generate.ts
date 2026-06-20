@@ -18,7 +18,7 @@ import {
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
 
-interface GenBody {
+export interface GenBody {
   prompt: string;
   model?: string;
   projectId?: string;
@@ -222,167 +222,205 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>)
   };
 }
 
+export type SendFn = (event: string, data: unknown) => Promise<void>;
+
+// The full build pipeline: jailbreak guard -> usage gate -> model route -> stream
+// -> parse files/agents/secrets -> persist (D1 + GitHub) -> 'done'. It streams SSE
+// events via `send` and calls `heartbeat` periodically (to keep a "building" flag
+// fresh). It has no dependency on the HTTP request lifetime, so it can run inside a
+// Durable Object (survives tab close/refresh) or inline (best-effort) as a fallback.
+export async function runBuild(
+  c: Ctx,
+  body: GenBody,
+  send: SendFn,
+  heartbeat: () => Promise<void> = async () => {},
+): Promise<void> {
+  const prompt = (body.prompt || '').trim();
+  try {
+    await send('status', { stage: 'Screening prompt' });
+    await heartbeat();
+
+    // 1) Jailbreak guard.
+    const guard = await checkPrompt(c.env, prompt);
+    if (guard.blocked) {
+      if (body.projectId) await addMessage(c.env, { project_id: body.projectId, role: 'user', content: prompt, flagged: true });
+      await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'blocked' });
+      await send('blocked', { message: 'This prompt was blocked by the safety guard.', detail: guard.reason });
+      return;
+    }
+
+    // 2) Usage gate.
+    const gate = await gateGeneration(c);
+    if (!gate.allowed) {
+      await send('gate', { message: gate.reason || 'Not allowed right now.', code: gate.code });
+      return;
+    }
+
+    // 3) Resolve model (Auto -> route via gpt-oss-20b).
+    let modelId = body.model || 'auto';
+    let routeReason: string | undefined;
+    if (modelId === 'auto') {
+      await send('status', { stage: 'Picking the best model' });
+      const choice = await routeModel(c, prompt);
+      modelId = choice.id;
+      routeReason = choice.reason;
+    }
+    const model = resolveModel(modelId);
+
+    // 4) Project (normally pre-created by the caller; resolve it here).
+    let project = body.projectId ? await getProject(c.env, body.projectId) : null;
+    if (project && c.user && project.user_id !== c.user.id) {
+      await send('error', { message: 'Not your project.' });
+      return;
+    }
+    if (!project && c.user) project = await createProject(c.env, c.user.id, prompt.slice(0, 60));
+    await heartbeat();
+
+    await send('meta', { model: model.id, label: model.label, projectId: project?.id ?? null, routeReason });
+
+    // 5) Build the message list: system + current app + recent history + new turn.
+    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+      { role: 'system', content: CONVO_SYSTEM },
+    ];
+    if (project) {
+      const curFiles = await getProjectFiles(c.env, project);
+      if (curFiles.length) {
+        const dump = curFiles.map((f) => `=== file: ${f.path} ===\n${f.content}`).join('\n\n');
+        messages.push({ role: 'system', content: `The current project files are:\n\n${dump}` });
+      }
+    }
+    // Make this app's AI agents (+ account-level) available to apps you build.
+    if (c.user) {
+      const { results: agents } = await listAgents(c.env, c.user.id, project?.id);
+      if (agents.length) {
+        const list = agents.map((a) => `- "${a.name}" (id: ${a.id})${a.description ? ` — ${a.description}` : ''}`).join('\n');
+        messages.push({
+          role: 'system',
+          content:
+            `The user has these AI agents. To use one from the app, POST JSON {"input":"..."} to ` +
+            `https://<this-origin>/api/agents/<id>/run and read the JSON {"output":"..."} reply (CORS is enabled, no auth needed for public agents). ` +
+            `Use the app's own origin. When an app would benefit from AI (chatbot, generator, classifier, assistant), wire it to the right agent.\n\nAgents:\n${list}`,
+        });
+      }
+    }
+    if (project) {
+      const { results } = await listMessages(c.env, project.id);
+      for (const m of results.slice(-12)) {
+        if (m.flagged) continue;
+        if (m.role === 'user') messages.push({ role: 'user', content: m.content });
+        else if (m.role === 'assistant' && m.content) messages.push({ role: 'assistant', content: m.content });
+      }
+    }
+    messages.push({ role: 'user', content: prompt });
+
+    // 6) Stream: separate chat from multi-file output. Retry once with a safe
+    //    model if the chosen one errors before producing anything.
+    const streamer = makeFileStreamer(send);
+    const streamWith = async (mdef: typeof model) => {
+      const ep = endpointFor(c.env, mdef);
+      await chatStream(
+        { baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages, max_tokens: 32768, timeoutMs: 180000 },
+        async (delta) => { await streamer.feed(delta); await heartbeat(); },
+        async (r) => { await send('thinking', r); await heartbeat(); },
+      );
+    };
+    let activeModel = model;
+    try {
+      await streamWith(model);
+    } catch (e) {
+      if (streamer.produced) throw e; // already streaming — don't double up
+      const fb = resolveModel('deepseek-v4-flash');
+      if (fb.id === model.id) throw e;
+      activeModel = fb;
+      await send('status', { stage: `Switching to ${fb.label}` });
+      await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'stable model' });
+      await streamWith(fb);
+    }
+    await streamer.end();
+
+    const { chat: chatBody, files, hasFiles, agents: agentReqs, secrets: secretReqs } = streamer.result();
+    const chatText = chatBody || (hasFiles ? 'Updated your app.' : 'Done.');
+
+    // 7) Create/update AI-declared agents (project-scoped) and resolve secret needs.
+    const createdAgents: Record<string, string> = {};
+    let secretsNeeded: typeof secretReqs = [];
+    if (project && c.user) {
+      if (agentReqs.length) {
+        const { results: existing } = await listAgents(c.env, c.user.id, project.id);
+        for (const a of agentReqs) {
+          const mdl = CODER_MODELS.some((m) => m.id === a.model) ? a.model! : 'glm-5.1';
+          const found = existing.find((e) => e.name === a.name && e.project_id === project!.id);
+          if (found) { await updateAgent(c.env, found.id, { system_prompt: a.system_prompt, model: mdl }); createdAgents[a.name] = found.id; }
+          else { const ag = await createAgent(c.env, c.user.id, { name: a.name, system_prompt: a.system_prompt, model: mdl, is_public: true, project_id: project.id }); createdAgents[a.name] = ag.id; }
+        }
+      }
+      if (secretReqs.length) {
+        const { results: have } = await getSecretRows(c.env, c.user.id, project.id);
+        const haveNames = new Set(have.map((r) => r.name));
+        secretsNeeded = secretReqs.filter((s) => !haveNames.has(s.name));
+      }
+    }
+
+    // Persist files BEFORE 'done' so the preview can fetch them immediately.
+    if (project && c.user && hasFiles) await saveFiles(c.env, project.id, files, activeModel.id);
+
+    await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents });
+
+    if (project && c.user) {
+      await addMessage(c.env, { project_id: project.id, role: 'user', content: prompt });
+      await addMessage(c.env, { project_id: project.id, role: 'assistant', content: chatText, model: activeModel.id });
+      if (hasFiles) await syncProjectToGithub(c, project, files);
+    }
+    await recordGeneration(c);
+    await logUsage(c.env, { user_id: c.user?.id ?? null, kind: hasFiles ? 'generate' : 'chat', model: activeModel.id, high_usage: gate.usage.highUsage });
+  } catch (e: any) {
+    await send('error', { message: String(e?.message || e).slice(0, 400) });
+  }
+}
+
 export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
   const body = (await req.json().catch(() => ({}))) as GenBody;
   const prompt = (body.prompt || '').trim();
   if (!prompt) return error(400, 'prompt required');
   if (prompt.length > 12000) return error(413, 'prompt too long');
 
-  // Return the stream immediately; do ALL work inside it so nothing freezes the UI.
-  // The work runs in waitUntil, so it finishes + saves even if the tab is closed.
+  // Pre-create the project (when signed-in/guest) so the build can be keyed to a
+  // stable Durable Object and its result persists across a tab close/refresh.
+  let project = body.projectId ? await getProject(c.env, body.projectId) : null;
+  if (project && c.user && project.user_id !== c.user.id) return error(403, 'Not your project');
+  if (!project && c.user) project = await createProject(c.env, c.user.id, prompt.slice(0, 60));
+  const startBody: GenBody = { prompt, model: body.model, projectId: project?.id };
+
+  // Preferred: run the build inside a Durable Object. The DO's lifetime is
+  // independent of this HTTP request, so the build keeps running and SAVES even if
+  // the browser tab is refreshed or closed. The response is the DO's live stream.
+  if (project && c.env.BUILDER) {
+    try {
+      const stub = c.env.BUILDER.get(c.env.BUILDER.idFromName(project.id));
+      return await stub.fetch('https://build.yield/run', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ body: startBody, user: c.user, deviceId: c.deviceId }),
+      });
+    } catch {
+      /* fall through to inline streaming */
+    }
+  }
+
+  // Fallback: inline streaming via waitUntil (best-effort durability).
   const { response, send, close } = sse();
-  let buildKey: string | null = null;
+  const flagKey = project ? `build:${project.id}` : null;
   let lastBeat = 0;
-  // Heartbeat: refresh the short-lived build flag while work is actively happening,
-  // so a crashed/evicted build's flag self-expires within ~60s (no stuck "building").
-  const beat = async () => {
+  const heartbeat = async () => {
     const t = Date.now();
-    if (buildKey && t - lastBeat > 15000) { lastBeat = t; await c.env.KV.put(buildKey, String(t), { expirationTtl: 60 }).catch(() => {}); }
+    if (flagKey && t - lastBeat > 15000) { lastBeat = t; await c.env.KV.put(flagKey, String(t), { expirationTtl: 60 }).catch(() => {}); }
   };
   c.ctx.waitUntil(
     (async () => {
-      try {
-        await send('status', { stage: 'Screening prompt' });
-
-        // 1) Jailbreak guard.
-        const guard = await checkPrompt(c.env, prompt);
-        if (guard.blocked) {
-          if (body.projectId) await addMessage(c.env, { project_id: body.projectId, role: 'user', content: prompt, flagged: true });
-          await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'blocked' });
-          await send('blocked', { message: 'This prompt was blocked by the safety guard.', detail: guard.reason });
-          return;
-        }
-
-        // 2) Usage gate.
-        const gate = await gateGeneration(c);
-        if (!gate.allowed) {
-          await send('gate', { message: gate.reason || 'Not allowed right now.', code: gate.code });
-          return;
-        }
-
-        // 3) Resolve model (Auto -> route via gpt-oss-20b).
-        let modelId = body.model || 'auto';
-        let routeReason: string | undefined;
-        if (modelId === 'auto') {
-          await send('status', { stage: 'Picking the best model' });
-          const choice = await routeModel(c, prompt);
-          modelId = choice.id;
-          routeReason = choice.reason;
-        }
-        const model = resolveModel(modelId);
-
-        // 4) Project (signed-in / guest users get persistence).
-        let project = body.projectId ? await getProject(c.env, body.projectId) : null;
-        if (project && c.user && project.user_id !== c.user.id) {
-          await send('error', { message: 'Not your project.' });
-          return;
-        }
-        if (!project && c.user) project = await createProject(c.env, c.user.id, prompt.slice(0, 60));
-
-        // Mark this app as "building" so a reopened tab knows work is in progress.
-        if (project) { buildKey = `build:${project.id}`; lastBeat = Date.now(); await c.env.KV.put(buildKey, String(lastBeat), { expirationTtl: 60 }).catch(() => {}); }
-
-        await send('meta', { model: model.id, label: model.label, projectId: project?.id ?? null, routeReason });
-
-        // 5) Build the message list: system + current app + recent history + new turn.
-        const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
-          { role: 'system', content: CONVO_SYSTEM },
-        ];
-        if (project) {
-          const curFiles = await getProjectFiles(c.env, project);
-          if (curFiles.length) {
-            const dump = curFiles.map((f) => `=== file: ${f.path} ===\n${f.content}`).join('\n\n');
-            messages.push({ role: 'system', content: `The current project files are:\n\n${dump}` });
-          }
-        }
-        // Make this app's AI agents (+ account-level) available to apps you build.
-        if (c.user) {
-          const { results: agents } = await listAgents(c.env, c.user.id, project?.id);
-          if (agents.length) {
-            const list = agents.map((a) => `- "${a.name}" (id: ${a.id})${a.description ? ` — ${a.description}` : ''}`).join('\n');
-            messages.push({
-              role: 'system',
-              content:
-                `The user has these AI agents. To use one from the app, POST JSON {"input":"..."} to ` +
-                `https://<this-origin>/api/agents/<id>/run and read the JSON {"output":"..."} reply (CORS is enabled, no auth needed for public agents). ` +
-                `Use the app's own origin. When an app would benefit from AI (chatbot, generator, classifier, assistant), wire it to the right agent.\n\nAgents:\n${list}`,
-            });
-          }
-        }
-        if (project) {
-          const { results } = await listMessages(c.env, project.id);
-          for (const m of results.slice(-12)) {
-            if (m.flagged) continue;
-            if (m.role === 'user') messages.push({ role: 'user', content: m.content });
-            else if (m.role === 'assistant' && m.content) messages.push({ role: 'assistant', content: m.content });
-          }
-        }
-        messages.push({ role: 'user', content: prompt });
-
-        // 6) Stream: separate chat from multi-file output. Retry once with a safe
-        //    model if the chosen one errors before producing anything.
-        const streamer = makeFileStreamer(send);
-        const streamWith = async (mdef: typeof model) => {
-          const ep = endpointFor(c.env, mdef);
-          await chatStream(
-            { baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages, max_tokens: 32768, timeoutMs: 180000 },
-            async (delta) => { await streamer.feed(delta); await beat(); },
-            async (r) => { await send('thinking', r); await beat(); },
-          );
-        };
-        let activeModel = model;
-        try {
-          await streamWith(model);
-        } catch (e) {
-          if (streamer.produced) throw e; // already streaming — don't double up
-          const fb = resolveModel('deepseek-v4-flash');
-          if (fb.id === model.id) throw e;
-          activeModel = fb;
-          await send('status', { stage: `Switching to ${fb.label}` });
-          await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'stable model' });
-          await streamWith(fb);
-        }
-        await streamer.end();
-
-        const { chat: chatBody, files, hasFiles, agents: agentReqs, secrets: secretReqs } = streamer.result();
-        const chatText = chatBody || (hasFiles ? 'Updated your app.' : 'Done.');
-
-        // 7) Create/update AI-declared agents (project-scoped) and resolve secret needs.
-        const createdAgents: Record<string, string> = {};
-        let secretsNeeded: typeof secretReqs = [];
-        if (project && c.user) {
-          if (agentReqs.length) {
-            const { results: existing } = await listAgents(c.env, c.user.id, project.id);
-            for (const a of agentReqs) {
-              const model = CODER_MODELS.some((m) => m.id === a.model) ? a.model! : 'glm-5.1';
-              const found = existing.find((e) => e.name === a.name && e.project_id === project.id);
-              if (found) { await updateAgent(c.env, found.id, { system_prompt: a.system_prompt, model }); createdAgents[a.name] = found.id; }
-              else { const ag = await createAgent(c.env, c.user.id, { name: a.name, system_prompt: a.system_prompt, model, is_public: true, project_id: project.id }); createdAgents[a.name] = ag.id; }
-            }
-          }
-          if (secretReqs.length) {
-            const { results: have } = await getSecretRows(c.env, c.user.id, project.id);
-            const haveNames = new Set(have.map((r) => r.name));
-            secretsNeeded = secretReqs.filter((s) => !haveNames.has(s.name));
-          }
-        }
-
-        // Persist files BEFORE 'done' so the preview can fetch them immediately.
-        if (project && c.user && hasFiles) await saveFiles(c.env, project.id, files, activeModel.id);
-
-        await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents });
-
-        if (project && c.user) {
-          await addMessage(c.env, { project_id: project.id, role: 'user', content: prompt });
-          await addMessage(c.env, { project_id: project.id, role: 'assistant', content: chatText, model: activeModel.id });
-          if (hasFiles) await syncProjectToGithub(c, project, files);
-        }
-        await recordGeneration(c);
-        await logUsage(c.env, { user_id: c.user?.id ?? null, kind: hasFiles ? 'generate' : 'chat', model: activeModel.id, high_usage: gate.usage.highUsage });
-      } catch (e: any) {
-        await send('error', { message: String(e?.message || e).slice(0, 400) });
-      } finally {
-        if (buildKey) await c.env.KV.delete(buildKey).catch(() => {});
+      if (flagKey) { lastBeat = Date.now(); await c.env.KV.put(flagKey, String(lastBeat), { expirationTtl: 60 }).catch(() => {}); }
+      try { await runBuild(c, startBody, send, heartbeat); }
+      finally {
+        if (flagKey) await c.env.KV.delete(flagKey).catch(() => {});
         await close();
       }
     })(),

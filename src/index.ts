@@ -4,7 +4,7 @@
 import type { Ctx, Env } from './types';
 import { error, json } from './lib/response';
 import { getOrCreateDeviceId, readSession } from './lib/auth';
-import { ensureGuestUser } from './lib/db';
+import { ensureGuestUser, getProject } from './lib/db';
 import { handleGenerate, handleRoute } from './routes/generate';
 import { handleProjects, serveProjectFile } from './routes/projects';
 import { handleAuth } from './routes/authRoutes';
@@ -15,6 +15,9 @@ import { handleAgents } from './routes/agents';
 import { handleSecrets } from './routes/secrets';
 import { handleAppData } from './routes/appdata';
 import { handleMedia } from './routes/media';
+
+// Durable Object that runs builds independently of the browser tab (survives refresh).
+export { BuildSession } from './durable/buildSession';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -58,6 +61,8 @@ export default {
           res = await handleProjectGithub(request, c, id);
         } else if (id && sub === 'versions') {
           res = await handleVersions(request, c, id);
+        } else if (id && sub === 'stream' && request.method === 'GET') {
+          res = await handleBuildStream(c, id);
         } else {
           res = await handleProjects(request, c, id || undefined, sub || undefined);
         }
@@ -103,6 +108,17 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+// Reconnect a tab to an in-progress build's live event stream (Durable Object).
+// Lets a refreshed/reopened tab resume watching the build it left.
+async function handleBuildStream(c: Ctx, id: string): Promise<Response> {
+  if (!c.env.BUILDER) return error(503, 'Builds stream unavailable');
+  const project = await getProject(c.env, id);
+  if (!project) return error(404, 'Project not found');
+  if (c.user && project.user_id !== c.user.id) return error(403, 'Not your project');
+  const stub = c.env.BUILDER.get(c.env.BUILDER.idFromName(id));
+  return stub.fetch('https://build.yield/attach');
+}
 
 // Clean URLs -> static files in ./public via the ASSETS binding.
 async function serveStatic(request: Request, env: Env, path: string): Promise<Response> {

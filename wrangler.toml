@@ -36,6 +36,18 @@ database_id = "ff477f86-f456-45e5-be97-e64a1adbb64c"
 binding = "KV"
 id = "22565cb87f544eb9aede82692e0681a9"
 
+# --- Durable Object: runs app builds independently of the browser tab ----------
+# A build runs inside a BuildSession DO, so it keeps going (and saves to D1 +
+# GitHub) even if the user refreshes or closes the tab. Free on the Workers Free
+# plan (SQLite-backed DOs). Reopened tabs re-attach to the live build stream.
+[[durable_objects.bindings]]
+name = "BUILDER"
+class_name = "BuildSession"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BuildSession"]
+
 # --- Non-secret vars (override per environment) --------------------------------
 [vars]
 APP_NAME = "Yield"

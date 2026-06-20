@@ -6,6 +6,9 @@ export interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   KV: KVNamespace;
+  // Durable Object that runs app builds independently of any browser tab, so a
+  // build keeps running (and saves) even if the user refreshes or closes the page.
+  BUILDER: DurableObjectNamespace;
 
   // Vars
   APP_NAME: string;

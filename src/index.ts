@@ -6,7 +6,7 @@ import { error, json } from './lib/response';
 import { getOrCreateDeviceId, readSession } from './lib/auth';
 import { ensureGuestUser } from './lib/db';
 import { handleGenerate, handleRoute } from './routes/generate';
-import { handleProjects } from './routes/projects';
+import { handleProjects, serveProjectFile } from './routes/projects';
 import { handleAuth } from './routes/authRoutes';
 import { handleBilling } from './routes/billingRoutes';
 import { handleModels, handleStatus, handleHealth } from './routes/misc';
@@ -70,10 +70,13 @@ export default {
       } else if (path.startsWith('/api/')) {
         res = error(404, 'Unknown endpoint');
       } else {
-        // Public project preview shortcut: /p/:id
+        // Public project preview file serving: /p/:id/<path>
         if (path.startsWith('/p/')) {
-          const id = path.slice(3);
-          res = await handleProjects(request, c, id, 'preview');
+          const rest = path.slice(3);
+          const slash = rest.indexOf('/');
+          const pid = slash === -1 ? rest : rest.slice(0, slash);
+          const fpath = slash === -1 ? '' : rest.slice(slash + 1);
+          res = await serveProjectFile(c, pid, fpath);
         } else {
           res = await serveStatic(request, env, path);
         }

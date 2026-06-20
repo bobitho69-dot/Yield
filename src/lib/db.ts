@@ -190,6 +190,55 @@ export async function deleteProject(env: Env, id: string): Promise<void> {
   await env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(id).run();
 }
 
+// --- Files (multi-file projects) ----------------------------------------------
+export interface FileRow {
+  path: string;
+  content: string;
+}
+
+export async function listFiles(env: Env, projectId: string): Promise<FileRow[]> {
+  const { results } = await env.DB.prepare('SELECT path, content FROM files WHERE project_id=? ORDER BY path')
+    .bind(projectId)
+    .all<FileRow>();
+  return results;
+}
+
+// Files for a project, falling back to legacy single-file `code` as index.html.
+export async function getProjectFiles(env: Env, project: ProjectRow): Promise<FileRow[]> {
+  const files = await listFiles(env, project.id);
+  if (files.length) return files;
+  if (project.code && project.code.trim()) return [{ path: 'index.html', content: project.code }];
+  return [];
+}
+
+export function getFileRow(env: Env, projectId: string, path: string): Promise<FileRow | null> {
+  return env.DB.prepare('SELECT path, content FROM files WHERE project_id=? AND path=?')
+    .bind(projectId, path)
+    .first<FileRow>();
+}
+
+export async function upsertFile(env: Env, projectId: string, path: string, content: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO files (id,project_id,path,content,updated_at) VALUES (?,?,?,?,?)
+     ON CONFLICT(project_id,path) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at`,
+  )
+    .bind(newId(), projectId, path, content, now())
+    .run();
+}
+
+export async function deleteFileRow(env: Env, projectId: string, path: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM files WHERE project_id=? AND path=?').bind(projectId, path).run();
+}
+
+// Save a set of files, and mirror index.html into projects.code for legacy/preview.
+export async function saveFiles(env: Env, projectId: string, files: FileRow[], model: string | null): Promise<void> {
+  for (const f of files) await upsertFile(env, projectId, f.path, f.content);
+  const index = files.find((f) => f.path === 'index.html');
+  await env.DB.prepare('UPDATE projects SET code=COALESCE(?,code), model=COALESCE(?,model), updated_at=? WHERE id=?')
+    .bind(index ? index.content : null, model, now(), projectId)
+    .run();
+}
+
 // --- Messages -----------------------------------------------------------------
 export async function addMessage(
   env: Env,

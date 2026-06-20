@@ -75,11 +75,21 @@
           title="App preview"></iframe>
       </div>
       <div id="codeTab" class="tab-panel hidden">
-        <textarea id="codeEditor" class="code-editor" spellcheck="false"
-          placeholder="Generated HTML appears here. Edit it and click Apply."></textarea>
-        <div class="code-actions">
-          <button id="applyCode" class="btn primary sm">Apply changes</button>
-          <span id="saveState" class="save-state"></span>
+        <div class="code-wrap">
+          <aside class="file-tree">
+            <div class="file-tree-head"><span>Files</span><button id="newFileBtn" class="mini" title="New file">＋</button></div>
+            <ul id="fileList"></ul>
+          </aside>
+          <div class="editor-col">
+            <textarea id="codeEditor" class="code-editor" spellcheck="false" placeholder="Select a file to edit…"></textarea>
+            <div class="code-actions">
+              <span id="activePath" class="muted"></span>
+              <div class="tab-spacer"></div>
+              <button id="deleteFileBtn" class="btn ghost sm">Delete</button>
+              <button id="applyCode" class="btn primary sm">Save file</button>
+              <span id="saveState" class="save-state"></span>
+            </div>
+          </div>
         </div>
       </div>
     </section>

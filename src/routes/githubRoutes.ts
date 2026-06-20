@@ -8,8 +8,11 @@
 
 import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
-import { getGithubAuth, getProject, setProjectGithub, markGithubSynced, clearProjectGithub, type ProjectRow } from '../lib/db';
-import { decryptToken, createRepo, listRepos, pushAppCode, slugify } from '../lib/github';
+import {
+  getGithubAuth, getProject, getProjectFiles, setProjectGithub, markGithubSynced, clearProjectGithub,
+  type ProjectRow, type FileRow,
+} from '../lib/db';
+import { decryptToken, createRepo, listRepos, pushFiles, slugify } from '../lib/github';
 
 export async function handleGithubStatus(c: Ctx): Promise<Response> {
   if (!c.user) return json({ connected: false });
@@ -40,11 +43,12 @@ export async function handleProjectGithub(req: Request, c: Ctx, projectId: strin
   const action = body.action || 'push';
 
   try {
+    const files = await getProjectFiles(c.env, project);
     if (action === 'create') {
       const name = slugify(body.name || project.title);
       const repo = await createRepo(token, name, body.private ?? false, `${project.title} — built with Yield`);
       await setProjectGithub(c.env, project.id, repo.full_name, repo.html_url, repo.default_branch);
-      await pushAppCode(token, repo.full_name, repo.default_branch, project.title, project.code);
+      await pushFiles(token, repo.full_name, repo.default_branch, project.title, files);
       await markGithubSynced(c.env, project.id);
       return json({ ok: true, github_repo: repo.full_name, github_url: repo.html_url });
     }
@@ -54,14 +58,14 @@ export async function handleProjectGithub(req: Request, c: Ctx, projectId: strin
       const branch = body.branch || 'main';
       const url = `https://github.com/${body.repo}`;
       await setProjectGithub(c.env, project.id, body.repo, url, branch);
-      await pushAppCode(token, body.repo, branch, project.title, project.code);
+      await pushFiles(token, body.repo, branch, project.title, files);
       await markGithubSynced(c.env, project.id);
       return json({ ok: true, github_repo: body.repo, github_url: url });
     }
 
     if (action === 'push') {
       if (!project.github_repo) return error(400, 'Project is not linked to a repo.');
-      await pushAppCode(token, project.github_repo, project.github_branch || 'main', project.title, project.code);
+      await pushFiles(token, project.github_repo, project.github_branch || 'main', project.title, files);
       await markGithubSynced(c.env, project.id);
       return json({ ok: true, github_url: project.github_url });
     }
@@ -78,13 +82,13 @@ export async function handleProjectGithub(req: Request, c: Ctx, projectId: strin
 }
 
 /** Best-effort auto-push after a generation or manual save. Never throws. */
-export async function syncProjectToGithub(c: Ctx, project: ProjectRow, code: string): Promise<void> {
+export async function syncProjectToGithub(c: Ctx, project: ProjectRow, files: FileRow[]): Promise<void> {
   if (!c.user || !project.github_repo) return;
   try {
     const auth = await getGithubAuth(c.env, c.user.id);
     if (!auth) return;
     const token = await decryptToken(c.env, auth.tokenEnc);
-    await pushAppCode(token, project.github_repo, project.github_branch || 'main', project.title, code);
+    await pushFiles(token, project.github_repo, project.github_branch || 'main', project.title, files);
     await markGithubSynced(c.env, project.id);
   } catch {
     /* don't let a GitHub hiccup fail the build/save */

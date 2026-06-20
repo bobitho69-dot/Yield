@@ -1,6 +1,7 @@
 // Yield builder — client logic.
 const $ = (s) => document.querySelector(s);
-const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null, code: '', streaming: false, dirty: false,
+const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
+  files: [], activeFile: 'index.html', streaming: false,
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 
 // ---------- Boot ----------
@@ -9,6 +10,8 @@ async function init() {
   await Promise.all([loadStatus(), loadModels()]);
   if (state.user) await Promise.all([loadProjects(), loadGithub()]);
   wireEvents();
+  refreshPreview();
+  renderFileTree();
   // Open a specific project if requested (?project=ID from the dashboard).
   const wanted = new URLSearchParams(location.search).get('project');
   if (wanted && state.user) await openProject(wanted).catch(() => {});
@@ -113,14 +116,50 @@ async function loadProjects() {
 async function openProject(id) {
   const { project, messages } = await fetch(`/api/projects/${id}`).then((r) => r.json());
   state.projectId = project.id;
-  state.code = project.code || '';
   state.githubRepo = project.github_repo || null;
   state.githubUrl = project.github_url || null;
   $('#projectTitle').value = project.title;
-  $('#codeEditor').value = state.code;
   renderMessages(messages || []);
-  updatePreview(state.code);
+  await loadFiles();
+  refreshPreview();
   loadProjects();
+}
+
+// ---------- Files / editor ----------
+async function loadFiles() {
+  if (!state.projectId) { state.files = []; renderFileTree(); return; }
+  try {
+    const { files } = await fetch(`/api/projects/${state.projectId}/files`).then((r) => r.json());
+    state.files = files || [];
+  } catch { state.files = []; }
+  if (!state.files.find((f) => f.path === state.activeFile)) state.activeFile = state.files[0]?.path || 'index.html';
+  renderFileTree();
+  showActiveFile();
+}
+
+function renderFileTree() {
+  const el = $('#fileList');
+  if (!el) return;
+  el.innerHTML = (state.files || [])
+    .map((f) => `<li class="${f.path === state.activeFile ? 'active' : ''}" data-path="${esc(f.path)}">${esc(f.path)}</li>`)
+    .join('') || '<li style="cursor:default;color:#667">No files yet</li>';
+  el.querySelectorAll('li[data-path]').forEach((li) => li.addEventListener('click', () => { state.activeFile = li.dataset.path; renderFileTree(); showActiveFile(); }));
+}
+
+function showActiveFile() {
+  const f = (state.files || []).find((x) => x.path === state.activeFile);
+  $('#codeEditor').value = f ? f.content : '';
+  $('#activePath').textContent = f ? f.path : '';
+}
+
+function refreshPreview() {
+  const fr = $('#preview');
+  if (state.projectId) fr.removeAttribute('srcdoc'), fr.src = `/p/${state.projectId}/index.html?t=${Date.now()}`;
+  else {
+    const idx = (state.files || []).find((f) => f.path === 'index.html');
+    fr.src = 'about:blank';
+    fr.srcdoc = idx ? idx.content : '<!doctype html><body style="font:15px system-ui;color:#888;padding:2rem">Your app preview will appear here.</body>';
+  }
 }
 
 async function loadGithub() {
@@ -214,8 +253,6 @@ async function send(prompt) {
   const setBody = (html) => { const el = aiBubble.querySelector('.body'); if (el) el.innerHTML = html; };
 
   let chatAcc = '';
-  let codeAcc = '';
-  let lastPaint = 0;
   let finished = false; // got a terminal event (done/error/blocked/gate)
 
   try {
@@ -254,19 +291,16 @@ async function send(prompt) {
           chatAcc += payload;
           setBody(fmt(chatAcc));
           $('#messages').scrollTop = $('#messages').scrollHeight;
-        } else if (ev === 'code') {
-          codeAcc += payload;
-          const nowT = performance.now();
-          if (nowT - lastPaint > 250) { livePreview(codeAcc); $('#codeEditor').value = codeAcc; lastPaint = nowT; }
         } else if (ev === 'done') {
           finished = true;
           if (payload.projectId) state.projectId = payload.projectId;
           if (payload.chat) chatAcc = payload.chat;
-          if (payload.hasCode && (payload.code || codeAcc)) {
-            codeAcc = payload.code || codeAcc;
-            state.code = codeAcc;
-            $('#codeEditor').value = codeAcc;
-            updatePreview(codeAcc);
+          if (payload.hasCode && Array.isArray(payload.files) && payload.files.length) {
+            state.files = payload.files;
+            if (!state.files.find((f) => f.path === state.activeFile)) {
+              state.activeFile = state.files.find((f) => f.path === 'index.html') ? 'index.html' : state.files[0].path;
+            }
+            renderFileTree(); showActiveFile(); refreshPreview();
           }
           setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')));
         } else if (ev === 'blocked') {
@@ -288,7 +322,7 @@ async function send(prompt) {
       }
     }
 
-    if (!finished && !chatAcc && !codeAcc) setBody(esc('No response — try again.'));
+    if (!finished && !chatAcc) setBody(esc('No response — try again.'));
     aiBubble.classList.remove('streaming');
     loadStatus();
     if (state.user) loadProjects();
@@ -300,23 +334,40 @@ async function send(prompt) {
   }
 }
 
-// ---------- Preview ----------
-function livePreview(html) { $('#preview').srcdoc = html; }
-function updatePreview(html) { $('#preview').srcdoc = html || '<!doctype html><body style="font:15px system-ui;color:#888;padding:2rem">Your app preview will appear here.</body>'; }
-
-// ---------- Manual code editing ----------
-async function applyCode() {
-  const code = $('#codeEditor').value;
-  state.code = code;
-  updatePreview(code);
-  if (state.user && state.projectId) {
+// ---------- Manual file editing ----------
+async function saveFile() {
+  if (!state.activeFile) return;
+  const content = $('#codeEditor').value;
+  const f = state.files.find((x) => x.path === state.activeFile);
+  if (f) f.content = content; else state.files.push({ path: state.activeFile, content });
+  if (state.projectId) {
     $('#saveState').textContent = 'Saving…';
-    await fetch(`/api/projects/${state.projectId}`, {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }),
+    await fetch(`/api/projects/${state.projectId}/files`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: state.activeFile, content }),
     });
     $('#saveState').textContent = 'Saved ✓';
     setTimeout(() => ($('#saveState').textContent = ''), 1500);
   }
+  refreshPreview();
+}
+async function newFile() {
+  const path = prompt('New file path (e.g. styles.css, src/app.js):');
+  const clean = (path || '').replace(/^\/+/, '').trim();
+  if (!clean) return;
+  if (!state.files.find((f) => f.path === clean)) state.files.push({ path: clean, content: '' });
+  state.activeFile = clean; renderFileTree(); showActiveFile();
+  if (state.projectId) await fetch(`/api/projects/${state.projectId}/files`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: clean, content: '' }),
+  });
+}
+async function deleteActiveFile() {
+  if (!state.activeFile || state.activeFile === 'index.html') { alert('index.html is the entry point and can\'t be deleted.'); return; }
+  if (!confirm('Delete ' + state.activeFile + '?')) return;
+  const path = state.activeFile;
+  state.files = state.files.filter((f) => f.path !== path);
+  state.activeFile = state.files[0]?.path || 'index.html';
+  renderFileTree(); showActiveFile(); refreshPreview();
+  if (state.projectId) await fetch(`/api/projects/${state.projectId}/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 }
 
 // ---------- GitHub code storage ----------
@@ -446,16 +497,17 @@ function wireEvents() {
     if (!e.target.closest('.model-mini')) $('#modelPanel').classList.add('hidden');
   });
   $('#newBtn').addEventListener('click', () => {
-    state.projectId = null; state.code = ''; $('#codeEditor').value = '';
+    state.projectId = null; state.files = []; state.activeFile = 'index.html'; $('#codeEditor').value = '';
     $('#projectTitle').value = 'Untitled app';
     $('#messages').innerHTML = '<div class="empty-chat"><h2>What do you want to build?</h2><p>Describe an app and Yield will generate it.</p></div>';
-    updatePreview(''); loadProjects();
+    renderFileTree(); refreshPreview(); loadProjects();
   });
-  $('#applyCode').addEventListener('click', applyCode);
-  $('#refreshBtn').addEventListener('click', () => updatePreview($('#codeEditor').value || state.code));
+  $('#applyCode').addEventListener('click', saveFile);
+  $('#newFileBtn').addEventListener('click', newFile);
+  $('#deleteFileBtn').addEventListener('click', deleteActiveFile);
+  $('#refreshBtn').addEventListener('click', refreshPreview);
   $('#openBtn').addEventListener('click', () => {
-    const w = window.open('', '_blank');
-    if (w) { w.document.write(state.code || '<p>Nothing to preview yet.</p>'); w.document.close(); }
+    if (state.projectId) window.open(`/p/${state.projectId}/index.html`, '_blank');
   });
   $('#upgradeBtn').addEventListener('click', upgrade);
   $('#ghBtn').addEventListener('click', openGithubDialog);

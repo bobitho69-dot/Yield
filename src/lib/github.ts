@@ -107,12 +107,14 @@ async function putFile(
 const README = (title: string) =>
   `# ${title}\n\nBuilt with [Yield](https://yield.example.workers.dev) — a free AI coder.\n\nThe app is a single self-contained file: open \`index.html\` in any browser.\n`;
 
-/** Push the generated single-file app (index.html + README) to a repo. */
-export async function pushAppCode(
-  token: string, fullName: string, branch: string, title: string, code: string,
+/** Push all of a project's files (+ README) to a repo. */
+export async function pushFiles(
+  token: string, fullName: string, branch: string, title: string, files: { path: string; content: string }[],
 ): Promise<void> {
   const [owner, repo] = fullName.split('/');
-  await putFile(token, owner, repo, 'index.html', code || '<!doctype html><title>Empty</title>', `Yield: update ${title}`, branch);
+  for (const f of files) {
+    await putFile(token, owner, repo, f.path, f.content ?? '', `Yield: update ${f.path}`, branch);
+  }
   // Write the README only if missing (first push).
   if (!(await getFileSha(token, owner, repo, 'README.md', branch))) {
     await putFile(token, owner, repo, 'README.md', README(title), 'Yield: add README', branch);

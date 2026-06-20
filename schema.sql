@@ -42,6 +42,17 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, updated_at DESC);
 
+-- ── Files (multi-file projects: one row per file in a project) ───────────────
+CREATE TABLE IF NOT EXISTS files (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  path        TEXT NOT NULL,                 -- e.g. "index.html", "src/app.js"
+  content     TEXT NOT NULL DEFAULT '',
+  updated_at  INTEGER NOT NULL,
+  UNIQUE (project_id, path)
+);
+CREATE INDEX IF NOT EXISTS idx_files_project ON files(project_id);
+
 -- ── Chat / build history per project ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS messages (
   id          TEXT PRIMARY KEY,

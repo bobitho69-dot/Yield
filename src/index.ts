@@ -11,6 +11,8 @@ import { handleAuth } from './routes/authRoutes';
 import { handleBilling } from './routes/billingRoutes';
 import { handleModels, handleStatus, handleHealth } from './routes/misc';
 import { handleGithubStatus, handleGithubRepos, handleProjectGithub } from './routes/githubRoutes';
+import { handleAgents } from './routes/agents';
+import { handleSecrets } from './routes/secrets';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -55,6 +57,13 @@ export default {
         } else {
           res = await handleProjects(request, c, id || undefined, sub || undefined);
         }
+      } else if (path.startsWith('/api/agents')) {
+        const rest = path.slice('/api/agents'.length).replace(/^\//, '');
+        const [aid, sub] = rest.split('/');
+        res = await handleAgents(request, c, aid || undefined, sub || undefined);
+      } else if (path.startsWith('/api/secrets')) {
+        const sid = path.slice('/api/secrets'.length).replace(/^\//, '');
+        res = await handleSecrets(request, c, sid || undefined);
       } else if (path.startsWith('/api/billing/')) {
         const action = path.split('/')[3];
         res = await handleBilling(request, c, action);

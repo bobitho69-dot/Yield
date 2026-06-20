@@ -67,3 +67,28 @@ CREATE TABLE IF NOT EXISTS usage_events (
   created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_usage_created ON usage_events(created_at);
+
+-- ── AI Agents (reusable AIs the user defines; callable from generated apps) ───
+CREATE TABLE IF NOT EXISTS agents (
+  id            TEXT PRIMARY KEY,
+  user_id       TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  description   TEXT,
+  system_prompt TEXT NOT NULL,
+  model         TEXT NOT NULL DEFAULT 'glm-5.1',  -- friendly model id
+  is_public     INTEGER NOT NULL DEFAULT 1,       -- runnable from a generated app
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agents_user ON agents(user_id, updated_at DESC);
+
+-- ── Secrets (user config; values AES-GCM encrypted at rest) ───────────────────
+CREATE TABLE IF NOT EXISTS secrets (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  value_enc   TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  UNIQUE (user_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_secrets_user ON secrets(user_id);

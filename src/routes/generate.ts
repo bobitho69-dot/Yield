@@ -12,7 +12,7 @@ import { gateGeneration, recordGeneration } from '../lib/usage';
 import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor } from '../config/models';
 import { chat, chatStream, extractHtml } from '../lib/nvidia';
 import { CONVO_SYSTEM, routerSystem } from '../lib/prompts';
-import { addMessage, createProject, getProject, listMessages, logUsage, saveProjectCode } from '../lib/db';
+import { addMessage, createProject, getProject, listAgents, listMessages, logUsage, saveProjectCode } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
 
 interface GenBody {
@@ -189,6 +189,20 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
         ];
         if (project?.code) {
           messages.push({ role: 'system', content: `The current app's full HTML is:\n\n${project.code}` });
+        }
+        // Make the user's AI agents available to apps you build.
+        if (c.user) {
+          const { results: agents } = await listAgents(c.env, c.user.id);
+          if (agents.length) {
+            const list = agents.map((a) => `- "${a.name}" (id: ${a.id})${a.description ? ` — ${a.description}` : ''}`).join('\n');
+            messages.push({
+              role: 'system',
+              content:
+                `The user has these AI agents. To use one from the app, POST JSON {"input":"..."} to ` +
+                `https://<this-origin>/api/agents/<id>/run and read the JSON {"output":"..."} reply (CORS is enabled, no auth needed for public agents). ` +
+                `Use the app's own origin. When an app would benefit from AI (chatbot, generator, classifier, assistant), wire it to the right agent.\n\nAgents:\n${list}`,
+            });
+          }
         }
         if (project) {
           const { results } = await listMessages(c.env, project.id);

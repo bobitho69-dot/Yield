@@ -216,3 +216,84 @@ export async function logUsage(
     .bind(newId(), e.user_id, e.kind, e.model ?? null, e.tokens_in ?? 0, e.tokens_out ?? 0, e.high_usage ? 1 : 0, now())
     .run();
 }
+
+// --- Agents -------------------------------------------------------------------
+export interface AgentRow {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  system_prompt: string;
+  model: string;
+  is_public: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export function listAgents(env: Env, userId: string): Promise<{ results: AgentRow[] }> {
+  return env.DB.prepare('SELECT * FROM agents WHERE user_id=? ORDER BY updated_at DESC LIMIT 100').bind(userId).all<AgentRow>();
+}
+
+export function getAgent(env: Env, id: string): Promise<AgentRow | null> {
+  return env.DB.prepare('SELECT * FROM agents WHERE id=?').bind(id).first<AgentRow>();
+}
+
+export async function createAgent(
+  env: Env,
+  userId: string,
+  a: { name: string; description?: string; system_prompt: string; model: string; is_public?: boolean },
+): Promise<AgentRow> {
+  const id = newId();
+  const t = now();
+  await env.DB.prepare(
+    'INSERT INTO agents (id,user_id,name,description,system_prompt,model,is_public,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
+  )
+    .bind(id, userId, a.name, a.description ?? null, a.system_prompt, a.model, a.is_public === false ? 0 : 1, t, t)
+    .run();
+  return (await getAgent(env, id))!;
+}
+
+export async function updateAgent(
+  env: Env,
+  id: string,
+  a: { name?: string; description?: string; system_prompt?: string; model?: string; is_public?: boolean },
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE agents SET name=COALESCE(?,name), description=COALESCE(?,description),
+       system_prompt=COALESCE(?,system_prompt), model=COALESCE(?,model),
+       is_public=COALESCE(?,is_public), updated_at=? WHERE id=?`,
+  )
+    .bind(a.name ?? null, a.description ?? null, a.system_prompt ?? null, a.model ?? null,
+      a.is_public == null ? null : a.is_public ? 1 : 0, now(), id)
+    .run();
+}
+
+export async function deleteAgent(env: Env, id: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM agents WHERE id=?').bind(id).run();
+}
+
+// --- Secrets (values stored AES-GCM encrypted) --------------------------------
+export function listSecrets(env: Env, userId: string): Promise<{ results: { id: string; name: string; created_at: number }[] }> {
+  return env.DB.prepare('SELECT id,name,created_at FROM secrets WHERE user_id=? ORDER BY name')
+    .bind(userId)
+    .all<{ id: string; name: string; created_at: number }>();
+}
+
+export async function upsertSecret(env: Env, userId: string, name: string, valueEnc: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO secrets (id,user_id,name,value_enc,created_at) VALUES (?,?,?,?,?)
+     ON CONFLICT(user_id,name) DO UPDATE SET value_enc=excluded.value_enc`,
+  )
+    .bind(newId(), userId, name, valueEnc, now())
+    .run();
+}
+
+export async function deleteSecret(env: Env, userId: string, id: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM secrets WHERE id=? AND user_id=?').bind(id, userId).run();
+}
+
+export function getSecretRows(env: Env, userId: string): Promise<{ results: { name: string; value_enc: string }[] }> {
+  return env.DB.prepare('SELECT name,value_enc FROM secrets WHERE user_id=?')
+    .bind(userId)
+    .all<{ name: string; value_enc: string }>();
+}

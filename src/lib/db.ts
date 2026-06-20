@@ -29,8 +29,13 @@ export interface ProjectRow {
   github_url: string | null;
   github_branch: string | null;
   github_synced_at: number | null;
+  slug: string | null;
   created_at: number;
   updated_at: number;
+}
+
+function slugify(s: string): string {
+  return (s || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'app';
 }
 
 // --- Users --------------------------------------------------------------------
@@ -156,14 +161,19 @@ export async function clearProjectGithub(env: Env, id: string): Promise<void> {
 export async function createProject(env: Env, userId: string, title: string): Promise<ProjectRow> {
   const id = newId();
   const t = now();
-  await env.DB.prepare('INSERT INTO projects (id,user_id,title,code,created_at,updated_at) VALUES (?,?,?,?,?,?)')
-    .bind(id, userId, title || 'Untitled app', '', t, t)
+  const slug = `${slugify(title)}-${id.slice(0, 6)}`;
+  await env.DB.prepare('INSERT INTO projects (id,user_id,title,code,slug,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
+    .bind(id, userId, title || 'Untitled app', '', slug, t, t)
     .run();
   return (await getProject(env, id))!;
 }
 
 export function getProject(env: Env, id: string): Promise<ProjectRow | null> {
   return env.DB.prepare('SELECT * FROM projects WHERE id = ?').bind(id).first<ProjectRow>();
+}
+
+export function getProjectBySlug(env: Env, slug: string): Promise<ProjectRow | null> {
+  return env.DB.prepare('SELECT * FROM projects WHERE slug = ?').bind(slug).first<ProjectRow>();
 }
 
 export function listProjects(env: Env, userId: string): Promise<{ results: any[] }> {
@@ -183,7 +193,8 @@ export async function saveProjectCode(env: Env, id: string, code: string, model:
 }
 
 export async function renameProject(env: Env, id: string, title: string): Promise<void> {
-  await env.DB.prepare('UPDATE projects SET title=?, updated_at=? WHERE id=?').bind(title, now(), id).run();
+  const slug = `${slugify(title)}-${id.slice(0, 6)}`;
+  await env.DB.prepare('UPDATE projects SET title=?, slug=?, updated_at=? WHERE id=?').bind(title, slug, now(), id).run();
 }
 
 export async function deleteProject(env: Env, id: string): Promise<void> {

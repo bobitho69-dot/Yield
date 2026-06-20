@@ -502,11 +502,26 @@ async function renderSettingsPane() {
   const el = $('#settingsPane');
   if (!state.projectId) { el.innerHTML = '<h3>App settings</h3><p class="sub">Build something first to configure this app.</p>'; return; }
   const { secrets } = await fetch(`/api/secrets?project=${state.projectId}`).then((r) => r.json()).catch(() => ({ secrets: [] }));
+  const proj = await fetch(`/api/projects/${state.projectId}`).then((r) => r.json()).then((d) => d.project).catch(() => ({ slug: state.projectId }));
+  const share = location.origin + '/p/' + (proj.slug || state.projectId);
   el.innerHTML = `<h3>App settings</h3><p class="sub">Settings &amp; secrets tailored to this app.</p>
     <div class="pane-card"><b>Project</b>
       <div class="pane-form"><input id="setTitle" value="${esc($('#projectTitle').value)}" placeholder="App name" />
-        <button class="btn ghost sm" id="setRename" style="justify-self:start">Rename</button></div>
-      <div class="endpoint" style="margin-top:.5rem">Live URL: /p/${state.projectId}/</div></div>
+        <button class="btn ghost sm" id="setRename" style="justify-self:start">Rename</button></div></div>
+    <div class="pane-card"><b>Share &amp; export</b>
+      <div class="endpoint" style="margin:.4rem 0">${esc(share)} <span class="copy" data-copy="${esc(share)}">copy</span></div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <a class="btn ghost sm" href="/p/${esc(proj.slug || state.projectId)}/" target="_blank">Open app ↗</a>
+        <a class="btn ghost sm" href="/api/projects/${state.projectId}/export">Download .zip</a>
+      </div>
+      <details style="margin-top:.6rem"><summary class="sub" style="cursor:pointer">Deploy to your own Cloudflare (free)</summary>
+        <ol class="sub" style="margin:.5rem 0 0 1.1rem;line-height:1.7">
+          <li>Connect this app to GitHub (below) so its code lives in a repo.</li>
+          <li>Cloudflare → Workers &amp; Pages → Create → <b>Connect to Git</b> → pick the repo.</li>
+          <li>If the build fails, copy the log and paste it to Yield in chat — it'll fix the code.</li>
+          <li>Add a custom domain later from the Worker → Settings → Domains.</li>
+        </ol>
+      </details></div>
     <div class="pane-card"><b>GitHub</b><div class="sub" id="setGh" style="margin-top:.4rem">…</div></div>
     <div class="pane-card"><b>Secrets (this app)</b>
       <div class="sub">Encrypted at rest; for this app's agents / server use.</div>
@@ -516,6 +531,7 @@ async function renderSettingsPane() {
   $('#setRename').onclick = async () => { const t = $('#setTitle').value.trim(); if (t) { await fetch(`/api/projects/${state.projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: t }) }); $('#projectTitle').value = t; loadProjects(); } };
   $('#secAdd').onclick = async () => { const name = $('#secName').value.trim(), value = $('#secVal').value; const r = await fetch(`/api/secrets?project=${state.projectId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, value }) }); const d = await r.json(); if (!r.ok) { $('#secMsg').textContent = d.error || 'Failed'; return; } renderSettingsPane(); };
   el.querySelectorAll('[data-del-secret]').forEach((b) => (b.onclick = async () => { await fetch('/api/secrets/' + b.dataset.delSecret, { method: 'DELETE' }); renderSettingsPane(); }));
+  el.querySelectorAll('.copy').forEach((b) => (b.onclick = () => navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy)));
   const gh = await fetch('/api/github/status').then((r) => r.json()).catch(() => ({ connected: false }));
   $('#setGh').innerHTML = gh.connected
     ? `Connected as @${esc(gh.login)}. ${state.githubRepo ? `Repo: <a href="${state.githubUrl}" target="_blank" style="color:var(--brand-2)">${esc(state.githubRepo)}</a>` : '<button class="btn ghost sm" id="setGhPush">Save this app to a repo</button>'}`

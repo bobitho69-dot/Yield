@@ -12,11 +12,12 @@
 import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
 import {
-  createProject, deleteProject, deleteFileRow, getProject, getProjectFiles, getSecretRows, listAgents, listFiles,
-  listMessages, listProjects, renameProject, saveFiles, upsertFile,
+  createProject, deleteProject, deleteFileRow, getProject, getProjectBySlug, getProjectFiles, getSecretRows,
+  listAgents, listFiles, listMessages, listProjects, renameProject, saveFiles, upsertFile,
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
 import { decryptToken } from '../lib/github';
+import { zip } from '../lib/zip';
 
 export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: string): Promise<Response> {
   // Preview file serving is the only route allowed without auth (public/owned).
@@ -68,6 +69,18 @@ export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: st
     return error(405, 'Method not allowed');
   }
 
+  // Export the whole app as a .zip download.
+  if (sub === 'export' && req.method === 'GET') {
+    const files = await getProjectFiles(c.env, project);
+    const data = zip(files.length ? files : [{ path: 'index.html', content: project.code || '' }]);
+    return new Response(data, {
+      headers: {
+        'content-type': 'application/zip',
+        'content-disposition': `attachment; filename="${project.slug || project.id}.zip"`,
+      },
+    });
+  }
+
   // ---- Project ----
   if (req.method === 'GET') {
     const { results } = await listMessages(c.env, id);
@@ -99,7 +112,10 @@ const CTYPES: Record<string, string> = {
 // Serve a single project file for the preview iframe. Each response is sandboxed
 // (opaque origin) so untrusted generated code can't touch Yield or its cookies.
 export async function serveProjectFile(c: Ctx, projectId: string, filePath: string): Promise<Response> {
-  const project = await getProject(c.env, projectId);
+  // /p/ accepts either the raw id or a readable slug.
+  const project = /^[a-f0-9]{32}$/.test(projectId)
+    ? await getProject(c.env, projectId)
+    : await getProjectBySlug(c.env, projectId);
   if (!project) return new Response('Not found', { status: 404 });
   const owns = c.user && project.user_id === c.user.id;
   if (!owns && !project.is_public) return new Response('Forbidden', { status: 403 });

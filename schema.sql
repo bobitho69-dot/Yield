@@ -37,10 +37,12 @@ CREATE TABLE IF NOT EXISTS projects (
   github_url     TEXT,                       -- html url of the repo
   github_branch  TEXT,                       -- default branch
   github_synced_at INTEGER,                  -- unix seconds of last push
+  slug         TEXT,                          -- readable share id (/p/<slug>)
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);
 
 -- ── Files (multi-file projects: one row per file in a project) ───────────────
 CREATE TABLE IF NOT EXISTS files (

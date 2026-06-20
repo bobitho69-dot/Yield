@@ -1,9 +1,10 @@
 // POST /api/generate  — chat + app build (streaming SSE)
 // POST /api/route     — auto-pick the best coder model for a prompt (gpt-oss-20b)
 //
-// The model replies conversationally AND, when building, emits the app inside a
-// ```html code block. We split the stream live: text outside the block -> 'chat'
-// events (chat thread); the code block -> 'code' events (live preview).
+// The model replies conversationally AND emits structured blocks the streamer
+// splits live: plain text -> 'chat'; "<think>…" -> 'thinking'; "=== file: ===" ->
+// 'code' (+ saved files); "=== research: ===" -> helper AIs; "=== task: ===" ->
+// parallel build agents; "=== agent/secret: ===" -> app runtime needs.
 
 import type { Ctx, Env } from '../types';
 import { sse, json, error } from '../lib/response';
@@ -491,8 +492,9 @@ export async function runBuild(
       const rctx = `App being built. Goal:\n${prompt.slice(0, 1400)}`;
       const findings = await Promise.all(reqs.map(async (r) => {
         await send('status', { stage: `🔬 ${r.name} researching…` });
+        await send('research', { name: r.name, status: 'working' });
         const f = await runResearchAgent(c.env, r, rctx, wantEffort);
-        await send('thinking', `\n🔬 ${r.name} (helper AI) found:\n${f.findings}\n`);
+        await send('research', { name: r.name, findings: f.findings });
         await heartbeat();
         return f;
       }));

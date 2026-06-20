@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pricing — Yield</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="landing">
+  <header class="nav">
+    <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+    <nav class="nav-links">
+      <a class="toplink" href="/dashboard">Projects</a>
+      <a class="toplink" href="/pricing">Pricing</a>
+      <a class="btn primary sm" href="/app">Start building →</a>
+    </nav>
+  </header>
+
+  <div class="page">
+    <div class="center">
+      <h1 style="font-size:2.4rem;letter-spacing:-.02em">Free to use. Fair to fund.</h1>
+      <p class="muted" style="max-width:600px;margin:.6rem auto 0">
+        Yield is free. Priority Access only exists to cover hosting during the busiest stretches —
+        so the app never has to shut down or surprise anyone with a bill.
+      </p>
+    </div>
+
+    <div class="grid2">
+      <div class="card price">
+        <h3>Free</h3>
+        <div class="amount">$0</div>
+        <ul>
+          <li>✓ All 6 coder models + Auto router</li>
+          <li>✓ Live preview &amp; manual code editing</li>
+          <li>✓ Save unlimited projects</li>
+          <li>✓ Sync code to GitHub</li>
+          <li>✓ NeMoGuard jailbreak protection</li>
+          <li>· Daily build limit</li>
+          <li>· Paused during High Usage Times</li>
+        </ul>
+        <a class="btn ghost" href="/app">Start free</a>
+      </div>
+      <div class="card price featured">
+        <div class="tag">Keeps Yield alive</div>
+        <h3>Priority Access</h3>
+        <div class="amount">$20<span>/mo</span></div>
+        <ul>
+          <li>✓ Everything in Free</li>
+          <li>✓ <b>Full access during High Usage Times</b></li>
+          <li>✓ Unlimited daily builds</li>
+          <li>✓ Priority generation queue</li>
+          <li>✓ Cancel anytime</li>
+        </ul>
+        <a class="btn primary" href="/app?upgrade=1">Get Priority</a>
+      </div>
+    </div>
+
+    <h2 class="center" style="margin-top:3.5rem">Questions</h2>
+    <div class="faq">
+      <details open>
+        <summary>What are "High Usage Times"?</summary>
+        <p>Yield runs on Cloudflare, which is free up to a monthly budget. When traffic gets high enough
+        that it would start costing real money to host, Yield enters High Usage Time: free generation pauses
+        until the next month so the app stays free to run. Priority members keep full access the whole time —
+        their subscription is exactly what funds those busy periods.</p>
+      </details>
+      <details>
+        <summary>Will I ever be charged unexpectedly?</summary>
+        <p>No. Free is free. The only charge is if you choose Priority Access ($20/mo), which you can cancel anytime
+        from your account.</p>
+      </details>
+      <details>
+        <summary>Do I keep my projects if I'm on the free plan?</summary>
+        <p>Yes. Your projects are saved to your account and (if you connect GitHub) your code lives in your own repos —
+        you own it regardless of plan.</p>
+      </details>
+      <details>
+        <summary>Which AI models does Yield use?</summary>
+        <p>Six coder models hosted on NVIDIA — Kimi K2.6, MiniMax M3, DeepSeek V4 Flash, Step 3.7 Flash,
+        DeepSeek V4 Pro, and GLM 5.1 — plus an Auto router (gpt-oss-20b) that picks the best one per prompt.
+        Every prompt is screened by NVIDIA NeMoGuard first.</p>
+      </details>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <span>◆ Yield</span>
+    <span><a href="/terms" class="toplink">Terms</a> · <a href="/privacy" class="toplink">Privacy</a></span>
+  </footer>
+</body>
+</html>

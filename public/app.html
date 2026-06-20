@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Yield — Builder</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="builder">
+  <!-- High Usage / status banner -->
+  <div id="banner" class="banner hidden"></div>
+
+  <header class="topbar">
+    <a class="brand sm" href="/"><span class="logo">◆</span> Yield</a>
+    <a class="toplink" href="/dashboard">Projects</a>
+    <input id="projectTitle" class="title-input" value="Untitled app" spellcheck="false" />
+    <div class="top-actions">
+      <span id="quota" class="quota"></span>
+      <button id="ghBtn" class="btn ghost sm" title="Store code on GitHub">⎇ GitHub</button>
+      <button id="upgradeBtn" class="btn primary sm hidden">Upgrade $20/mo</button>
+      <div id="authArea"></div>
+    </div>
+  </header>
+
+  <dialog id="ghDialog" class="gh-dialog">
+    <div id="ghBody"></div>
+    <form method="dialog" class="gh-close"><button class="btn ghost sm">Close</button></form>
+  </dialog>
+
+  <main class="workspace">
+    <!-- Left: chat -->
+    <section class="chat-pane">
+      <div id="projectList" class="project-list"></div>
+      <div id="messages" class="messages">
+        <div class="empty-chat">
+          <h2>What do you want to build?</h2>
+          <p>Describe an app and Yield will generate it. Try “a markdown notes app with tags”.</p>
+        </div>
+      </div>
+      <form id="composer" class="composer">
+        <div class="composer-row">
+          <select id="modelSelect" class="model-select" title="Model"></select>
+          <button id="newBtn" type="button" class="btn ghost sm" title="New project">＋ New</button>
+        </div>
+        <div class="composer-input">
+          <textarea id="prompt" rows="2" placeholder="Describe your app, or ask for a change…"></textarea>
+          <button id="sendBtn" type="submit" class="btn primary send">Build ▸</button>
+        </div>
+        <div id="guardNote" class="guard-note">Prompts are screened by NVIDIA NeMoGuard.</div>
+      </form>
+    </section>
+
+    <!-- Right: preview / code -->
+    <section class="preview-pane">
+      <div class="tabs">
+        <button class="tab active" data-tab="preview">Preview</button>
+        <button class="tab" data-tab="code">Code</button>
+        <div class="tab-spacer"></div>
+        <button id="refreshBtn" class="btn ghost sm">↻ Refresh</button>
+        <button id="openBtn" class="btn ghost sm">↗ Open</button>
+      </div>
+      <div id="previewTab" class="tab-panel">
+        <iframe id="preview" class="preview-frame"
+          sandbox="allow-scripts allow-forms allow-modals allow-popups"
+          title="App preview"></iframe>
+      </div>
+      <div id="codeTab" class="tab-panel hidden">
+        <textarea id="codeEditor" class="code-editor" spellcheck="false"
+          placeholder="Generated HTML appears here. Edit it and click Apply."></textarea>
+        <div class="code-actions">
+          <button id="applyCode" class="btn primary sm">Apply changes</button>
+          <span id="saveState" class="save-state"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

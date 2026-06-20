@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Yield — Build apps by chatting. Free.</title>
+  <meta name="description" content="Yield turns your prompts into working web apps. Chat, edit, preview — free, powered by NVIDIA-hosted models." />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="landing">
+  <header class="nav">
+    <a class="brand" href="/">
+      <span class="logo">◆</span> Yield
+    </a>
+    <nav class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#models">Models</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/dashboard">Projects</a>
+      <a class="btn ghost" href="/login">Sign in</a>
+      <a class="btn primary" href="/app">Start building →</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="pill">100% free · paused only during High Usage Times</div>
+      <h1>Describe an app.<br /><span class="grad">Yield builds it.</span></h1>
+      <p class="sub">
+        Chat your idea, watch it appear in a live preview, then tweak it by talking or
+        editing the code yourself. Powered by NVIDIA-hosted models, guarded against abuse,
+        and hosted on Cloudflare.
+      </p>
+      <div class="hero-cta">
+        <a class="btn primary lg" href="/app">Open the builder</a>
+        <a class="btn ghost lg" href="#how">See how it works</a>
+      </div>
+      <div class="hero-demo">
+        <div class="demo-chat">
+          <div class="bubble user">make a pomodoro timer with a tomato that fills up</div>
+          <div class="bubble ai">Building with <b>Auto → DeepSeek V4 Pro</b>… ✓ done</div>
+        </div>
+        <div class="demo-preview">▶ live preview</div>
+      </div>
+    </section>
+
+    <section id="how" class="band">
+      <h2>How it works</h2>
+      <div class="grid3">
+        <div class="card"><div class="num">1</div><h3>Chat your idea</h3><p>Type what you want. Pick a model, or let <b>Auto</b> choose the best one for your prompt.</p></div>
+        <div class="card"><div class="num">2</div><h3>Preview & edit</h3><p>The app renders instantly in a sandboxed preview. Refine by chatting, or edit the code directly.</p></div>
+        <div class="card"><div class="num">3</div><h3>Save & share</h3><p>Sign in to keep your projects and share a public preview link.</p></div>
+      </div>
+    </section>
+
+    <section id="models" class="band alt">
+      <h2>Models, via NVIDIA</h2>
+      <p class="band-sub">Six coder models plus an Auto router that picks the best one per prompt. Every prompt is screened by NVIDIA's NeMoGuard jailbreak detector first.</p>
+      <div class="models" id="modelChips"></div>
+    </section>
+
+    <section id="pricing" class="band">
+      <h2>Pricing</h2>
+      <div class="grid2">
+        <div class="card price">
+          <h3>Free</h3>
+          <div class="amount">$0</div>
+          <ul>
+            <li>✓ All coder models + Auto</li>
+            <li>✓ Live preview & manual editing</li>
+            <li>✓ Save projects (when signed in)</li>
+            <li>✓ Jailbreak-guarded</li>
+            <li>· Paused during High Usage Times</li>
+          </ul>
+          <a class="btn ghost" href="/app">Start free</a>
+        </div>
+        <div class="card price featured">
+          <div class="tag">Keeps Yield alive</div>
+          <h3>Priority Access</h3>
+          <div class="amount">$20<span>/mo</span></div>
+          <ul>
+            <li>✓ Everything in Free</li>
+            <li>✓ <b>Works during High Usage Times</b></li>
+            <li>✓ Unlimited daily generations</li>
+            <li>✓ Priority queue</li>
+          </ul>
+          <a class="btn primary" href="/app?upgrade=1">Get Priority</a>
+        </div>
+      </div>
+      <p class="fineprint">
+        <b>What's "High Usage Times"?</b> Yield is free to use. But hosting (Cloudflare) only stays free up to a monthly budget.
+        When traffic gets so high that it would start costing real money, Yield switches to High Usage Times: generation pauses
+        for free accounts until the next month, while Priority members keep full access — their $20/mo is exactly what funds
+        those busy periods. No surprise bills, and the app stays free the rest of the time.
+      </p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>◆ Yield — free AI coder</span>
+    <span>
+      <a class="toplink" href="/pricing">Pricing</a> ·
+      <a class="toplink" href="/dashboard">Projects</a> ·
+      <a class="toplink" href="/terms">Terms</a> ·
+      <a class="toplink" href="/privacy">Privacy</a>
+    </span>
+    <span>Hosted on Cloudflare Workers · Models via NVIDIA</span>
+  </footer>
+
+  <script>
+    // Populate model chips from the API.
+    fetch('/api/models').then(r => r.json()).then(({ models }) => {
+      const el = document.getElementById('modelChips');
+      el.innerHTML = (models || []).map(m =>
+        `<div class="chip"><b>${m.label}</b><span>${m.blurb}</span></div>`).join('');
+    }).catch(() => {});
+  </script>
+</body>
+</html>

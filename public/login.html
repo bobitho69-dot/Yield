@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in — Yield</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+      <h1>Sign in</h1>
+      <p class="sub muted">Free forever. Sign in to save projects and sync code to GitHub.</p>
+      <div class="auth-btns">
+        <a class="btn primary" id="gh" href="/api/auth/github/login?redirect=/dashboard">Continue with GitHub</a>
+        <a class="btn ghost" id="go" href="/api/auth/google/login?redirect=/dashboard">Continue with Google</a>
+      </div>
+      <p class="muted" style="font-size:.78rem;margin-top:1.4rem">
+        By continuing you agree to our <a href="/terms" style="text-decoration:underline">Terms</a>
+        and <a href="/privacy" style="text-decoration:underline">Privacy Policy</a>.
+      </p>
+    </div>
+  </div>
+  <script>
+    // Preserve a ?redirect=… target if present.
+    const r = new URLSearchParams(location.search).get('redirect');
+    if (r) {
+      gh.href = '/api/auth/github/login?redirect=' + encodeURIComponent(r);
+      go.href = '/api/auth/google/login?redirect=' + encodeURIComponent(r);
+    }
+  </script>
+</body>
+</html>

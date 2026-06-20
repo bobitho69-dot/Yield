@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account — Yield</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+    <nav class="nav-links">
+      <a class="toplink" href="/dashboard">Projects</a>
+      <a class="toplink" href="/pricing">Pricing</a>
+      <a class="btn primary sm" href="/app">＋ New app</a>
+    </nav>
+  </header>
+
+  <div class="page">
+    <div class="page-head"><div><h1>Account</h1><p>Manage your plan, billing, and GitHub connection.</p></div></div>
+    <div id="content"><div class="empty-state">Loading…</div></div>
+  </div>
+
+  <script>
+    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    (async function () {
+      const me = await fetch('/api/auth/me').then(r=>r.json());
+      const content = document.getElementById('content');
+      if (!me.user) {
+        content.innerHTML = `<div class="empty-state"><h2>Please sign in</h2><a class="btn primary" href="/login?redirect=/account">Sign in</a></div>`;
+        return;
+      }
+      const [bill, gh] = await Promise.all([
+        fetch('/api/billing/status').then(r=>r.json()).catch(()=>({plan:'free'})),
+        fetch('/api/github/status').then(r=>r.json()).catch(()=>({connected:false})),
+      ]);
+      const isPriority = bill.plan === 'priority';
+      const renews = bill.renews_at ? new Date(bill.renews_at*1000).toLocaleDateString() : '—';
+
+      content.innerHTML = `
+      <div class="acct-grid">
+        <div class="panel">
+          <h3>Plan</h3>
+          <div class="kv"><span>Current plan</span>
+            <span class="badge ${isPriority?'priority':'free'}">${isPriority?'Priority Access':'Free'}</span></div>
+          <div class="kv"><span>${isPriority?'Renews':'Daily builds'}</span><span>${isPriority?renews:'limited'}</span></div>
+          <div class="kv"><span>High Usage Times</span><span>${isPriority?'Full access':'Paused for free users'}</span></div>
+          <div style="margin-top:1.2rem;display:flex;gap:.6rem">
+            ${isPriority
+              ? `<button class="btn ghost" id="portal">Manage / cancel</button>`
+              : `<button class="btn primary" id="upgrade">Upgrade to Priority · $20/mo</button>`}
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Profile</h3>
+          <div class="kv"><span>Name</span><span>${esc(me.user.name||'—')}</span></div>
+          <div class="kv"><span>Email</span><span>${esc(me.user.email||'—')}</span></div>
+          <div style="margin-top:1.2rem"><button class="btn ghost" id="logout">Sign out</button></div>
+        </div>
+
+        <div class="panel" style="grid-column:1/-1">
+          <h3>GitHub</h3>
+          ${gh.connected
+            ? `<div class="kv"><span>Status</span><span class="badge priority">Connected as @${esc(gh.login)}</span></div>
+               <div class="kv"><span>Code storage</span><span>New projects can create or link a repo</span></div>
+               <p class="muted" style="margin-top:1rem">Your generated code is pushed to your own GitHub repositories. Manage which repo a project uses from the builder.</p>
+               <button class="btn ghost" id="ghReconnect" style="margin-top:.6rem">Reconnect / change scope</button>`
+            : `<p class="muted">Connect GitHub to store every app's code in your own repositories — Yield pushes each build automatically.</p>
+               <a class="btn primary" id="ghConnect" href="/api/auth/github/login?store_token=1&scope=repo&redirect=/account">Connect GitHub</a>`}
+        </div>
+      </div>`;
+
+      document.getElementById('logout').onclick = async()=>{ await fetch('/api/auth/logout',{method:'POST'}); location.href='/'; };
+      const up = document.getElementById('upgrade'); if (up) up.onclick = async()=>{ const r=await fetch('/api/billing/checkout',{method:'POST'}).then(r=>r.json()); if(r.url) location.href=r.url; };
+      const po = document.getElementById('portal'); if (po) po.onclick = async()=>{ const r=await fetch('/api/billing/portal',{method:'POST'}).then(r=>r.json()); if(r.url) location.href=r.url; else alert(r.error||'No billing account'); };
+      const rc = document.getElementById('ghReconnect'); if (rc) rc.onclick = ()=> location.href='/api/auth/github/login?store_token=1&scope=repo&redirect=/account';
+    })();
+  </script>
+</body>
+</html>

@@ -109,10 +109,14 @@ export class BuildSession extends DurableObject<Env> {
     }
   }
 
-  // Push an event to the replay buffer and to every attached tab.
+  // Push an event to the replay buffer and to every attached tab. High-volume live
+  // 'code' deltas are NOT buffered for replay (the final files arrive via 'done');
+  // a reconnecting tab still gets live code written from then on.
   private broadcast(event: string, data: unknown): void {
-    this.events.push({ event, data });
-    if (this.events.length > 6000) this.events.splice(0, this.events.length - 6000);
+    if (event !== 'code') {
+      this.events.push({ event, data });
+      if (this.events.length > 4000) this.events.splice(0, this.events.length - 4000);
+    }
     const frame = this.enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     for (const w of this.writers) {
       w.write(frame).catch(() => { this.writers.delete(w); }); // drop dead tabs

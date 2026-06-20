@@ -135,10 +135,12 @@ async function openProject(id) {
 let buildWatchTimer = null;
 function startBuildWatch() {
   if (buildWatchTimer || !state.projectId) return;
+  state.working = true; updateComposer();
   const note = addBubble('ai', '<div class="meta">background build</div>⏳ Still building in the background — this updates automatically.');
   let polls = 0;
   const finish = async (msg) => {
     clearInterval(buildWatchTimer); buildWatchTimer = null;
+    state.working = false; updateComposer();
     await loadFiles(); refreshPreview();
     note.innerHTML = `<div class="meta">background build</div>${msg}`;
   };
@@ -345,6 +347,47 @@ async function consumeStream(res, opts = {}) {
     return t;
   };
 
+  // Live code panel: shows files being written in real time, per agent.
+  const codeSecs = {};
+  const ensureLiveCode = () => {
+    let lc = aiBubble.querySelector('.livecode');
+    if (!lc) {
+      lc = document.createElement('details');
+      lc.className = 'livecode';
+      lc.open = true;
+      lc.innerHTML = '<summary>👁 Code <span class="lc-who"></span></summary><div class="lc-roster"></div><div class="lc-body"></div>';
+      aiBubble.insertBefore(lc, aiBubble.querySelector('.body'));
+    }
+    return lc;
+  };
+  const appendCode = (p) => {
+    const lc = ensureLiveCode();
+    const who = p.agent || 'Yield';
+    // Roster of who's working.
+    const roster = lc.querySelector('.lc-roster');
+    if (!roster.querySelector(`[data-who="${CSS.escape(who)}"]`)) {
+      const chip = document.createElement('span');
+      chip.className = 'lc-chip'; chip.dataset.who = who; chip.textContent = '🤖 ' + who;
+      roster.appendChild(chip);
+    }
+    const key = who + '␟' + (p.path || '');
+    let sec = codeSecs[key];
+    if (!sec) {
+      const wrap = document.createElement('div');
+      wrap.className = 'lc-file';
+      wrap.innerHTML = `<div class="lc-head">🤖 ${esc(who)} · <span class="lc-path">${esc(p.path || '')}</span></div><pre class="lc-pre"></pre>`;
+      lc.querySelector('.lc-body').appendChild(wrap);
+      sec = codeSecs[key] = { pre: wrap.querySelector('.lc-pre'), text: '' };
+    }
+    if (p.delta) {
+      sec.text += p.delta;
+      sec.pre.textContent = sec.text;
+      sec.pre.scrollTop = sec.pre.scrollHeight;
+    }
+    const w = lc.querySelector('.lc-who');
+    if (w) w.textContent = `· ${who} writing ${p.path || ''}`;
+  };
+
   let chatAcc = '';
   let finished = false; // got a terminal event (done/error/blocked/gate/end)
   let hasFiles = false;
@@ -370,6 +413,8 @@ async function consumeStream(res, opts = {}) {
           const tb = ensureThink().querySelector('.think-body');
           tb.textContent = thinkAcc;
           tb.scrollTop = tb.scrollHeight;
+        } else if (ev === 'code') {
+          appendCode(payload);
         } else if (ev === 'status') {
           setMeta(`${payload.stage}…`);
         } else if (ev === 'meta') {
@@ -397,6 +442,8 @@ async function consumeStream(res, opts = {}) {
           if (agentNames.length) extra += `<div class="meta">⚡ created agent(s): ${agentNames.map(esc).join(', ')}</div>`;
           setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')) + extra);
           const ts = aiBubble.querySelector('.think summary'); if (ts) ts.textContent = '💭 Thinking';
+          const lc = aiBubble.querySelector('.livecode');
+          if (lc) { lc.open = false; const s = lc.querySelector('summary'); if (s) s.innerHTML = '👁 Code'; }
         } else if (ev === 'blocked') {
           finished = true;
           aiBubble.classList.add('flagged');
@@ -428,16 +475,24 @@ async function consumeStream(res, opts = {}) {
 }
 
 // Reconnect a refreshed/reopened tab to an in-progress build (Durable Object).
-// Falls back to polling if the live stream isn't available.
+// Falls back to polling if the live stream isn't available. Marks the UI as
+// working so the composer shows "Working…" instead of looking idle.
 async function resumeBuild() {
   if (!state.projectId) return;
+  // Show the working state immediately — the build is running server-side.
+  state.working = true; updateComposer();
+  let res;
   try {
-    const res = await fetch(`/api/projects/${state.projectId}/stream`);
-    if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) return startBuildWatch();
+    res = await fetch(`/api/projects/${state.projectId}/stream`);
+  } catch {
+    return startBuildWatch(); // keeps working=true; clears when it finishes
+  }
+  if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) return startBuildWatch();
+  try {
     await consumeStream(res, { resume: true });
     await loadFiles(); refreshPreview();
-  } catch {
-    startBuildWatch();
+  } finally {
+    state.working = false; updateComposer();
   }
 }
 

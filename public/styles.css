@@ -368,6 +368,14 @@ a { color: inherit; text-decoration: none; }
 .gh-ok { color: var(--brand-2); font-size: .85rem; margin-top: .5rem; }
 .gh-err { color: var(--danger); font-size: .85rem; margin-top: .5rem; }
 
+/* Prompt history dialog */
+.hist-list { max-height: 56vh; overflow-y: auto; display: flex; flex-direction: column; gap: .5rem; margin-top: .3rem; }
+.hist-item { border: 1px solid var(--line); border-radius: 9px; padding: .5rem .65rem; background: var(--panel-2); }
+.hist-meta { color: var(--muted); font-size: .72rem; font-family: ui-monospace, Menlo, monospace; margin-bottom: .3rem; }
+.hist-text { font-size: .85rem; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.hist-actions { margin-top: .4rem; }
+.hist-actions:empty { display: none; }
+
 @media (max-width: 960px) {
   .feature-grid { grid-template-columns: repeat(2, 1fr); }
 }

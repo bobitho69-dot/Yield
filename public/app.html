@@ -28,6 +28,11 @@
     <form method="dialog" class="gh-close"><button class="btn ghost sm">Close</button></form>
   </dialog>
 
+  <dialog id="histDialog" class="gh-dialog">
+    <div id="histBody"></div>
+    <form method="dialog" class="gh-close"><button class="btn ghost sm">Close</button></form>
+  </dialog>
+
   <main class="workspace">
     <!-- Left: chat -->
     <section class="chat-pane">
@@ -52,6 +57,7 @@
           </div>
           <span id="autoPick" class="auto-pick"></span>
           <div class="row-spacer"></div>
+          <button id="histBtn" type="button" class="btn ghost sm" title="Prompt history (saved to your GitHub)">📜 History</button>
           <button id="newBtn" type="button" class="btn ghost sm" title="New project">＋ New</button>
         </div>
         <div class="composer-input">

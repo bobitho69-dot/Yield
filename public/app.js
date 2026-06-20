@@ -726,13 +726,20 @@ async function createProjectAgent() {
 async function delProjectAgent(id) { if (!confirm('Delete agent?')) return; await fetch('/api/agents/' + id, { method: 'DELETE' }); renderAgentsPane(); }
 
 // ---------- Per-app Settings panel ----------
+// The prompt users paste to have Yield build a Cloudflare Worker backend that holds
+// their secrets (never in the frontend, never stored by Yield).
+const BACKEND_PROMPT = `Set up a secure backend for this app as a Cloudflare Worker in a "worker/" folder:
+- Put ALL secrets/API keys in the Worker and read them from its environment (env.SECRET_NAME) — never put a secret in the frontend.
+- Add the endpoints the app needs (enable CORS) and update the frontend to call my deployed Worker's URL.
+- Add a short worker/README.md with the deploy steps and the EXACT list of secrets I must set in Cloudflare (Worker → Settings → Variables and Secrets).
+Then tell me each secret NAME to add in Cloudflare and what value it expects.`;
+
 async function renderSettingsPane() {
   const el = $('#settingsPane');
   if (!state.projectId) { el.innerHTML = '<h3>App settings</h3><p class="sub">Build something first to configure this app.</p>'; return; }
-  const { secrets } = await fetch(`/api/secrets?project=${state.projectId}`).then((r) => r.json()).catch(() => ({ secrets: [] }));
   const proj = await fetch(`/api/projects/${state.projectId}`).then((r) => r.json()).then((d) => d.project).catch(() => ({ slug: state.projectId }));
   const share = location.origin + '/p/' + (proj.slug || state.projectId);
-  el.innerHTML = `<h3>App settings</h3><p class="sub">Settings &amp; secrets tailored to this app.</p>
+  el.innerHTML = `<h3>App settings</h3><p class="sub">Code storage, backend &amp; secrets for this app.</p>
     <div class="pane-card"><b>Project</b>
       <div class="pane-form"><input id="setTitle" value="${esc($('#projectTitle').value)}" placeholder="App name" />
         <button class="btn ghost sm" id="setRename" style="justify-self:start">Rename</button></div></div>
@@ -741,27 +748,28 @@ async function renderSettingsPane() {
       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
         <a class="btn ghost sm" href="/p/${esc(proj.slug || state.projectId)}/" target="_blank">Open app ↗</a>
         <a class="btn ghost sm" href="/api/projects/${state.projectId}/export">Download .zip</a>
-      </div>
-      <details style="margin-top:.6rem"><summary class="sub" style="cursor:pointer">Deploy it yourself (free)</summary>
-        <ol class="sub" style="margin:.5rem 0 0 1.1rem;line-height:1.7">
-          <li>Connect this app to GitHub (below) so its code lives in a repo.</li>
-          <li>In your hosting dashboard, create a new project → <b>Connect to Git</b> → pick the repo.</li>
-          <li>If the build fails, copy the log and paste it to Yield in chat — it'll fix the code.</li>
-          <li>Add a custom domain later from your host's settings.</li>
-        </ol>
-      </details></div>
+      </div></div>
     <div class="pane-card"><b>GitHub</b><div class="sub" id="setGh" style="margin-top:.4rem">…</div></div>
-    <div class="pane-card"><b>Secrets (this app)</b>
-      <div class="sub">Encrypted at rest; for this app's agents / server use.</div>
-      <div id="setSecrets" style="margin:.4rem 0">${(secrets || []).map((s) => `<div class="row" style="margin-top:.3rem">🔒 <b>${esc(s.name)}</b><button class="btn ghost sm" data-del-secret="${s.id}">Delete</button></div>`).join('') || '<div class="sub">None yet.</div>'}</div>
-      <div class="pane-form" style="grid-template-columns:1fr 1fr auto"><input id="secName" placeholder="NAME" /><input id="secVal" type="password" placeholder="value" /><button class="btn primary sm" id="secAdd">Save</button></div>
-      <div id="secMsg" class="sub"></div></div>
+    <div class="pane-card"><b>Backend &amp; secrets — host them free on your own Cloudflare</b>
+      <div class="sub" style="margin:.3rem 0 .5rem">Yield never stores your secrets. Your app's backend + API keys live in your own Cloudflare Worker, connected to your GitHub. Yield writes the code; you add the secret values in Cloudflare.</div>
+      <ol class="sub" style="margin:0 0 .2rem 1.1rem;line-height:1.8">
+        <li><b>Store your code</b> — connect this app to GitHub (above) so all code &amp; edits are saved.</li>
+        <li><b>Make a Cloudflare account</b> — free at <a class="copylink" href="https://dash.cloudflare.com/sign-up" target="_blank">cloudflare.com</a> → <b>Workers &amp; Pages</b>.</li>
+        <li><b>Connect your repo</b> — Create → Workers → <b>Connect to Git</b> → pick this app's repo. <span class="sub">(The first connect can error — retry or re-authorize GitHub; it usually works the second time.)</span></li>
+        <li><b>Ask Yield to build the backend</b> — paste the prompt below into the chat. Yield builds a <span class="endpoint">worker/</span> backend and lists the secrets you need.</li>
+        <li><b>Add your secrets in Cloudflare</b> — your Worker → Settings → <b>Variables and Secrets</b> → add each secret Yield listed → Deploy.</li>
+      </ol>
+      <div class="backend-prompt">${esc(BACKEND_PROMPT)}</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">
+        <button class="btn primary sm" id="useBackendPrompt">Use this prompt →</button>
+        <button class="btn ghost sm" id="copyBackendPrompt">Copy prompt</button>
+      </div></div>
     <div class="pane-card"><b>Version history</b>
       <div class="sub">Each build is a commit in your repo — restore any version.</div>
       <div id="setVersions" style="margin-top:.4rem"><span class="sub">Loading…</span></div></div>`;
   $('#setRename').onclick = async () => { const t = $('#setTitle').value.trim(); if (t) { await fetch(`/api/projects/${state.projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: t }) }); $('#projectTitle').value = t; loadProjects(); } };
-  $('#secAdd').onclick = async () => { const name = $('#secName').value.trim(), value = $('#secVal').value; const r = await fetch(`/api/secrets?project=${state.projectId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, value }) }); const d = await r.json(); if (!r.ok) { $('#secMsg').textContent = d.error || 'Failed'; return; } renderSettingsPane(); };
-  el.querySelectorAll('[data-del-secret]').forEach((b) => (b.onclick = async () => { await fetch('/api/secrets/' + b.dataset.delSecret, { method: 'DELETE' }); renderSettingsPane(); }));
+  $('#useBackendPrompt').onclick = () => { switchTab('preview'); $('#prompt').value = BACKEND_PROMPT; $('#prompt').focus(); updateComposer(); };
+  $('#copyBackendPrompt').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(BACKEND_PROMPT); $('#copyBackendPrompt').textContent = 'Copied ✓'; };
   el.querySelectorAll('.copy').forEach((b) => (b.onclick = () => navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy)));
   const gh = await fetch('/api/github/status').then((r) => r.json()).catch(() => ({ connected: false }));
   $('#setGh').innerHTML = gh.connected

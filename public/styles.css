@@ -306,6 +306,8 @@ a { color: inherit; text-decoration: none; }
 .pane-form input, .pane-form textarea, .pane-form select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: .5rem .6rem; font-size: .88rem; font-family: inherit; }
 .pane-form input:focus, .pane-form textarea:focus { outline: none; border-color: var(--brand); }
 .endpoint { font-family: ui-monospace, Menlo, monospace; font-size: .72rem; color: var(--muted); }
+.copylink { color: var(--brand-2); }
+.backend-prompt { margin-top: .6rem; background: #0d1017; border: 1px solid var(--line); border-radius: 8px; padding: .6rem .7rem; font-family: ui-monospace, Menlo, monospace; font-size: .74rem; line-height: 1.5; color: #cbd5e8; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
 .copy { cursor: pointer; color: var(--brand-2); }
 .preview-frame { width: 100%; height: 100%; border: none; background: #fff; }
 .code-wrap { display: grid; grid-template-columns: 180px 1fr; height: 100%; min-height: 0; }

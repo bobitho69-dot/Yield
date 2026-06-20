@@ -12,11 +12,10 @@
 import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
 import {
-  createProject, deleteProject, deleteFileRow, getProject, getProjectBySlug, getProjectFiles, getSecretRows,
+  createProject, deleteProject, deleteFileRow, getProject, getProjectBySlug, getProjectFiles,
   listAgents, listFiles, listMessages, listProjects, renameProject, saveFiles, upsertFile,
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
-import { decryptToken } from '../lib/github';
 import { renderPromptLog, fmtTime } from '../lib/promptlog';
 import { zip } from '../lib/zip';
 
@@ -145,20 +144,16 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
   if (!file) return new Response('Not found', { status: 404 });
 
   const ext = path.split('.').pop()?.toLowerCase() || 'txt';
-  // For HTML, inject window.YIELD (agent ids for the app; secrets for the owner)
-  // plus the error reporter for the auto bug-checker.
+  // For HTML, inject window.YIELD (agent ids + the entities/image SDK) plus the
+  // error reporter for the auto bug-checker. Secrets are NOT injected — they live
+  // in the user's own Cloudflare Worker backend, never in Yield or the frontend.
   let inject = '';
   if (ext === 'html') {
     const agentMap: Record<string, string> = {};
     const { results: ags } = await listAgents(c.env, project.user_id, project.id);
     for (const a of ags) if (a.is_public) agentMap[a.name] = a.id;
-    const secretMap: Record<string, string> = {};
-    if (owns) {
-      const { results: srows } = await getSecretRows(c.env, project.user_id, project.id);
-      for (const s of srows) { try { secretMap[s.name] = await decryptToken(c.env, s.value_enc); } catch { /* skip */ } }
-    }
     const sdk =
-      `window.YIELD=Object.assign(window.YIELD||{},{secrets:${JSON.stringify(secretMap)},agents:${JSON.stringify(agentMap)}});` +
+      `window.YIELD=Object.assign(window.YIELD||{},{agents:${JSON.stringify(agentMap)}});` +
       `window.YIELD.entities=(function(P){var H={'content-type':'application/json'},B='/api/apps/'+P+'/entities/';function jr(r){return r.json();}return{` +
       `list:function(e){return fetch(B+e).then(jr).then(function(d){return d.records||[];});},` +
       `create:function(e,d){return fetch(B+e,{method:'POST',headers:H,body:JSON.stringify(d||{})}).then(jr).then(function(x){return x.record;});},` +

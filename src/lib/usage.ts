@@ -22,8 +22,12 @@ function ym(d = new Date()): string {
 }
 
 async function readInt(env: Env, key: string): Promise<number> {
-  const v = await env.KV.get(key);
-  return v ? parseInt(v, 10) || 0 : 0;
+  try {
+    const v = await env.KV.get(key);
+    return v ? parseInt(v, 10) || 0 : 0;
+  } catch {
+    return 0; // don't let a KV hiccup 500 the request
+  }
 }
 
 // KV has no atomic increment; for a budget meter, last-writer-wins is acceptable.
@@ -51,7 +55,7 @@ export async function getUsageState(env: Env): Promise<UsageState> {
   if (override === 'off') return { highUsage: false, monthlyCount, budget, source: 'override-off' };
 
   // 2) Runtime kill-switch in KV (you can flip this without redeploying).
-  const flag = await env.KV.get('flag:high_usage');
+  const flag = await env.KV.get('flag:high_usage').catch(() => null);
   if (flag === 'on') return { highUsage: true, monthlyCount, budget, source: 'flag-on' };
   if (flag === 'off') return { highUsage: false, monthlyCount, budget, source: 'flag-off' };
 

@@ -19,18 +19,23 @@ export default {
 
     try {
       // Build request context (session user + anon device id).
-      let user = await readSession(env, request);
+      let user = await readSession(env, request).catch(() => null);
       // Open testing mode: no login required — everyone acts as a shared guest.
+      // Wrapped so a binding hiccup degrades to anonymous instead of a blanket 500.
       if (!user && env.AUTH_ENABLED === 'false') {
-        const guest = await ensureGuestUser(env);
-        user = { id: guest.id, email: guest.email, name: guest.name, avatar_url: guest.avatar_url, plan: guest.plan };
+        try {
+          const guest = await ensureGuestUser(env);
+          user = { id: guest.id, email: guest.email, name: guest.name, avatar_url: guest.avatar_url, plan: guest.plan };
+        } catch (e) {
+          console.error('guest user init failed:', e);
+        }
       }
       const { deviceId, setCookie } = await getOrCreateDeviceId(env, request);
       const c: Ctx = { env, ctx, url, user, deviceId };
 
       let res: Response | null = null;
 
-      if (path === '/api/health') res = handleHealth();
+      if (path === '/api/health') res = await handleHealth(c);
       else if (path === '/api/models') res = handleModels();
       else if (path === '/api/status') res = await handleStatus(c);
       else if (path === '/api/generate' && request.method === 'POST') res = await handleGenerate(request, c);

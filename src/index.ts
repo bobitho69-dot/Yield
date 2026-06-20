@@ -16,6 +16,8 @@ import { handleSecrets } from './routes/secrets';
 import { handleAppData } from './routes/appdata';
 import { handleMedia } from './routes/media';
 
+import { PLATFORM_GUIDE } from './lib/platformGuide';
+
 // Durable Object that runs builds independently of the browser tab (survives refresh).
 export { BuildSession } from './durable/buildSession';
 
@@ -43,6 +45,7 @@ export default {
       let res: Response | null = null;
 
       if (path === '/api/health') res = await handleHealth(c);
+      else if (path === '/api/docs') res = new Response(PLATFORM_GUIDE, { headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-store' } });
       else if (path === '/api/models') res = handleModels();
       else if (path === '/api/status') res = await handleStatus(c);
       else if (path === '/api/generate' && request.method === 'POST') res = await handleGenerate(request, c);

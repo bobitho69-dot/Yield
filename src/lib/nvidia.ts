@@ -57,8 +57,11 @@ export async function chat(opts: ChatOptions): Promise<{ text: string; usage: { 
       throw new NvidiaError(res.status, body);
     }
     const data: any = await res.json();
+    const msg = data?.choices?.[0]?.message ?? {};
     return {
-      text: data?.choices?.[0]?.message?.content ?? '',
+      // Reasoning models sometimes leave `content` empty and put text in
+      // `reasoning_content`; fall back to it so the caller still gets an answer.
+      text: msg.content || msg.reasoning_content || '',
       usage: { in: data?.usage?.prompt_tokens ?? 0, out: data?.usage?.completion_tokens ?? 0 },
     };
   } finally {

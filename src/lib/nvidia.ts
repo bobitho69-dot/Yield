@@ -47,7 +47,7 @@ export async function chat(opts: ChatOptions): Promise<{ text: string; usage: { 
         messages: opts.messages,
         temperature: opts.temperature ?? 0.4,
         top_p: opts.top_p ?? 0.9,
-        max_tokens: opts.max_tokens ?? 8192,
+        ...(opts.max_tokens ? { max_tokens: opts.max_tokens } : {}), // omit = no cap
         stream: false,
         ...(opts.extra || {}),
       }),
@@ -88,7 +88,7 @@ export async function chatStream(
       messages: opts.messages,
       temperature: opts.temperature ?? 0.4,
       top_p: opts.top_p ?? 0.9,
-      max_tokens: opts.max_tokens ?? 8192,
+      ...(opts.max_tokens ? { max_tokens: opts.max_tokens } : {}), // omit = no cap
       stream: true,
       ...(opts.extra || {}),
     }),

@@ -47,7 +47,6 @@ export async function routeModel(c: Ctx, prompt: string): Promise<{ id: string; 
         { role: 'user', content: prompt.slice(0, 4000) },
       ],
       temperature: 0,
-      max_tokens: 400,
       timeoutMs: 35000,
       // gpt-oss is a reasoning model — keep it fast so routing doesn't time out.
       extra: { reasoning_effort: 'low' },
@@ -285,7 +284,7 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
       try {
         const { text } = await chat({
           baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-          temperature: 0.4, max_tokens: 4000, timeoutMs: 150000,
+          temperature: 0.4, timeoutMs: 150000,
           ...(eff ? { extra: { reasoning_effort: eff } } : {}),
         });
         if (text && text.trim()) return { name: req.name, findings: text.trim() };
@@ -321,7 +320,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-            temperature: 0.3, max_tokens: 24000, timeoutMs: 300000,
+            temperature: 0.3, timeoutMs: 300000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await sub.feed(delta); },
@@ -450,7 +449,7 @@ export async function runBuild(
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-            temperature: 0.3, top_p: 0.95, max_tokens: 32768, timeoutMs: 600000,
+            temperature: 0.3, top_p: 0.95, timeoutMs: 600000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await streamer.feed(delta); await heartbeat(); },

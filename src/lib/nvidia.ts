@@ -139,7 +139,7 @@ export async function chatStream(
 export class NvidiaError extends Error {
   status: number;
   constructor(status: number, body: string) {
-    super(`NVIDIA API ${status}: ${body.slice(0, 500)}`);
+    super(`Model API ${status}: ${body.slice(0, 500)}`);
     this.status = status;
   }
 }

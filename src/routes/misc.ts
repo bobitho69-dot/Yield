@@ -20,6 +20,7 @@ export async function handleStatus(c: Ctx): Promise<Response> {
     user: c.user,
     authEnabled: c.env.AUTH_ENABLED !== 'false',
     providers: enabledProviders(c.env),
+    donateUrl: c.env.DONATE_URL || '',
     ...snap,
   });
 }

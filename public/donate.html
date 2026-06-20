@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Support Yield — Donate</title>
+  <meta name="description" content="Yield is free for everyone. If it's useful to you, a small donation helps cover hosting and keeps it free." />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="landing">
+  <header class="nav">
+    <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+    <nav class="nav-links">
+      <a href="/pricing">Pricing</a>
+      <a href="/dashboard">Projects</a>
+      <a class="btn primary sm" href="/app">Open builder</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" style="padding-bottom:1rem">
+      <div class="pill">💜 Powered by people who like keeping things free</div>
+      <h1>Like Yield?<br /><span class="grad">Help keep it free.</span></h1>
+      <p class="sub">
+        Yield is free to use — building, previewing, your code on GitHub, all of it. But hosting and
+        AI compute aren't free for us. If Yield has saved you time or money, a one-time donation (any
+        amount) helps cover the bills and keeps the free tier alive for everyone.
+      </p>
+      <div class="hero-cta">
+        <a class="btn primary lg" id="donateBtn" href="#" target="_blank" rel="noopener">💜 Donate to Yield</a>
+        <a class="btn ghost lg" href="/app">Keep building</a>
+      </div>
+      <p class="muted" id="donateNote" style="margin-top:1rem;font-size:.9rem"></p>
+    </section>
+
+    <section class="band">
+      <div class="grid3">
+        <div class="card"><div class="num">🌍</div><h3>Keeps it free</h3><p>Your support pays for hosting and AI compute, so Yield can stay free for students, hobbyists, and anyone building.</p></div>
+        <div class="card"><div class="num">⚡</div><h3>Fewer paused times</h3><p>More support means a higher free budget before "High Usage Times" kick in — so more people can build, more of the time.</p></div>
+        <div class="card"><div class="num">🛠️</div><h3>More features</h3><p>Donations fund the time that goes into new models, better builds, and the tools that make Yield genuinely useful.</p></div>
+      </div>
+      <p class="fineprint" style="text-align:center">
+        Donations are voluntary and non-refundable, and don't change your access — Yield works the same whether or not you give.
+        Want guaranteed access during busy periods instead? That's what <a class="toplink" href="/pricing">Priority Access ($20/mo)</a> is for.
+      </p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>◆ Yield — free AI app builder</span>
+    <span>
+      <a class="toplink" href="/pricing">Pricing</a> ·
+      <a class="toplink" href="/donate">Donate</a> ·
+      <a class="toplink" href="/terms">Terms</a> ·
+      <a class="toplink" href="/privacy">Privacy</a>
+    </span>
+    <span>Free to start · Your code stays yours</span>
+  </footer>
+
+  <script>
+    // Wire the donate button to the configured DONATE_URL (from /api/status).
+    fetch('/api/status').then((r) => r.json()).then((s) => {
+      const btn = document.getElementById('donateBtn');
+      const note = document.getElementById('donateNote');
+      if (s && s.donateUrl) {
+        btn.href = s.donateUrl;
+      } else {
+        btn.classList.add('disabled');
+        btn.removeAttribute('target');
+        btn.href = '/pricing';
+        btn.textContent = 'See Priority Access →';
+        note.textContent = 'A donation link isn’t set up yet — check back soon. (Owner: set DONATE_URL to enable this.)';
+      }
+    }).catch(() => {});
+  </script>
+</body>
+</html>

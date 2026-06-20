@@ -58,7 +58,7 @@ export async function checkPrompt(env: Env, prompt: string): Promise<GuardResult
     return {
       blocked: jailbreak,
       score,
-      reason: jailbreak ? 'NeMoGuard flagged this prompt as a jailbreak attempt.' : 'Clean.',
+      reason: jailbreak ? 'The safety guard flagged this prompt as a possible jailbreak attempt.' : 'Clean.',
       source: 'nemoguard',
     };
   } catch {

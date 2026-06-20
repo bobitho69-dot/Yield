@@ -400,7 +400,7 @@ async function consumeStream(res, opts = {}) {
         } else if (ev === 'blocked') {
           finished = true;
           aiBubble.classList.add('flagged');
-          setMeta('⚠ blocked by NeMoGuard');
+          setMeta('⚠ blocked by safety guard');
           setBody(esc(payload.message || 'Blocked.') + (payload.detail ? `<div class="meta">${esc(payload.detail)}</div>` : ''));
         } else if (ev === 'gate') {
           finished = true;
@@ -551,7 +551,7 @@ async function bugCheck() {
   $('#guardNote').innerHTML = '<span class="checking">Checking the app for runtime errors…</span>';
   refreshPreview();
   await sleep(3200);
-  $('#guardNote').textContent = 'Prompts are screened by NVIDIA NeMoGuard.';
+  $('#guardNote').textContent = 'Prompts are screened by an automatic safety guard.';
   // De-dupe; only hard errors (error/rejection) trigger an auto-fix.
   const seen = new Set();
   const hard = [];
@@ -654,12 +654,12 @@ async function renderSettingsPane() {
         <a class="btn ghost sm" href="/p/${esc(proj.slug || state.projectId)}/" target="_blank">Open app ↗</a>
         <a class="btn ghost sm" href="/api/projects/${state.projectId}/export">Download .zip</a>
       </div>
-      <details style="margin-top:.6rem"><summary class="sub" style="cursor:pointer">Deploy to your own Cloudflare (free)</summary>
+      <details style="margin-top:.6rem"><summary class="sub" style="cursor:pointer">Deploy it yourself (free)</summary>
         <ol class="sub" style="margin:.5rem 0 0 1.1rem;line-height:1.7">
           <li>Connect this app to GitHub (below) so its code lives in a repo.</li>
-          <li>Cloudflare → Workers &amp; Pages → Create → <b>Connect to Git</b> → pick the repo.</li>
+          <li>In your hosting dashboard, create a new project → <b>Connect to Git</b> → pick the repo.</li>
           <li>If the build fails, copy the log and paste it to Yield in chat — it'll fix the code.</li>
-          <li>Add a custom domain later from the Worker → Settings → Domains.</li>
+          <li>Add a custom domain later from your host's settings.</li>
         </ol>
       </details></div>
     <div class="pane-card"><b>GitHub</b><div class="sub" id="setGh" style="margin-top:.4rem">…</div></div>

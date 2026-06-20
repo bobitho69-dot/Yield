@@ -78,18 +78,39 @@ export async function createRepo(token: string, name: string, isPrivate: boolean
   return { full_name: data.full_name, html_url: data.html_url, default_branch: data.default_branch || 'main', private: data.private };
 }
 
+// Encode each path segment but keep slashes (GitHub contents API wants literal /).
+function encPath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
 async function getFileSha(token: string, owner: string, repo: string, path: string, branch: string): Promise<string | null> {
-  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${branch}`);
+  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encPath(path)}?ref=${branch}`);
   if (!r.ok) return null;
   const data: any = await r.json();
   return data?.sha ?? null;
+}
+
+// Read a file's text content + sha from a repo (null if missing).
+export async function getRepoFile(token: string, fullName: string, branch: string, path: string): Promise<{ content: string; sha: string } | null> {
+  const [owner, repo] = fullName.split('/');
+  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encPath(path)}?ref=${branch}`);
+  if (!r.ok) return null;
+  const data: any = await r.json();
+  if (typeof data?.content !== 'string') return null;
+  return { content: DEC.decode(unb64(data.content.replace(/\n/g, ''))), sha: data.sha };
+}
+
+// Create/overwrite a file in a repo (reads current sha first).
+export async function putRepoFile(token: string, fullName: string, branch: string, path: string, content: string, message: string): Promise<void> {
+  const [owner, repo] = fullName.split('/');
+  await putFile(token, owner, repo, path, content, message, branch);
 }
 
 async function putFile(
   token: string, owner: string, repo: string, path: string, content: string, message: string, branch: string,
 ): Promise<void> {
   const sha = await getFileSha(token, owner, repo, path, branch);
-  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, {
+  const r = await gh(token, `/repos/${owner}/${repo}/contents/${encPath(path)}`, {
     method: 'PUT',
     body: JSON.stringify({
       message,

@@ -34,6 +34,22 @@ AGENTS — you can create AI agents the app calls at runtime (chatbots, generato
   const { output } = await res.json();
 - Prefer creating an agent over calling external LLM APIs directly.
 
+DATA & BACKEND — the app has a free built-in database; use it for anything that should persist or be shared:
+- window.YIELD.entities (async, returns Promises; data persists to the user's GitHub repo):
+  - await window.YIELD.entities.list("Todo")            -> array of records
+  - await window.YIELD.entities.create("Todo", {title}) -> the new record (auto id, created_at, updated_at)
+  - await window.YIELD.entities.get("Todo", id)
+  - await window.YIELD.entities.update("Todo", id, {done:true})
+  - await window.YIELD.entities.delete("Todo", id)
+  Use entities (not localStorage) whenever the app should save or share data across users/sessions.
+- END-USER LOGIN (decide per app if it's needed): use Supabase — request SUPABASE_URL and SUPABASE_ANON_KEY via
+  "=== secret: ... ===", load @supabase/supabase-js from a CDN, and read keys from window.YIELD.secrets.*.
+- INTEGRATIONS: to use a third-party API, request its key with "=== secret: NAME — service ===" and call it with
+  window.YIELD.secrets.NAME. Prefer services that allow browser/CORS calls.
+- HEAVY BACKEND (webhooks, secret-protected calls): create a Cloudflare Worker in a "worker/" folder (worker/index.js
+  plus a short worker/README.md with deploy steps). Tell the user to deploy it from their GitHub repo and to paste any
+  deploy errors back to you so you can fix them.
+
 FILE RULES:
 - Start each file with a line: === file: <relative/path> === then the FULL file content (never a diff/snippet).
 - The entry point MUST be "index.html". Reference sibling files with relative paths (e.g. <link href="styles.css">, <script src="app.js">) — files are served together from the same folder.

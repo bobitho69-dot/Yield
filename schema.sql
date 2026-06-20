@@ -106,3 +106,15 @@ CREATE TABLE IF NOT EXISTS secrets (
   UNIQUE (user_id, project_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_secrets_user ON secrets(user_id);
+
+-- ── App data / entities (fallback store when a project isn't GitHub-linked) ───
+-- When a project IS linked, records live as JSON in the repo (.yield/data/*.json).
+CREATE TABLE IF NOT EXISTS app_data (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL,
+  entity      TEXT NOT NULL,
+  data        TEXT NOT NULL,                 -- JSON record
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_app_data ON app_data(project_id, entity);

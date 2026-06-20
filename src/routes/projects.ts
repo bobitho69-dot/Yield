@@ -126,7 +126,15 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
       const { results: srows } = await getSecretRows(c.env, project.user_id, project.id);
       for (const s of srows) { try { secretMap[s.name] = await decryptToken(c.env, s.value_enc); } catch { /* skip */ } }
     }
-    inject = `<script>window.YIELD=Object.assign(window.YIELD||{},{secrets:${JSON.stringify(secretMap)},agents:${JSON.stringify(agentMap)}});</script>`;
+    const sdk =
+      `window.YIELD=Object.assign(window.YIELD||{},{secrets:${JSON.stringify(secretMap)},agents:${JSON.stringify(agentMap)}});` +
+      `window.YIELD.entities=(function(P){var H={'content-type':'application/json'},B='/api/apps/'+P+'/entities/';function jr(r){return r.json();}return{` +
+      `list:function(e){return fetch(B+e).then(jr).then(function(d){return d.records||[];});},` +
+      `create:function(e,d){return fetch(B+e,{method:'POST',headers:H,body:JSON.stringify(d||{})}).then(jr).then(function(x){return x.record;});},` +
+      `get:function(e,i){return fetch(B+e+'/'+i).then(jr).then(function(x){return x.record;});},` +
+      `update:function(e,i,d){return fetch(B+e+'/'+i,{method:'PUT',headers:H,body:JSON.stringify(d||{})}).then(jr).then(function(x){return x.record;});},` +
+      `delete:function(e,i){return fetch(B+e+'/'+i,{method:'DELETE'}).then(jr);}};})(${JSON.stringify(project.id)});`;
+    inject = `<script>${sdk}</script>`;
   }
   const body = ext === 'html' ? REPORTER + inject + file.content : file.content;
   return new Response(body, {

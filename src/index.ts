@@ -13,6 +13,7 @@ import { handleModels, handleStatus, handleHealth } from './routes/misc';
 import { handleGithubStatus, handleGithubRepos, handleProjectGithub } from './routes/githubRoutes';
 import { handleAgents } from './routes/agents';
 import { handleSecrets } from './routes/secrets';
+import { handleAppData } from './routes/appdata';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -57,6 +58,10 @@ export default {
         } else {
           res = await handleProjects(request, c, id || undefined, sub || undefined);
         }
+      } else if (path.startsWith('/api/apps/')) {
+        const p = path.slice('/api/apps/'.length).split('/'); // [id, 'entities', entity, recordId?]
+        if (p[1] === 'entities' && p[0] && p[2]) res = await handleAppData(request, c, p[0], p[2], p[3]);
+        else res = error(404, 'Unknown app endpoint');
       } else if (path.startsWith('/api/agents')) {
         const rest = path.slice('/api/agents'.length).replace(/^\//, '');
         const [aid, sub] = rest.split('/');

@@ -76,8 +76,15 @@ export class BuildSession extends DurableObject<Env> {
     try {
       await this.ctx.storage.setAlarm(Date.now()); // fire ASAP, in its own context
     } catch {
-      // If scheduling fails, run it now but detached from this request.
-      this.ctx.waitUntil(this.alarm());
+      // If scheduling fails, run it now but detached from this request. If even
+      // that can't start, end the stream so no client is left "building" forever.
+      try {
+        this.ctx.waitUntil(this.alarm());
+      } catch {
+        this.building = false;
+        this.broadcast('error', { message: 'Could not start the build — please try again.' });
+        this.broadcast('end', {});
+      }
     }
   }
 

@@ -1,7 +1,7 @@
 // Yield builder — client logic.
 const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
-  files: [], activeFile: 'index.html', streaming: false,
+  thinking: 'high', files: [], activeFile: 'index.html', streaming: false,
   working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 const MAX_AUTOFIX = 2;
@@ -308,7 +308,7 @@ async function streamPrompt(prompt, opts = {}) {
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId }),
+      body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId, thinking: state.thinking }),
     });
     if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) {
       const err = await res.json().catch(() => ({}));
@@ -965,6 +965,16 @@ function wireEvents() {
   $('#openBtn').addEventListener('click', () => {
     if (state.projectId) window.open(`/p/${state.projectId}/index.html`, '_blank');
   });
+  // Thinking-level selector (persisted).
+  const thinkSel = $('#thinkingSel');
+  if (thinkSel) {
+    try { const saved = localStorage.getItem('yield_thinking'); if (saved) state.thinking = saved; } catch { /* ignore */ }
+    thinkSel.value = state.thinking;
+    thinkSel.addEventListener('change', () => {
+      state.thinking = thinkSel.value;
+      try { localStorage.setItem('yield_thinking', state.thinking); } catch { /* ignore */ }
+    });
+  }
   $('#upgradeBtn').addEventListener('click', upgrade);
   $('#histBtn').addEventListener('click', openHistory);
   $('#ghBtn').addEventListener('click', openGithubDialog);

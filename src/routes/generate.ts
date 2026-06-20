@@ -5,13 +5,13 @@
 // ```html code block. We split the stream live: text outside the block -> 'chat'
 // events (chat thread); the code block -> 'code' events (live preview).
 
-import type { Ctx } from '../types';
+import type { Ctx, Env } from '../types';
 import { sse, json, error } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
 import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor } from '../config/models';
 import { chat, chatStream } from '../lib/nvidia';
-import { CONVO_SYSTEM, routerSystem } from '../lib/prompts';
+import { CONVO_SYSTEM, SUBAGENT_SYSTEM, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import {
   addMessage, createAgent, createProject, getProject, getProjectFiles, getSecretRows, listAgents, listMessages,
@@ -123,23 +123,28 @@ function cleanFile(s: string): string {
 
 export interface SecretReq { name: string; description: string }
 export interface AgentReq { name: string; model: string | null; system_prompt: string }
+export interface TaskReq { name: string; model: string | null; instructions: string }
 
 // Streaming parser: chat text streams live; "=== file: path ===" starts a file,
-// "=== agent: Name | model ===" declares an agent, "=== secret: NAME — why ==="
-// requests a secret.
-function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>) {
+// "=== agent: Name | model ===" declares a runtime agent, "=== secret: NAME — why ==="
+// requests a secret, "=== task: Name | model ===" delegates a build sub-task to a
+// parallel agent (run after the orchestrator stream ends).
+function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>, agentLabel = 'Yield') {
   const FILE = /^={2,}\s*file:\s*(.+?)\s*={2,}\s*$/i;
   const SECRET = /^={2,}\s*secret:\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:[—:-]\s*(.*?))?\s*={2,}\s*$/i;
   const AGENT = /^={2,}\s*agent:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
+  const TASK = /^={2,}\s*task:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
   let buf = '';
-  let mode: 'chat' | 'file' | 'agent' = 'chat';
+  let mode: 'chat' | 'file' | 'agent' | 'task' = 'chat';
   let inThink = false;
   let curFile: { path: string; lines: string[] } | null = null;
   let curAgent: { name: string; model: string | null; lines: string[] } | null = null;
+  let curTask: { name: string; model: string | null; lines: string[] } | null = null;
   let lastStatus = '';
   const chatLines: string[] = [];
   const files: { path: string; lines: string[] }[] = [];
   const agents: { name: string; model: string | null; lines: string[] }[] = [];
+  const tasks: { name: string; model: string | null; lines: string[] }[] = [];
   const secrets: SecretReq[] = [];
 
   async function handleLine(line: string): Promise<void> {
@@ -169,6 +174,14 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>)
       curFile = { path: m[1].trim().replace(/^\/+/, ''), lines: [] };
       files.push(curFile);
       if (curFile.path !== lastStatus) { lastStatus = curFile.path; await send('status', { stage: `Writing ${curFile.path}` }); }
+      await send('code', { agent: agentLabel, path: curFile.path, delta: '', start: true });
+      return;
+    }
+    if ((m = line.match(TASK))) {
+      mode = 'task';
+      curTask = { name: m[1].trim().slice(0, 80), model: m[2] ? m[2].trim() : null, lines: [] };
+      tasks.push(curTask);
+      await send('status', { stage: `Planning agent: ${curTask.name}` });
       return;
     }
     if ((m = line.match(AGENT))) {
@@ -183,8 +196,9 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>)
       return; // single-line; doesn't change mode
     }
     if (mode === 'chat') { chatLines.push(line); await send('chat', line + '\n'); }
-    else if (mode === 'file' && curFile) curFile.lines.push(line);
+    else if (mode === 'file' && curFile) { curFile.lines.push(line); await send('code', { agent: agentLabel, path: curFile.path, delta: line + '\n' }); }
     else if (mode === 'agent' && curAgent) curAgent.lines.push(line);
+    else if (mode === 'task' && curTask) curTask.lines.push(line);
   }
 
   return {
@@ -200,7 +214,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>)
     async end() {
       if (buf.length) { await handleLine(buf); buf = ''; }
     },
-    get produced() { return chatLines.length > 0 || files.length > 0 || agents.length > 0; },
+    get produced() { return chatLines.length > 0 || files.length > 0 || agents.length > 0 || tasks.length > 0; },
     result() {
       // Drop reasoning-model scratchpads if any leaked into the text.
       let chat = chatLines.join('\n')
@@ -213,17 +227,60 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>)
       const ags: AgentReq[] = agents
         .map((a) => ({ name: a.name, model: a.model, system_prompt: cleanFile(a.lines.join('\n')) }))
         .filter((a) => a.name && a.system_prompt.trim());
+      const tks: TaskReq[] = tasks
+        .map((t) => ({ name: t.name, model: t.model, instructions: cleanFile(t.lines.join('\n')) }))
+        .filter((t) => t.name && t.instructions.trim())
+        .slice(0, 6); // cap parallel agents
       // The model didn't use === file: === — recover code from fences / raw HTML.
-      if (fs.length === 0) {
+      // (Only when no tasks were delegated; tasks produce the files instead.)
+      if (fs.length === 0 && tks.length === 0) {
         const fb = extractFilesFromText(chat);
         if (fb.files.length) { fs = fb.files; chat = fb.chat || 'Here is your app.'; }
       }
-      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets };
+      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks };
     },
   };
 }
 
 export type SendFn = (event: string, data: unknown) => Promise<void>;
+
+// Run one parallel build agent (from a "=== task: ===" block). It streams its code
+// live (tagged with the agent's name via `send`) and returns the file(s) it built.
+// Falls back through stable models so one bad model id doesn't waste the agent.
+async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn): Promise<{ name: string; files: FileRow[]; error?: string }> {
+  const order = [task.model, 'deepseek-v4-flash', 'glm-5.1'].filter(Boolean) as string[];
+  const seen = new Set<string>();
+  let lastErr = 'agent produced nothing';
+  for (const cid of order) {
+    if (seen.has(cid)) continue;
+    seen.add(cid);
+    const model = resolveModel(cid);
+    const ep = endpointFor(env, model);
+    // Forward only the agent's live code (already tagged with its name) to the user.
+    const sub = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, task.name);
+    try {
+      await chatStream(
+        {
+          baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId,
+          messages: [
+            { role: 'system', content: SUBAGENT_SYSTEM },
+            { role: 'system', content: sharedContext },
+            { role: 'user', content: `Your task ("${task.name}"):\n\n${task.instructions}` },
+          ],
+          max_tokens: 16000, timeoutMs: 150000,
+        },
+        async (delta) => { await sub.feed(delta); },
+      );
+      await sub.end();
+      const files = sub.result().files;
+      if (files.length) return { name: task.name, files };
+      lastErr = `no files from ${model.id}`;
+    } catch (e: any) {
+      lastErr = String(e?.message || e);
+    }
+  }
+  return { name: task.name, files: [], error: lastErr };
+}
 
 // The full build pipeline: jailbreak guard -> usage gate -> model route -> stream
 // -> parse files/agents/secrets -> persist (D1 + GitHub) -> 'done'. It streams SSE
@@ -342,8 +399,40 @@ export async function runBuild(
     }
     await streamer.end();
 
-    const { chat: chatBody, files, hasFiles, agents: agentReqs, secrets: secretReqs } = streamer.result();
-    const chatText = chatBody || (hasFiles ? 'Updated your app.' : 'Done.');
+    const result = streamer.result();
+    const chatBody = result.chat;
+    const agentReqs = result.agents;
+    const secretReqs = result.secrets;
+    let files = result.files;
+
+    // Fan out: if the orchestrator delegated "=== task: ===" blocks, run them as
+    // parallel build agents — each streams its own code live (tagged by name).
+    let agentNote = '';
+    if (result.tasks.length) {
+      await send('status', { stage: `Launching ${result.tasks.length} build agents…` });
+      await heartbeat();
+      const sharedContext =
+        `You are part of a team building ONE app. App goal:\n${prompt.slice(0, 1500)}\n\n` +
+        `Orchestrator plan/notes:\n${(chatBody || '').slice(0, 2000)}` +
+        (files.length ? `\n\nThe orchestrator already wrote these files — do NOT recreate them: ${files.map((f) => f.path).join(', ')}` : '');
+      const results = await Promise.all(result.tasks.map(async (t) => {
+        await send('status', { stage: `Agent ${t.name} working…` });
+        const res = await runSubAgent(c.env, t, sharedContext, send);
+        await send('status', { stage: res.files.length ? `Agent ${t.name}: ${res.files.length} file(s) ✓` : `Agent ${t.name}: no output` });
+        return res;
+      }));
+      await heartbeat();
+      // Merge: orchestrator's own files first, then each agent's files (by path).
+      const byPath = new Map<string, FileRow>();
+      for (const f of files) byPath.set(f.path, f);
+      for (const res of results) for (const f of res.files) byPath.set(f.path, f);
+      files = [...byPath.values()];
+      const ok = results.filter((x) => x.files.length).map((x) => x.name);
+      if (ok.length) agentNote = `\n\n🤖 Built in parallel by ${ok.length} agent${ok.length > 1 ? 's' : ''}: ${ok.join(', ')}.`;
+    }
+
+    const hasFiles = files.length > 0;
+    const chatText = (chatBody || (hasFiles ? 'Updated your app.' : 'Done.')) + agentNote;
 
     // 7) Create/update AI-declared agents (project-scoped) and resolve secret needs.
     const createdAgents: Record<string, string> = {};

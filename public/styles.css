@@ -122,6 +122,13 @@ a { color: inherit; text-decoration: none; }
 .dots { display: inline-block; animation: blink 1s steps(2) infinite; color: var(--brand); }
 @keyframes blink { 50% { opacity: .25; } }
 
+/* Working / busy state for the composer */
+.spin { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; vertical-align: -1px; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn.working-btn { background: var(--panel-2); border-color: var(--brand); color: var(--brand-2); cursor: default; }
+.composer.busy { box-shadow: inset 3px 0 0 var(--brand); }
+.composer.busy::before { content: '⏳ Yield is working — new messages are scheduled'; display: block; font-size: .72rem; color: var(--brand-2); margin-bottom: .45rem; }
+
 .composer { border-top: 1px solid var(--line); padding: .7rem; background: var(--panel); }
 .composer-row { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
 .row-spacer { flex: 1; }

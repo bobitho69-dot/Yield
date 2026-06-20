@@ -156,7 +156,9 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
   if (prompt.length > 12000) return error(413, 'prompt too long');
 
   // Return the stream immediately; do ALL work inside it so nothing freezes the UI.
+  // The work runs in waitUntil, so it finishes + saves even if the tab is closed.
   const { response, send, close } = sse();
+  let buildKey: string | null = null;
   c.ctx.waitUntil(
     (async () => {
       try {
@@ -196,6 +198,9 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
           return;
         }
         if (!project && c.user) project = await createProject(c.env, c.user.id, prompt.slice(0, 60));
+
+        // Mark this app as "building" so a reopened tab knows work is in progress.
+        if (project) { buildKey = `build:${project.id}`; await c.env.KV.put(buildKey, String(Date.now()), { expirationTtl: 900 }).catch(() => {}); }
 
         await send('meta', { model: model.id, label: model.label, projectId: project?.id ?? null, routeReason });
 
@@ -296,6 +301,7 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
       } catch (e: any) {
         await send('error', { message: String(e?.message || e).slice(0, 400) });
       } finally {
+        if (buildKey) await c.env.KV.delete(buildKey).catch(() => {});
         await close();
       }
     })(),

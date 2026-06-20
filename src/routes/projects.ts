@@ -84,7 +84,8 @@ export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: st
   // ---- Project ----
   if (req.method === 'GET') {
     const { results } = await listMessages(c.env, id);
-    return json({ project, messages: results });
+    const building = !!(await c.env.KV.get(`build:${id}`).catch(() => null));
+    return json({ project, messages: results, building });
   }
   if (req.method === 'PUT') {
     const body = (await req.json().catch(() => ({}))) as { title?: string };

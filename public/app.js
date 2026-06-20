@@ -116,8 +116,9 @@ async function loadProjects() {
 }
 
 async function openProject(id) {
-  const { project, messages } = await fetch(`/api/projects/${id}`).then((r) => r.json());
+  const { project, messages, building } = await fetch(`/api/projects/${id}`).then((r) => r.json());
   state.projectId = project.id;
+  setProjectUrl();
   state.githubRepo = project.github_repo || null;
   state.githubUrl = project.github_url || null;
   $('#projectTitle').value = project.title;
@@ -125,6 +126,25 @@ async function openProject(id) {
   await loadFiles();
   refreshPreview();
   loadProjects();
+  if (building) startBuildWatch();
+}
+
+// If a build is still running server-side (e.g. you closed the tab mid-build),
+// watch for it to finish and pull in the saved result.
+let buildWatchTimer = null;
+function startBuildWatch() {
+  if (buildWatchTimer || !state.projectId) return;
+  addBubble('ai', '<div class="meta">background build</div>⏳ This app is still building in the background — it’ll update here when done.');
+  buildWatchTimer = setInterval(async () => {
+    try {
+      const { building } = await fetch(`/api/projects/${state.projectId}`).then((r) => r.json());
+      if (!building) {
+        clearInterval(buildWatchTimer); buildWatchTimer = null;
+        await loadFiles(); refreshPreview();
+        addBubble('ai', '<div class="meta">background build</div>✓ Background build finished and saved.');
+      }
+    } catch { /* keep watching */ }
+  }, 4000);
 }
 
 // ---------- Files / editor ----------
@@ -152,6 +172,13 @@ function showActiveFile() {
   const f = (state.files || []).find((x) => x.path === state.activeFile);
   $('#codeEditor').value = f ? f.content : '';
   $('#activePath').textContent = f ? f.path : '';
+}
+
+// Keep the current app in the URL so reopening the tab resumes it.
+function setProjectUrl() {
+  if (state.projectId && location.search.indexOf('project=' + state.projectId) === -1) {
+    try { history.replaceState(null, '', '/app?project=' + state.projectId); } catch { /* ignore */ }
+  }
 }
 
 function refreshPreview() {
@@ -288,14 +315,14 @@ async function streamPrompt(prompt, opts = {}) {
           setMeta(`${payload.stage}…`);
         } else if (ev === 'meta') {
           setMeta(`${payload.label}${payload.routeReason ? ` · ${payload.routeReason}` : ''}`);
-          if (payload.projectId) state.projectId = payload.projectId;
+          if (payload.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
         } else if (ev === 'chat') {
           chatAcc += payload;
           setBody(fmt(chatAcc));
           $('#messages').scrollTop = $('#messages').scrollHeight;
         } else if (ev === 'done') {
           finished = true;
-          if (payload.projectId) state.projectId = payload.projectId;
+          if (payload.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
           if (payload.chat) chatAcc = payload.chat;
           if (payload.hasCode && Array.isArray(payload.files) && payload.files.length) {
             hasFiles = true;
@@ -346,9 +373,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function updateComposer() {
   const btn = $('#sendBtn');
+  const prompt = $('#prompt');
+  const composer = $('#composer');
   if (!btn) return;
-  btn.innerHTML = state.working ? '＋ Schedule' : 'Build ▸';
-  btn.title = state.working ? 'Yield is working — this prompt will run after the current build & bug-check' : '';
+  composer && composer.classList.toggle('busy', state.working);
+  if (state.working) {
+    const hasText = prompt && prompt.value.trim().length > 0;
+    btn.innerHTML = hasText ? '＋ Schedule' : '<span class="spin"></span> Working…';
+    btn.classList.toggle('working-btn', !hasText);
+    btn.title = 'Yield is working — your message will be scheduled to run after this.';
+    if (prompt) prompt.placeholder = 'Yield is working… your message will be scheduled.';
+  } else {
+    btn.innerHTML = 'Build ▸';
+    btn.classList.remove('working-btn');
+    btn.title = '';
+    if (prompt) prompt.placeholder = 'Describe your app, or ask for a change…';
+  }
 }
 
 function renderQueue() {
@@ -674,14 +714,14 @@ function wireEvents() {
     if (!v) return;
     $('#prompt').value = '';
     $('#autoPick').textContent = '';
-    if (state.working) { state.queue.push(v); renderQueue(); }  // busy -> schedule it
+    if (state.working) { state.queue.push(v); renderQueue(); updateComposer(); }  // busy -> schedule it
     else startUserPrompt(v);
   });
   // Enter sends; Shift+Enter makes a new line.
   $('#prompt').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#composer').requestSubmit(); }
   });
-  $('#prompt').addEventListener('input', maybeRecommend);
+  $('#prompt').addEventListener('input', () => { maybeRecommend(); if (state.working) updateComposer(); });
   // Collect runtime errors reported by the preview iframe (for the bug-checker).
   window.addEventListener('message', (e) => {
     const d = e.data;

@@ -19,12 +19,12 @@ back to a working model. Configured in `src/config/models.ts`.
 
 | Yield name | Role | `modelId` | Key env var |
 |------------|------|-----------|-------------|
-| Kimi K2.6 | coder | `moonshotai/kimi-k2-thinking` | `KIMI_API_KEY` |
-| MiniMax M3 | coder | `minimaxai/minimax-m2.7` | `MINIMAX_API_KEY` |
+| Kimi K2.6 | coder | `moonshotai/kimi-k2.6` | `KIMI_API_KEY` |
+| MiniMax M3 | coder | `minimaxai/minimax-m3` | `MINIMAX_API_KEY` |
 | DeepSeek V4 Flash | coder | `deepseek-ai/deepseek-v4-flash` | `DEEPSEEK_FLASH_API_KEY` |
-| Step 3.7 Flash | coder | `stepfun-ai/step-3.5-flash` | `STEP_API_KEY` |
+| Step 3.7 Flash | coder | `stepfun-ai/step-3.7-flash` | `STEP_API_KEY` |
 | DeepSeek V4 Pro | coder | `deepseek-ai/deepseek-v4-pro` | `DEEPSEEK_PRO_API_KEY` |
-| GLM 5.1 | coder | `z-ai/glm5.1` | `GLM_API_KEY` |
+| GLM 5.1 | coder | `z-ai/glm-5.1` | `GLM_API_KEY` |
 | gpt-oss-20b | router (Auto) + agent fallback | `openai/gpt-oss-20b` | `GPTOSS_API_KEY` |
 | JailbreakDetect | guard | `nvidia/nemoguard-jailbreak-detect` | `NEMOGUARD_API_KEY` |
 

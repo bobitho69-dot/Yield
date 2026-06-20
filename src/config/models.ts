@@ -6,10 +6,10 @@
 // If a model's key var is unset, it falls back to NVIDIA_API_KEY — so you can start
 // with a single NVIDIA key and split them out later with zero code changes.
 //
-// IMPORTANT: a few versions you named are ahead of NVIDIA's public catalog, so the
-// `modelId`s are best-effort placeholders. Verify each at https://build.nvidia.com
-// (open a model → "Get API Key" shows the exact id) and update here, or override at
-// runtime with a MODEL_OVERRIDES JSON var. Nothing else hard-codes a model id.
+// The coder `modelId`s below are the real NVIDIA catalog ids (verified at
+// https://build.nvidia.com — open a model → "Get API Key" shows the exact id). If
+// NVIDIA renames one, update it here, or override at runtime with a MODEL_OVERRIDES
+// JSON var. Qwen3 Coder runs on OpenRouter (its own provider.baseUrl + key).
 
 import type { Env } from '../types';
 
@@ -53,8 +53,7 @@ export const CODER_MODELS: ModelDef[] = [
   {
     id: 'kimi-k2.6',
     label: 'Kimi K2.6',
-    modelId: 'moonshotai/kimi-k2-thinking',
-    keyName: 'moonshotai/kimi-k2-instruct',
+    modelId: 'moonshotai/kimi-k2.6',
     role: 'coder',
     tier: 'pro',
     speed: 2,
@@ -66,8 +65,7 @@ export const CODER_MODELS: ModelDef[] = [
   {
     id: 'minimax-m3',
     label: 'MiniMax M3',
-    modelId: 'minimaxai/minimax-m2.7',
-    keyName: 'minimaxai/minimax-m3',
+    modelId: 'minimaxai/minimax-m3',
     role: 'coder',
     tier: 'standard',
     speed: 3,
@@ -91,8 +89,7 @@ export const CODER_MODELS: ModelDef[] = [
   {
     id: 'step-3.7-flash',
     label: 'Step 3.7 Flash',
-    modelId: 'stepfun-ai/step-3.5-flash',
-    keyName: 'stepfun-ai/step-3.7-flash',
+    modelId: 'stepfun-ai/step-3.7-flash',
     role: 'coder',
     tier: 'flash',
     speed: 5,
@@ -105,7 +102,6 @@ export const CODER_MODELS: ModelDef[] = [
     id: 'deepseek-v4-pro',
     label: 'DeepSeek V4 Pro',
     modelId: 'deepseek-ai/deepseek-v4-pro',
-    keyName: 'deepseek-ai/deepseek-v4',
     role: 'coder',
     tier: 'pro',
     speed: 2,
@@ -117,8 +113,7 @@ export const CODER_MODELS: ModelDef[] = [
   {
     id: 'glm-5.1',
     label: 'GLM 5.1',
-    modelId: 'z-ai/glm5.1',
-    keyName: 'zai/glm-5.1',
+    modelId: 'z-ai/glm-5.1',
     role: 'coder',
     tier: 'standard',
     speed: 3,

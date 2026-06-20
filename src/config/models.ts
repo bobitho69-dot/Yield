@@ -26,8 +26,14 @@ export interface ModelDef {
   /** Friendly id used in the UI and API ("model" field in requests). */
   id: string;
   label: string;
-  /** Model id sent to the provider endpoint. */
+  /** Model id sent to the provider endpoint (the REAL NVIDIA catalog id). */
   modelId: string;
+  /**
+   * Name to look the API key up under, in addition to apiKeyEnv. Set this to the
+   * secret name you created (often the old model id) so keys still resolve even
+   * after `modelId` is corrected. Optional.
+   */
+  keyName?: string;
   role: ModelRole;
   /** One-line pitch. */
   blurb: string;
@@ -59,7 +65,8 @@ export const CODER_MODELS: ModelDef[] = [
   {
     id: 'minimax-m3',
     label: 'MiniMax M3',
-    modelId: 'minimaxai/minimax-m3',
+    modelId: 'minimaxai/minimax-m2.7',
+    keyName: 'minimaxai/minimax-m3',
     role: 'coder',
     tier: 'standard',
     speed: 3,
@@ -83,7 +90,8 @@ export const CODER_MODELS: ModelDef[] = [
   {
     id: 'step-3.7-flash',
     label: 'Step 3.7 Flash',
-    modelId: 'stepfun-ai/step-3.7-flash',
+    modelId: 'stepfun-ai/step-3.5-flash',
+    keyName: 'stepfun-ai/step-3.7-flash',
     role: 'coder',
     tier: 'flash',
     speed: 5,
@@ -182,6 +190,7 @@ export function keyFor(env: Env, apiKeyEnv: string): string {
 export function keyForModel(env: Env, model: ModelDef): string {
   const candidates = [
     model.provider.apiKeyEnv, // e.g. KIMI_API_KEY
+    model.keyName, // the secret name you created (often the old/aliased id)
     model.modelId, // e.g. moonshotai/kimi-k2-instruct
     model.modelId.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase(), // MOONSHOTAI_KIMI_K2_INSTRUCT
   ];

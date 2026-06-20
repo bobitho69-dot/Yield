@@ -16,6 +16,7 @@ export interface ChatOptions {
   max_tokens?: number;
   top_p?: number;
   timeoutMs?: number; // abort if the request takes too long
+  extra?: Record<string, unknown>; // extra body params (e.g. reasoning_effort)
 }
 
 function headers(apiKey: string): HeadersInit {
@@ -48,6 +49,7 @@ export async function chat(opts: ChatOptions): Promise<{ text: string; usage: { 
         top_p: opts.top_p ?? 0.9,
         max_tokens: opts.max_tokens ?? 8192,
         stream: false,
+        ...(opts.extra || {}),
       }),
     });
     if (!res.ok) {
@@ -84,6 +86,7 @@ export async function chatStream(
       top_p: opts.top_p ?? 0.9,
       max_tokens: opts.max_tokens ?? 8192,
       stream: true,
+      ...(opts.extra || {}),
     }),
   });
   if (!res.ok || !res.body) {

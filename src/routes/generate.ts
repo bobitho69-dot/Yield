@@ -38,8 +38,10 @@ export async function routeModel(c: Ctx, prompt: string): Promise<{ id: string; 
         { role: 'user', content: prompt.slice(0, 4000) },
       ],
       temperature: 0,
-      max_tokens: 120,
-      timeoutMs: 15000,
+      max_tokens: 400,
+      timeoutMs: 35000,
+      // gpt-oss is a reasoning model — keep it fast so routing doesn't time out.
+      extra: { reasoning_effort: 'low' },
     });
     const m = text.match(/\{[\s\S]*\}/);
     if (m) {
@@ -51,10 +53,11 @@ export async function routeModel(c: Ctx, prompt: string): Promise<{ id: string; 
   } catch {
     /* fall through to heuristic */
   }
+  // Heuristic by complexity (no scary "fallback" wording for the user).
   const len = prompt.length;
-  if (len > 600) return { id: 'deepseek-v4-pro', reason: 'complex request (fallback)' };
-  if (len > 200) return { id: 'glm-5.1', reason: 'standard request (fallback)' };
-  return { id: 'deepseek-v4-flash', reason: 'quick request (fallback)' };
+  if (len > 600) return { id: 'deepseek-v4-pro', reason: 'complex build' };
+  if (len > 200) return { id: 'glm-5.1', reason: 'standard build' };
+  return { id: 'deepseek-v4-flash', reason: 'quick build' };
 }
 
 export async function handleRoute(req: Request, c: Ctx): Promise<Response> {
@@ -228,8 +231,8 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
           const fb = resolveModel('deepseek-v4-flash');
           if (fb.id === model.id) throw e;
           activeModel = fb;
-          await send('status', { stage: `Retrying with ${fb.label}` });
-          await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'fallback' });
+          await send('status', { stage: `Switching to ${fb.label}` });
+          await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: 'stable model' });
           await streamWith(fb);
         }
         await streamer.end();

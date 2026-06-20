@@ -27,9 +27,10 @@ export interface GenBody {
   thinking?: string; // reasoning effort: 'low' | 'medium' | 'high'
 }
 
-// Validate the user's chosen thinking level; default to high (max reasoning).
+// Validate the user's chosen thinking level; default to medium (balanced — high
+// reasoning with no token ceiling can run away / loop).
 function effortOf(v: string | undefined): 'low' | 'medium' | 'high' {
-  return v === 'low' || v === 'medium' || v === 'high' ? v : 'high';
+  return v === 'low' || v === 'medium' || v === 'high' ? v : 'medium';
 }
 
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
@@ -47,6 +48,7 @@ export async function routeModel(c: Ctx, prompt: string): Promise<{ id: string; 
         { role: 'user', content: prompt.slice(0, 4000) },
       ],
       temperature: 0,
+      max_tokens: 2000,
       timeoutMs: 35000,
       // gpt-oss is a reasoning model — keep it fast so routing doesn't time out.
       extra: { reasoning_effort: 'low' },
@@ -284,7 +286,7 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
       try {
         const { text } = await chat({
           baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-          temperature: 0.4, timeoutMs: 150000,
+          temperature: 0.4, max_tokens: 8000, timeoutMs: 150000,
           ...(eff ? { extra: { reasoning_effort: eff } } : {}),
         });
         if (text && text.trim()) return { name: req.name, findings: text.trim() };
@@ -320,7 +322,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-            temperature: 0.3, timeoutMs: 300000,
+            temperature: 0.3, max_tokens: 30000, timeoutMs: 300000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await sub.feed(delta); },
@@ -449,7 +451,7 @@ export async function runBuild(
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-            temperature: 0.3, top_p: 0.95, timeoutMs: 600000,
+            temperature: 0.3, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await streamer.feed(delta); await heartbeat(); },

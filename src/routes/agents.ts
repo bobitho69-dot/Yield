@@ -104,8 +104,9 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
     const m = resolveModel(cid);
     const e = endpointFor(c.env, m);
     try {
-      // No token cap — a reasoning model needs room to answer AFTER thinking.
-      const { text } = await chat({ baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.modelId, messages, timeoutMs: 90000 });
+      // Generous ceiling so a reasoning model has room to answer after thinking,
+      // but can't loop forever.
+      const { text } = await chat({ baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.modelId, messages, max_tokens: 8000, timeoutMs: 90000 });
       if (text && text.trim()) {
         await recordGeneration(c);
         await logUsage(c.env, { user_id: agent.user_id, kind: 'agent', model: m.id, high_usage: gate.usage.highUsage });

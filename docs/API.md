@@ -10,6 +10,26 @@ Conventions:
 
 ---
 
+## AI APIs (each model is its own API)
+
+Upstream AIs Yield calls. All are OpenAI-compatible chat endpoints except the guard
+(a classify endpoint). Default base URL is `NVIDIA_CHAT_BASE`
+(`https://integrate.api.nvidia.com/v1`); each AI uses its own key env var, falling back
+to `NVIDIA_API_KEY`. Configured in `src/config/models.ts`.
+
+| Yield name | Role | `modelId` | Key env var | Endpoint |
+|------------|------|-----------|-------------|----------|
+| Kimi K2.6 | coder | `moonshotai/kimi-k2-instruct` | `KIMI_API_KEY` | `{base}/chat/completions` |
+| MiniMax M3 | coder | `minimaxai/minimax-m3` | `MINIMAX_API_KEY` | `{base}/chat/completions` |
+| DeepSeek V4 Flash | coder | `deepseek-ai/deepseek-v4-flash` | `DEEPSEEK_FLASH_API_KEY` | `{base}/chat/completions` |
+| Step 3.7 Flash | coder | `stepfun-ai/step-3.7-flash` | `STEP_API_KEY` | `{base}/chat/completions` |
+| DeepSeek V4 Pro | coder | `deepseek-ai/deepseek-v4` | `DEEPSEEK_PRO_API_KEY` | `{base}/chat/completions` |
+| GLM 5.1 | coder | `zai/glm-5.1` | `GLM_API_KEY` | `{base}/chat/completions` |
+| gpt-oss-20b | router (Auto) | `openai/gpt-oss-20b` | `GPTOSS_API_KEY` | `{base}/chat/completions` |
+| NeMoGuard | guard | `nvidia/nemoguard-jailbreak-detect` | `NEMOGUARD_API_KEY` | `NVIDIA_JAILBREAK_URL` (`/v1/classify`) |
+
+---
+
 ## Auth
 
 ### `GET /api/auth/:provider/login` 🔓

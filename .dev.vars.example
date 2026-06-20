@@ -2,19 +2,22 @@
 #   wrangler secret put <NAME>
 # NEVER commit the real .dev.vars file (it is gitignored).
 
-# --- NVIDIA (required) ---------------------------------------------------------
+# --- NVIDIA shared key (required) ----------------------------------------------
 # Free key from https://build.nvidia.com -> open any model -> "Get API Key".
-# This is the default API for every model.
+# Every AI falls back to this key if its own key (below) is unset.
 NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-# --- Per-model APIs (optional) -------------------------------------------------
-# Each AI is its own API. To run a specific model on a different endpoint/key,
-# set provider.baseUrl + provider.apiKeyEnv for it in src/config/models.ts, then
-# add the matching secret here. Example:
-#   KIMI_API_KEY=...
-#   DEEPSEEK_API_KEY=...
-#   GLM_API_KEY=...
-# If a model's apiKeyEnv is unset, it falls back to NVIDIA_API_KEY above.
+# --- Per-AI keys (each AI is its own API) --------------------------------------
+# Set these to use separate keys/accounts/endpoints per AI. Leave any blank to
+# fall back to NVIDIA_API_KEY above. One row per AI you gave:
+KIMI_API_KEY=             # Kimi K2.6
+MINIMAX_API_KEY=          # MiniMax M3
+DEEPSEEK_FLASH_API_KEY=   # DeepSeek V4 Flash
+STEP_API_KEY=             # Step 3.7 Flash
+DEEPSEEK_PRO_API_KEY=     # DeepSeek V4 Pro
+GLM_API_KEY=              # GLM 5.1
+GPTOSS_API_KEY=           # gpt-oss-20b (Auto router)
+NEMOGUARD_API_KEY=        # NeMoGuard JailbreakDetect (prompt guard)
 
 # --- Session signing (required) ------------------------------------------------
 # Any long random string. Generate: `openssl rand -hex 32`

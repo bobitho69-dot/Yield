@@ -23,22 +23,27 @@ Cloudflare Workers — free, with a "High Usage Times" model so it never costs y
 
 ---
 
-## The models (all via NVIDIA)
+## The AIs — each is its own API
 
-Configured in [`src/config/models.ts`](src/config/models.ts). Friendly names map to NVIDIA NIM
-model ids; **verify each id at https://build.nvidia.com** and update there (a few versions you
-asked for are ahead of the public catalog, so they're placeholders you can swap without code changes).
+Configured in [`src/config/models.ts`](src/config/models.ts). **Every AI is wired as its own API:**
+it has its own key env var (and can have its own base URL), resolved per-request. Unset keys fall
+back to `NVIDIA_API_KEY`, so you can start with one NVIDIA key and split them out later with no code
+changes. **Verify each `modelId` at https://build.nvidia.com** (a few versions you named are ahead of
+the public catalog, so they're swappable placeholders).
 
-| Role | Yield name | NVIDIA id (edit to match catalog) |
-|------|------------|------------------------------------|
-| Coder | Kimi K2.6 | `moonshotai/kimi-k2-instruct` |
-| Coder | MiniMax M3 | `minimaxai/minimax-m3` |
-| Coder | DeepSeek V4 Flash | `deepseek-ai/deepseek-v4-flash` |
-| Coder | Step 3.7 Flash | `stepfun-ai/step-3.7-flash` |
-| Coder | DeepSeek V4 Pro | `deepseek-ai/deepseek-v4` |
-| Coder | GLM 5.1 | `zai/glm-5.1` |
-| Auto router | gpt-oss-20b | `openai/gpt-oss-20b` |
-| Jailbreak guard | NeMoGuard JailbreakDetect | `nvidia/nemoguard-jailbreak-detect` |
+| Role | Yield name | `modelId` (edit to match catalog) | Its API key (env var) |
+|------|------------|------------------------------------|------------------------|
+| Coder | Kimi K2.6 | `moonshotai/kimi-k2-instruct` | `KIMI_API_KEY` |
+| Coder | MiniMax M3 | `minimaxai/minimax-m3` | `MINIMAX_API_KEY` |
+| Coder | DeepSeek V4 Flash | `deepseek-ai/deepseek-v4-flash` | `DEEPSEEK_FLASH_API_KEY` |
+| Coder | Step 3.7 Flash | `stepfun-ai/step-3.7-flash` | `STEP_API_KEY` |
+| Coder | DeepSeek V4 Pro | `deepseek-ai/deepseek-v4` | `DEEPSEEK_PRO_API_KEY` |
+| Coder | GLM 5.1 | `zai/glm-5.1` | `GLM_API_KEY` |
+| Auto router | gpt-oss-20b | `openai/gpt-oss-20b` | `GPTOSS_API_KEY` |
+| Jailbreak guard | NeMoGuard JailbreakDetect | `nvidia/nemoguard-jailbreak-detect` | `NEMOGUARD_API_KEY` |
+
+> All keys fall back to `NVIDIA_API_KEY` if unset. To run an AI on a *different provider*, also set
+> `provider.baseUrl` for it in `src/config/models.ts`.
 
 ---
 
@@ -49,8 +54,8 @@ These are the third-party services Yield calls. Create each, then put the keys i
 
 | # | Service | What to create | Secret(s) to set | Where |
 |---|---------|----------------|------------------|-------|
-| 1 | **NVIDIA NIM** | Free developer key (powers all coder models + Auto router) | `NVIDIA_API_KEY` (`nvapi-…`) | https://build.nvidia.com → open a model → *Get API Key* |
-| 2 | **NVIDIA NeMoGuard** | Same key as #1 — just note the jailbreak-detect endpoint | (reuses `NVIDIA_API_KEY`) | https://build.nvidia.com/nvidia/nemoguard-jailbreak-detect |
+| 1 | **NVIDIA NIM** | One free developer key powers all 8 AIs | `NVIDIA_API_KEY` (`nvapi-…`) | https://build.nvidia.com → open a model → *Get API Key* |
+| 2 | **Per-AI keys** *(optional)* | Separate key per AI if you want isolated quotas/accounts | `KIMI_API_KEY`, `MINIMAX_API_KEY`, `DEEPSEEK_FLASH_API_KEY`, `STEP_API_KEY`, `DEEPSEEK_PRO_API_KEY`, `GLM_API_KEY`, `GPTOSS_API_KEY`, `NEMOGUARD_API_KEY` | https://build.nvidia.com |
 | 3 | **GitHub OAuth App** | Login + code storage. Callback: `https://<your-app>/api/auth/github/callback` | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | https://github.com/settings/developers |
 | 4 | **Google OAuth Client** | Login. Redirect: `https://<your-app>/api/auth/google/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | https://console.cloud.google.com/apis/credentials |
 | 5 | **Stripe** | A $20/mo recurring **Price** + a **Webhook** to `…/api/billing/webhook` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_ID` (var) | https://dashboard.stripe.com |

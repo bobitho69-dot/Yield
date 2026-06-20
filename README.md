@@ -14,6 +14,8 @@ repos, and builds run server-side so they finish even if you close the tab. It's
 ## What it can do
 
 - **Chat → full app.** Not a single HTML file — real multi-file projects (HTML/CSS/JS, components, a worker backend) shown in a file tree + editor.
+- **Real multi-page apps.** Builds genuine multi-page sites (separate `.html` pages sharing one nav/styles/scripts) with working links between them — preview any page from the toolbar's page picker.
+- **Auto-verification.** After every build, a static check catches broken links, missing pages, leftover placeholders and dead buttons — and the AI auto-repairs them before you see the result. No mock/placeholder data unless you ask for it.
 - **Live code view.** Watch each file being written in real time, labelled by which AI is writing it.
 - **Pick your thinking level.** 🧠 Fast / Balanced / Max controls how hard the models reason.
 - **Builds run in the background.** Each build runs inside a Durable Object, independent of your tab — refresh or close the page and it keeps going (and saves). A reopened tab re-attaches to the live build.
@@ -179,7 +181,8 @@ src/index.ts     Worker entry + router (exports the BuildSession Durable Object)
 src/durable/     BuildSession — runs each build in the background, survives tab close/refresh
 src/config/      model registry
 src/lib/         nvidia, jailbreak, auth, db (D1), usage gate, billing, github, appdata,
-                 prompts (coder/sub-agent/research/router), platformGuide (/api/docs), promptlog
+                 prompts (coder/sub-agent/research/router), platformGuide (/api/docs),
+                 verify (post-build static check + auto-repair), promptlog
 src/routes/      generate, projects, agents, secrets, appdata, media, auth, billing, github, misc
 schema.sql       D1 schema
 ```

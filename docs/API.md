@@ -41,7 +41,8 @@ Body: `{ "prompt": string, "model"?: "auto"|"<model id>", "projectId"?: string, 
 
 Pipeline: jailbreak check → usage gate → resolve model (Auto routes via gpt-oss-20b) → the build runs in a
 **`BuildSession` Durable Object** (so it survives the tab closing/refreshing) → optional research helpers →
-stream files → optional parallel build agents → save (D1 + GitHub) → record usage.
+stream files → optional parallel build agents → **verify & auto-repair** (static check for broken links /
+missing pages / placeholders; one repair pass if needed) → save (D1 + GitHub) → record usage.
 
 **Success** is a `text/event-stream` (SSE). The response is the DO's live stream; the same stream can be
 re-attached via `GET /api/projects/:id/stream`.

@@ -1,7 +1,7 @@
 // Yield builder — client logic.
 const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
-  thinking: 'medium', files: [], activeFile: 'index.html', streaming: false,
+  thinking: 'medium', files: [], activeFile: 'index.html', previewPage: 'index.html', streaming: false,
   working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 const MAX_AUTOFIX = 2;
@@ -119,6 +119,7 @@ async function loadProjects() {
 async function openProject(id) {
   const { project, messages, building } = await fetch(`/api/projects/${id}`).then((r) => r.json());
   state.projectId = project.id;
+  state.previewPage = 'index.html';
   setProjectUrl();
   state.githubRepo = project.github_repo || null;
   state.githubUrl = project.github_url || null;
@@ -172,6 +173,20 @@ function renderFileTree() {
     .map((f) => `<li class="${f.path === state.activeFile ? 'active' : ''}" data-path="${esc(f.path)}">${esc(f.path)}</li>`)
     .join('') || '<li style="cursor:default;color:#667">No files yet</li>';
   el.querySelectorAll('li[data-path]').forEach((li) => li.addEventListener('click', () => { state.activeFile = li.dataset.path; renderFileTree(); showActiveFile(); }));
+  renderPageSelector();
+}
+
+// Populate the preview page picker with every HTML page (so multi-page apps can be
+// previewed/tested page by page). Hidden when there's 0-1 page.
+function renderPageSelector() {
+  const sel = $('#pageSel');
+  if (!sel) return;
+  const pages = (state.files || []).map((f) => f.path).filter((p) => /\.html?$/i.test(p))
+    .sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a.localeCompare(b)));
+  if (pages.length < 2) { sel.classList.add('hidden'); state.previewPage = pages[0] || 'index.html'; return; }
+  if (!pages.includes(state.previewPage)) state.previewPage = pages.includes('index.html') ? 'index.html' : pages[0];
+  sel.innerHTML = pages.map((p) => `<option value="${esc(p)}"${p === state.previewPage ? ' selected' : ''}>${esc(p)}</option>`).join('');
+  sel.classList.remove('hidden');
 }
 
 function showActiveFile() {
@@ -189,11 +204,12 @@ function setProjectUrl() {
 
 function refreshPreview() {
   const fr = $('#preview');
-  if (state.projectId) fr.removeAttribute('srcdoc'), fr.src = `/p/${state.projectId}/index.html?t=${Date.now()}`;
+  const page = state.previewPage || 'index.html';
+  if (state.projectId) fr.removeAttribute('srcdoc'), fr.src = `/p/${state.projectId}/${page}?t=${Date.now()}`;
   else {
-    const idx = (state.files || []).find((f) => f.path === 'index.html');
+    const f = (state.files || []).find((x) => x.path === page) || (state.files || []).find((x) => x.path === 'index.html');
     fr.src = 'about:blank';
-    fr.srcdoc = idx ? idx.content : '<!doctype html><body style="font:15px system-ui;color:#888;padding:2rem">Your app preview will appear here.</body>';
+    fr.srcdoc = f ? f.content : '<!doctype html><body style="font:15px system-ui;color:#888;padding:2rem">Your app preview will appear here.</body>';
   }
 }
 
@@ -993,7 +1009,7 @@ function wireEvents() {
     if (!e.target.closest('.model-mini')) $('#modelPanel').classList.add('hidden');
   });
   $('#newBtn').addEventListener('click', () => {
-    state.projectId = null; state.files = []; state.activeFile = 'index.html'; $('#codeEditor').value = '';
+    state.projectId = null; state.files = []; state.activeFile = 'index.html'; state.previewPage = 'index.html'; $('#codeEditor').value = '';
     $('#projectTitle').value = 'Untitled app';
     try { history.replaceState(null, '', '/app'); } catch { /* ignore */ }
     renderEmptyChat();
@@ -1003,8 +1019,9 @@ function wireEvents() {
   $('#newFileBtn').addEventListener('click', newFile);
   $('#deleteFileBtn').addEventListener('click', deleteActiveFile);
   $('#refreshBtn').addEventListener('click', refreshPreview);
+  $('#pageSel')?.addEventListener('change', (e) => { state.previewPage = e.target.value; switchTab('preview'); refreshPreview(); });
   $('#openBtn').addEventListener('click', () => {
-    if (state.projectId) window.open(`/p/${state.projectId}/index.html`, '_blank');
+    if (state.projectId) window.open(`/p/${state.projectId}/${state.previewPage || 'index.html'}`, '_blank');
   });
   // Thinking-level selector (persisted).
   const thinkSel = $('#thinkingSel');

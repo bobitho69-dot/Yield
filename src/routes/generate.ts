@@ -13,7 +13,8 @@ import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor } from '../config
 import { chat, chatStream } from '../lib/nvidia';
 import { CONVO_SYSTEM, routerSystem } from '../lib/prompts';
 import {
-  addMessage, createProject, getProject, getProjectFiles, listAgents, listMessages, logUsage, saveFiles, type FileRow,
+  addMessage, createAgent, createProject, getProject, getProjectFiles, getSecretRows, listAgents, listMessages,
+  logUsage, saveFiles, updateAgent, type FileRow,
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
 
@@ -76,32 +77,49 @@ function cleanFile(s: string): string {
   return t;
 }
 
-// Streaming parser: text before the first "=== file: path ===" marker is chat
-// (streamed live, line by line); each marker starts a new file.
+export interface SecretReq { name: string; description: string }
+export interface AgentReq { name: string; model: string | null; system_prompt: string }
+
+// Streaming parser: chat text streams live; "=== file: path ===" starts a file,
+// "=== agent: Name | model ===" declares an agent, "=== secret: NAME — why ==="
+// requests a secret.
 function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>) {
-  const MARKER = /^={2,}\s*file:\s*(.+?)\s*={2,}\s*$/i;
+  const FILE = /^={2,}\s*file:\s*(.+?)\s*={2,}\s*$/i;
+  const SECRET = /^={2,}\s*secret:\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:[—:-]\s*(.*?))?\s*={2,}\s*$/i;
+  const AGENT = /^={2,}\s*agent:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
   let buf = '';
-  let mode: 'chat' | 'files' = 'chat';
-  let cur: { path: string; lines: string[] } | null = null;
+  let mode: 'chat' | 'file' | 'agent' = 'chat';
+  let curFile: { path: string; lines: string[] } | null = null;
+  let curAgent: { name: string; model: string | null; lines: string[] } | null = null;
   let lastStatus = '';
   const chatLines: string[] = [];
   const files: { path: string; lines: string[] }[] = [];
+  const agents: { name: string; model: string | null; lines: string[] }[] = [];
+  const secrets: SecretReq[] = [];
 
   async function handleLine(line: string) {
-    const m = line.match(MARKER);
-    if (m) {
-      mode = 'files';
-      cur = { path: m[1].trim().replace(/^\/+/, ''), lines: [] };
-      files.push(cur);
-      if (cur.path !== lastStatus) { lastStatus = cur.path; await send('status', { stage: `Writing ${cur.path}` }); }
+    let m;
+    if ((m = line.match(FILE))) {
+      mode = 'file';
+      curFile = { path: m[1].trim().replace(/^\/+/, ''), lines: [] };
+      files.push(curFile);
+      if (curFile.path !== lastStatus) { lastStatus = curFile.path; await send('status', { stage: `Writing ${curFile.path}` }); }
       return;
     }
-    if (mode === 'chat') {
-      chatLines.push(line);
-      await send('chat', line + '\n');
-    } else if (cur) {
-      cur.lines.push(line);
+    if ((m = line.match(AGENT))) {
+      mode = 'agent';
+      curAgent = { name: m[1].trim().slice(0, 80), model: m[2] ? m[2].trim() : null, lines: [] };
+      agents.push(curAgent);
+      await send('status', { stage: `Creating agent ${curAgent.name}` });
+      return;
     }
+    if ((m = line.match(SECRET))) {
+      secrets.push({ name: m[1].trim(), description: (m[2] || '').trim() });
+      return; // single-line; doesn't change mode
+    }
+    if (mode === 'chat') { chatLines.push(line); await send('chat', line + '\n'); }
+    else if (mode === 'file' && curFile) curFile.lines.push(line);
+    else if (mode === 'agent' && curAgent) curAgent.lines.push(line);
   }
 
   return {
@@ -117,13 +135,16 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>)
     async end() {
       if (buf.length) { await handleLine(buf); buf = ''; }
     },
-    get produced() { return chatLines.length > 0 || files.length > 0; },
-    result(): { chat: string; files: FileRow[]; hasFiles: boolean } {
+    get produced() { return chatLines.length > 0 || files.length > 0 || agents.length > 0; },
+    result() {
       const chat = chatLines.join('\n').trim();
-      const fs = files
+      const fs: FileRow[] = files
         .map((f) => ({ path: f.path, content: cleanFile(f.lines.join('\n')) }))
         .filter((f) => f.path && f.content.trim());
-      return { chat, files: fs, hasFiles: fs.length > 0 };
+      const ags: AgentReq[] = agents
+        .map((a) => ({ name: a.name, model: a.model, system_prompt: cleanFile(a.lines.join('\n')) }))
+        .filter((a) => a.name && a.system_prompt.trim());
+      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets };
     },
   };
 }
@@ -237,13 +258,33 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
         }
         await streamer.end();
 
-        const { chat: chatBody, files, hasFiles } = streamer.result();
+        const { chat: chatBody, files, hasFiles, agents: agentReqs, secrets: secretReqs } = streamer.result();
         const chatText = chatBody || (hasFiles ? 'Updated your app.' : 'Done.');
 
-        // 7) Persist files BEFORE 'done' so the preview can fetch them immediately.
+        // 7) Create/update AI-declared agents (project-scoped) and resolve secret needs.
+        const createdAgents: Record<string, string> = {};
+        let secretsNeeded: typeof secretReqs = [];
+        if (project && c.user) {
+          if (agentReqs.length) {
+            const { results: existing } = await listAgents(c.env, c.user.id, project.id);
+            for (const a of agentReqs) {
+              const model = CODER_MODELS.some((m) => m.id === a.model) ? a.model! : 'glm-5.1';
+              const found = existing.find((e) => e.name === a.name && e.project_id === project.id);
+              if (found) { await updateAgent(c.env, found.id, { system_prompt: a.system_prompt, model }); createdAgents[a.name] = found.id; }
+              else { const ag = await createAgent(c.env, c.user.id, { name: a.name, system_prompt: a.system_prompt, model, is_public: true, project_id: project.id }); createdAgents[a.name] = ag.id; }
+            }
+          }
+          if (secretReqs.length) {
+            const { results: have } = await getSecretRows(c.env, c.user.id, project.id);
+            const haveNames = new Set(have.map((r) => r.name));
+            secretsNeeded = secretReqs.filter((s) => !haveNames.has(s.name));
+          }
+        }
+
+        // Persist files BEFORE 'done' so the preview can fetch them immediately.
         if (project && c.user && hasFiles) await saveFiles(c.env, project.id, files, activeModel.id);
 
-        await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null });
+        await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents });
 
         if (project && c.user) {
           await addMessage(c.env, { project_id: project.id, role: 'user', content: prompt });

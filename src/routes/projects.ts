@@ -12,10 +12,11 @@
 import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
 import {
-  createProject, deleteProject, deleteFileRow, getProject, getProjectFiles, listFiles, listMessages,
-  listProjects, renameProject, saveFiles, upsertFile,
+  createProject, deleteProject, deleteFileRow, getProject, getProjectFiles, getSecretRows, listAgents, listFiles,
+  listMessages, listProjects, renameProject, saveFiles, upsertFile,
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
+import { decryptToken } from '../lib/github';
 
 export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: string): Promise<Response> {
   // Preview file serving is the only route allowed without auth (public/owned).
@@ -113,9 +114,21 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
   if (!file) return new Response('Not found', { status: 404 });
 
   const ext = path.split('.').pop()?.toLowerCase() || 'txt';
-  // For HTML previews, inject a tiny reporter that forwards runtime errors to the
-  // builder (parent window) so it can detect broken code and auto-fix it.
-  const body = ext === 'html' ? REPORTER + file.content : file.content;
+  // For HTML, inject window.YIELD (agent ids for the app; secrets for the owner)
+  // plus the error reporter for the auto bug-checker.
+  let inject = '';
+  if (ext === 'html') {
+    const agentMap: Record<string, string> = {};
+    const { results: ags } = await listAgents(c.env, project.user_id, project.id);
+    for (const a of ags) if (a.is_public) agentMap[a.name] = a.id;
+    const secretMap: Record<string, string> = {};
+    if (owns) {
+      const { results: srows } = await getSecretRows(c.env, project.user_id, project.id);
+      for (const s of srows) { try { secretMap[s.name] = await decryptToken(c.env, s.value_enc); } catch { /* skip */ } }
+    }
+    inject = `<script>window.YIELD=Object.assign(window.YIELD||{},{secrets:${JSON.stringify(secretMap)},agents:${JSON.stringify(agentMap)}});</script>`;
+  }
+  const body = ext === 'html' ? REPORTER + inject + file.content : file.content;
   return new Response(body, {
     headers: {
       'content-type': CTYPES[ext] || 'text/plain; charset=utf-8',

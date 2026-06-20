@@ -2,7 +2,7 @@
 const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
   files: [], activeFile: 'index.html', streaming: false,
-  working: false, queue: [], autofixCount: 0, previewErrors: [],
+  working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [],
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 const MAX_AUTOFIX = 2;
 
@@ -305,7 +305,11 @@ async function streamPrompt(prompt, opts = {}) {
             }
             renderFileTree(); showActiveFile();
           }
-          setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')));
+          state.pendingSecrets = Array.isArray(payload.secretsNeeded) ? payload.secretsNeeded : [];
+          const agentNames = payload.agents ? Object.keys(payload.agents) : [];
+          let extra = '';
+          if (agentNames.length) extra += `<div class="meta">⚡ created agent(s): ${agentNames.map(esc).join(', ')}</div>`;
+          setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')) + extra);
         } else if (ev === 'blocked') {
           finished = true;
           aiBubble.classList.add('flagged');
@@ -365,6 +369,7 @@ async function startUserPrompt(text) {
 async function runCycle(text, opts) {
   state.working = true; updateComposer();
   const hasFiles = await streamPrompt(text, opts);
+  if (state.pendingSecrets.length) await promptForSecrets();
   if (hasFiles) {
     const errors = await bugCheck();
     if (errors.length && state.autofixCount < MAX_AUTOFIX) {
@@ -381,6 +386,22 @@ async function runCycle(text, opts) {
     renderQueue();
     startUserPrompt(next);
   }
+}
+
+// The AI asked for secrets — prompt the user, save them (encrypted), refresh.
+async function promptForSecrets() {
+  const needed = state.pendingSecrets; state.pendingSecrets = [];
+  if (!state.projectId) return;
+  for (const s of needed) {
+    const val = window.prompt(`This app needs a secret:\n\n${s.name}${s.description ? '\n(' + s.description + ')' : ''}\n\nEnter the value (stored encrypted for this app):`);
+    if (val) {
+      await fetch(`/api/secrets?project=${state.projectId}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: s.name, value: val }),
+      });
+      addBubble('ai', `<div class="meta">secret saved</div>🔒 <b>${esc(s.name)}</b> saved &amp; available to this app.`);
+    }
+  }
+  refreshPreview();
 }
 
 // Reload the preview and watch for runtime errors for a short window.

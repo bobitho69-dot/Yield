@@ -19,6 +19,21 @@ WHEN YOU BUILD OR CHANGE THE APP, output files using this EXACT format, AFTER yo
 === file: app.js ===
 <full contents of app.js>
 
+SECRETS — when the app needs an API key or secret (e.g. a weather/Stripe/etc. key):
+- Request it with a line (BEFORE the files): === secret: SECRET_NAME — what it is for ===
+- The user will be prompted to enter it; Yield stores it encrypted and injects it at runtime as
+  window.YIELD.secrets.SECRET_NAME. In your code, read it from there — NEVER hardcode a key, and
+  never invent a value. Example: const key = (window.YIELD&&window.YIELD.secrets&&window.YIELD.secrets.WEATHER_KEY);
+
+AGENTS — you can create AI agents the app calls at runtime (chatbots, generators, classifiers):
+- Declare one with: === agent: AgentName | model-id ===  then the agent's system prompt on the following lines
+  (model-id is optional; omit the "| model-id" to use a default).
+- Yield creates the agent and injects its id as window.YIELD.agents["AgentName"]. To use it from the app:
+  const id = window.YIELD.agents["AgentName"];
+  const res = await fetch("/api/agents/"+id+"/run", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({input: userText})});
+  const { output } = await res.json();
+- Prefer creating an agent over calling external LLM APIs directly.
+
 FILE RULES:
 - Start each file with a line: === file: <relative/path> === then the FULL file content (never a diff/snippet).
 - The entry point MUST be "index.html". Reference sibling files with relative paths (e.g. <link href="styles.css">, <script src="app.js">) — files are served together from the same folder.

@@ -347,3 +347,10 @@ export async function upsertSecret(env: Env, userId: string, projectId: string, 
 export async function deleteSecret(env: Env, userId: string, id: string): Promise<void> {
   await env.DB.prepare('DELETE FROM secrets WHERE id=? AND user_id=?').bind(id, userId).run();
 }
+
+// Encrypted secret rows for a project (+ account-level), for server-side use/injection.
+export function getSecretRows(env: Env, userId: string, projectId: string): Promise<{ results: { name: string; value_enc: string }[] }> {
+  return env.DB.prepare("SELECT name,value_enc FROM secrets WHERE user_id=? AND (project_id=? OR project_id='')")
+    .bind(userId, projectId)
+    .all<{ name: string; value_enc: string }>();
+}

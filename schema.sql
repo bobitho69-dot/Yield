@@ -8,8 +8,9 @@ CREATE TABLE IF NOT EXISTS users (
   email         TEXT UNIQUE,
   name          TEXT,
   avatar_url    TEXT,
-  provider      TEXT NOT NULL,               -- 'github' | 'google'
-  provider_id   TEXT NOT NULL,               -- id at the provider
+  provider      TEXT NOT NULL,               -- 'email' | 'github' | 'google'
+  provider_id   TEXT NOT NULL,               -- id at the provider (email addr for 'email')
+  password_hash TEXT,                         -- pbkdf2 hash for email/password users
   plan          TEXT NOT NULL DEFAULT 'free',-- 'free' | 'priority'
   stripe_customer_id     TEXT,
   stripe_subscription_id TEXT,

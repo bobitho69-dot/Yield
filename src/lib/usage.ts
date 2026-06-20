@@ -70,6 +70,10 @@ export interface GateResult {
 /** Decide whether THIS request may run a generation. Does not yet record usage. */
 export async function gateGeneration(c: Ctx): Promise<GateResult> {
   const usage = await getUsageState(c.env);
+
+  // Open testing mode: no gating at all.
+  if (c.env.AUTH_ENABLED === 'false') return { allowed: true, status: 200, usage };
+
   const isPaid = c.user?.plan === 'priority';
 
   // Paid users are always allowed (that's the deal: they fund the high-usage time).

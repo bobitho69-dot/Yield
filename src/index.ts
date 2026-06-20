@@ -4,6 +4,7 @@
 import type { Ctx, Env } from './types';
 import { error, json } from './lib/response';
 import { getOrCreateDeviceId, readSession } from './lib/auth';
+import { ensureGuestUser } from './lib/db';
 import { handleGenerate, handleRoute } from './routes/generate';
 import { handleProjects } from './routes/projects';
 import { handleAuth } from './routes/authRoutes';
@@ -18,7 +19,12 @@ export default {
 
     try {
       // Build request context (session user + anon device id).
-      const user = await readSession(env, request);
+      let user = await readSession(env, request);
+      // Open testing mode: no login required — everyone acts as a shared guest.
+      if (!user && env.AUTH_ENABLED === 'false') {
+        const guest = await ensureGuestUser(env);
+        user = { id: guest.id, email: guest.email, name: guest.name, avatar_url: guest.avatar_url, plan: guest.plan };
+      }
       const { deviceId, setCookie } = await getOrCreateDeviceId(env, request);
       const c: Ctx = { env, ctx, url, user, deviceId };
 

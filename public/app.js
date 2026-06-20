@@ -1,6 +1,6 @@
 // Yield builder — client logic.
 const $ = (s) => document.querySelector(s);
-const state = { user: null, models: [], model: 'auto', recommended: null, projectId: null, code: '', streaming: false, dirty: false,
+const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null, code: '', streaming: false, dirty: false,
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 
 // ---------- Boot ----------
@@ -19,6 +19,8 @@ async function loadStatus() {
   try {
     const s = await fetch('/api/status').then((r) => r.json());
     state.user = s.user;
+    state.authEnabled = s.authEnabled !== false;
+    state.providers = s.providers || {};
     renderAuth();
     renderBanner(s);
     renderQuota(s);
@@ -128,6 +130,12 @@ async function loadGithub() {
 // ---------- Rendering ----------
 function renderAuth() {
   const el = $('#authArea');
+  // Open testing mode: no auth UI.
+  if (!state.authEnabled) {
+    el.innerHTML = `<span class="testing-chip" title="AUTH_ENABLED=false">Testing mode</span>`;
+    $('#upgradeBtn').classList.add('hidden');
+    return;
+  }
   if (state.user) {
     el.innerHTML = `<div class="user-chip">
       ${state.user.avatar_url ? `<img class="avatar" src="${state.user.avatar_url}" alt="">` : ''}
@@ -135,14 +143,14 @@ function renderAuth() {
     $('#logoutBtn').addEventListener('click', logout);
     $('#upgradeBtn').classList.toggle('hidden', state.user.plan === 'priority');
   } else {
-    el.innerHTML = `<a class="btn ghost sm" href="/api/auth/github/login?redirect=/app">GitHub</a>
-      <a class="btn ghost sm" href="/api/auth/google/login?redirect=/app">Google</a>`;
+    el.innerHTML = `<a class="btn primary sm" href="/login?redirect=/app">Sign in</a>`;
     $('#upgradeBtn').classList.remove('hidden');
   }
 }
 
 function renderBanner(s) {
   const b = $('#banner');
+  if (!state.authEnabled) { b.classList.add('hidden'); return; } // no gating in testing mode
   if (s.highUsage && (!state.user || state.user.plan !== 'priority')) {
     b.className = 'banner warn';
     b.innerHTML = '⚡ <b>High Usage Time</b> — free generation is paused to keep Yield free to host. Priority members ($20/mo) keep full access. <a href="#" id="bannerUpgrade" style="text-decoration:underline">Upgrade →</a>';
@@ -159,6 +167,7 @@ function renderBanner(s) {
 
 function renderQuota(s) {
   const q = $('#quota');
+  if (!state.authEnabled) { q.textContent = 'unlimited'; return; }
   if (state.user?.plan === 'priority') q.textContent = 'Priority · unlimited';
   else if (s.remainingToday != null) q.textContent = `${s.remainingToday} free builds left today`;
   else q.textContent = '';
@@ -269,7 +278,7 @@ function handleGenError(status, err, bubble) {
     bubble.innerHTML = `<div class="meta">High Usage Time</div>${esc(msg)} <a href="#" id="bu" style="text-decoration:underline">Upgrade</a>`;
     bubble.querySelector('#bu')?.addEventListener('click', (e) => { e.preventDefault(); upgrade(); });
   } else if (err.code === 'login_required') {
-    bubble.innerHTML = `<div class="meta">Sign in</div>${esc(msg)} <a href="/api/auth/github/login?redirect=/app" style="text-decoration:underline">Sign in with GitHub</a>`;
+    bubble.innerHTML = `<div class="meta">Sign in</div>${esc(msg)} <a href="/login?redirect=/app" style="text-decoration:underline">Sign in</a>`;
   } else {
     bubble.innerHTML = `<div class="meta">error</div>${esc(msg)}`;
   }

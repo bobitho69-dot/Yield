@@ -16,6 +16,7 @@ export interface Env {
   FREE_DAILY_LIMIT: string;
   ANON_DAILY_LIMIT: string;
   HIGH_USAGE_OVERRIDE: string; // 'auto' | 'on' | 'off'
+  AUTH_ENABLED: string; // 'true' = require login; 'false' = open testing mode (guest)
   STRIPE_PRICE_ID: string;
 
   // Secrets

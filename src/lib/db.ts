@@ -13,6 +13,7 @@ export interface UserRow {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   plan_renews_at: number | null;
+  password_hash: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -59,6 +60,42 @@ export async function upsertOAuthUser(
 
 export function getUser(env: Env, id: string): Promise<UserRow | null> {
   return env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>();
+}
+
+// Shared guest account used when AUTH_ENABLED='false' (open testing mode).
+const GUEST_ID = 'guest';
+export async function ensureGuestUser(env: Env): Promise<UserRow> {
+  const existing = await getUser(env, GUEST_ID);
+  if (existing) return existing;
+  const t = now();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO users (id,email,name,avatar_url,provider,provider_id,plan,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,'free',?,?)`,
+  )
+    .bind(GUEST_ID, null, 'Guest', null, 'guest', GUEST_ID, t, t)
+    .run();
+  return (await getUser(env, GUEST_ID))!;
+}
+
+// --- Email/password users -----------------------------------------------------
+export function getUserByEmail(env: Env, email: string): Promise<UserRow | null> {
+  return env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email.toLowerCase()).first<UserRow>();
+}
+
+export async function createEmailUser(
+  env: Env,
+  p: { email: string; name: string | null; password_hash: string },
+): Promise<UserRow> {
+  const id = newId();
+  const t = now();
+  const email = p.email.toLowerCase();
+  await env.DB.prepare(
+    `INSERT INTO users (id,email,name,avatar_url,provider,provider_id,password_hash,plan,created_at,updated_at)
+     VALUES (?,?,?,NULL,'email',?,?,'free',?,?)`,
+  )
+    .bind(id, email, p.name, email, p.password_hash, t, t)
+    .run();
+  return (await getUser(env, id))!;
 }
 
 export async function setUserPlan(

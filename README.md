@@ -159,6 +159,20 @@ Tune all of these in `wrangler.toml [vars]`.
 
 ---
 
+## 🔐 Auth (toggleable)
+
+Login is built three ways and gated behind one switch — `AUTH_ENABLED` in `wrangler.toml [vars]`:
+
+- **`AUTH_ENABLED = "false"` (current — testing mode):** no login required. Everyone acts as a
+  shared **guest**, all limits/gating are off. Perfect for trying things out.
+- **`AUTH_ENABLED = "true"`:** accounts required. Then these turn on automatically:
+  - **Email + password** (`POST /api/auth/email/signup` · `/login`) — works with zero extra setup.
+  - **GitHub / Google OAuth** — *optional*. They're placeholder vars in `wrangler.toml`; the login
+    UI auto-hides each provider until you replace its Client ID + add its secret. `/api/auth/providers`
+    reports what's enabled.
+
+Passwords are hashed with PBKDF2-SHA256 (WebCrypto). Flip the one flag whenever you're ready.
+
 ## 🛡️ Safety
 
 - Every prompt → **NeMoGuard JailbreakDetect** (plus a local prefilter). Blocked prompts are

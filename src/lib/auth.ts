@@ -101,6 +101,17 @@ export const PROVIDERS = {
 
 export type ProviderName = keyof typeof PROVIDERS;
 
+// Which login methods are usable, based on whether OAuth creds are real (not
+// placeholders). Lets the UI hide buttons that aren't configured yet.
+export function enabledProviders(env: Env): { email: boolean; github: boolean; google: boolean } {
+  const ok = (v?: string) => !!v && !/placeholder/i.test(v) && !/^replace/i.test(v);
+  return {
+    email: true,
+    github: ok(env.GITHUB_CLIENT_ID) && ok(env.GITHUB_CLIENT_SECRET),
+    google: ok(env.GOOGLE_CLIENT_ID) && ok(env.GOOGLE_CLIENT_SECRET),
+  };
+}
+
 export async function fetchGithubProfile(token: string) {
   const headers = { authorization: `Bearer ${token}`, 'user-agent': 'Yield', accept: 'application/json' };
   const [u, emails] = await Promise.all([

@@ -54,8 +54,22 @@ FREE_DAILY_LIMIT = "15"              # generations/day per free user
 ANON_DAILY_LIMIT = "3"               # generations/day per anonymous device
 HIGH_USAGE_OVERRIDE = "auto"         # auto | on | off  (manual kill-switch)
 
+# Master auth switch. "false" = OPEN TESTING MODE: no login required, everyone acts
+# as a shared guest, all limits off. Flip to "true" to require accounts (everything
+# is already built — email/password + optional OAuth + billing gating turn on).
+AUTH_ENABLED = "false"
+
 # Stripe price for the $20/mo "Priority Access" plan (set the real price id).
 STRIPE_PRICE_ID = "price_PLACEHOLDER"
+
+# OAuth is OPTIONAL — email + password login works without it. These placeholders
+# let the app deploy today; the login UI auto-hides GitHub/Google until they're real.
+# To enable later: put your real Client ID values here, and for each *_SECRET set a
+# proper Cloudflare secret (Settings → Variables and Secrets) and delete its line here.
+GITHUB_CLIENT_ID = "PLACEHOLDER_GITHUB_CLIENT_ID"
+GITHUB_CLIENT_SECRET = "PLACEHOLDER_GITHUB_CLIENT_SECRET"
+GOOGLE_CLIENT_ID = "PLACEHOLDER_GOOGLE_CLIENT_ID"
+GOOGLE_CLIENT_SECRET = "PLACEHOLDER_GOOGLE_CLIENT_SECRET"
 
 # Secrets set via `wrangler secret put` (do NOT put real values here):
 #   NVIDIA_API_KEY            nvapi-...  (shared default + fallback for every AI)
@@ -69,9 +83,7 @@ STRIPE_PRICE_ID = "price_PLACEHOLDER"
 #   GPTOSS_API_KEY           gpt-oss-20b (Auto router)
 #   NEMOGUARD_API_KEY        NeMoGuard JailbreakDetect
 #   SESSION_SECRET            random 32+ byte string (HMAC for session cookies)
-#   GITHUB_CLIENT_ID
-#   GITHUB_CLIENT_SECRET
-#   GOOGLE_CLIENT_ID
-#   GOOGLE_CLIENT_SECRET
+#   # GitHub/Google OAuth are OPTIONAL placeholder vars above (email+password works
+#   # without them); promote the *_SECRET ones to real secrets when you enable OAuth.
 #   STRIPE_SECRET_KEY         sk_live_... / sk_test_...
 #   STRIPE_WEBHOOK_SECRET     whsec_...

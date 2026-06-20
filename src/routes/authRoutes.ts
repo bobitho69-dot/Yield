@@ -7,11 +7,12 @@
 import type { Ctx } from '../types';
 import { json, redirect, error } from '../lib/response';
 import {
-  PROVIDERS, ProviderName, createSession, destroySession, fetchGithubProfile, fetchGoogleProfile,
-  makeOAuthState, takeOAuthState,
+  PROVIDERS, ProviderName, createSession, destroySession, enabledProviders, fetchGithubProfile,
+  fetchGoogleProfile, makeOAuthState, takeOAuthState,
 } from '../lib/auth';
-import { setGithubAuth, upsertOAuthUser } from '../lib/db';
+import { createEmailUser, getUserByEmail, setGithubAuth, upsertOAuthUser } from '../lib/db';
 import { encryptToken } from '../lib/github';
+import { hashPassword, verifyPassword, validateCredentials } from '../lib/password';
 
 export async function handleAuth(req: Request, c: Ctx, provider?: string, action?: string): Promise<Response> {
   if (provider === 'logout' || (req.method === 'POST' && c.url.pathname === '/api/auth/logout')) {
@@ -23,10 +24,27 @@ export async function handleAuth(req: Request, c: Ctx, provider?: string, action
     return json({ user: c.user });
   }
 
+  // Which login methods are configured (email always; OAuth only if creds set).
+  if (provider === 'providers') {
+    return json({ providers: enabledProviders(c.env) });
+  }
+
+  // Email + password.
+  if (provider === 'email') {
+    if (action === 'signup') return emailSignup(req, c);
+    if (action === 'login') return emailLogin(req, c);
+    return error(404, 'Not found');
+  }
+
   if (!provider || !(provider in PROVIDERS)) return error(404, 'Unknown provider');
   const p = PROVIDERS[provider as ProviderName];
 
   if (action === 'login') {
+    // Don't start an OAuth flow that isn't configured yet.
+    const prov = enabledProviders(c.env);
+    if ((provider === 'github' && !prov.github) || (provider === 'google' && !prov.google)) {
+      return error(503, `${provider} login isn’t configured yet. Use email + password.`, { code: 'provider_disabled' });
+    }
     const redirectTo = c.url.searchParams.get('redirect') || '/app';
     // Optional elevated scope (e.g. ?scope=repo&store_token=1) to enable code storage.
     const scopeOverride = c.url.searchParams.get('scope') || undefined;
@@ -81,4 +99,36 @@ export async function handleAuth(req: Request, c: Ctx, provider?: string, action
   }
 
   return error(404, 'Not found');
+}
+
+// POST /api/auth/email/signup  { email, password, name? }
+async function emailSignup(req: Request, c: Ctx): Promise<Response> {
+  const { email, password, name } = (await req.json().catch(() => ({}))) as { email?: string; password?: string; name?: string };
+  const v = validateCredentials(email || '', password || '');
+  if (v) return error(400, v);
+  const existing = await getUserByEmail(c.env, email!);
+  if (existing) return error(409, 'An account with that email already exists. Try signing in.');
+  const password_hash = await hashPassword(password!);
+  const user = await createEmailUser(c.env, { email: email!, name: name || email!.split('@')[0], password_hash });
+  const setCookie = await createSession(c.env, user.id);
+  return json(
+    { ok: true, user: { id: user.id, email: user.email, name: user.name, plan: user.plan } },
+    { headers: { 'set-cookie': setCookie } },
+  );
+}
+
+// POST /api/auth/email/login  { email, password }
+async function emailLogin(req: Request, c: Ctx): Promise<Response> {
+  const { email, password } = (await req.json().catch(() => ({}))) as { email?: string; password?: string };
+  if (!email || !password) return error(400, 'Email and password are required.');
+  const user = await getUserByEmail(c.env, email);
+  // Same response whether the user exists or not (don't leak which emails are registered).
+  if (!user || !user.password_hash || !(await verifyPassword(password, user.password_hash))) {
+    return error(401, 'Invalid email or password.');
+  }
+  const setCookie = await createSession(c.env, user.id);
+  return json(
+    { ok: true, user: { id: user.id, email: user.email, name: user.name, plan: user.plan } },
+    { headers: { 'set-cookie': setCookie } },
+  );
 }

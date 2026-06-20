@@ -46,8 +46,11 @@ function shortReason(e: unknown): string {
 }
 
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
-export async function routeModel(c: Ctx, prompt: string): Promise<{ id: string; reason: string }> {
-  const menu = CODER_MODELS.map((m) => ({ id: m.id, tier: m.tier, blurb: m.blurb }));
+export async function routeModel(c: Ctx, prompt: string, exclude: string[] = []): Promise<{ id: string; reason: string }> {
+  // Pool of models Auto may choose from, minus any already-tried (failed) ones.
+  const avail = CODER_MODELS.filter((m) => !exclude.includes(m.id));
+  const pool = avail.length ? avail : CODER_MODELS;
+  const menu = pool.map((m) => ({ id: m.id, tier: m.tier, blurb: m.blurb }));
   try {
     const router = resolveModel(ROUTER_MODEL.id);
     const ep = endpointFor(c.env, router);
@@ -68,23 +71,26 @@ export async function routeModel(c: Ctx, prompt: string): Promise<{ id: string; 
     const m = text.match(/\{[\s\S]*\}/);
     if (m) {
       const parsed = JSON.parse(m[0]) as { model?: string; reason?: string };
-      if (parsed.model && CODER_MODELS.some((x) => x.id === parsed.model)) {
+      if (parsed.model && pool.some((x) => x.id === parsed.model)) {
         return { id: parsed.model, reason: parsed.reason || 'auto-selected' };
       }
     }
   } catch {
     /* fall through to heuristic */
   }
-  // Heuristic by complexity + quality signals (no scary "fallback" wording).
+  // Heuristic by complexity + quality signals (no scary "fallback" wording),
+  // clamped to a model that's actually in the pool (respects `exclude`).
+  const has = (id: string) => pool.some((m) => m.id === id);
+  const pick = (id: string, reason: string) => ({ id: has(id) ? id : pool[0].id, reason });
   const p = prompt.toLowerCase();
   const len = prompt.length;
   const wantsBest = /\b(best|polished|production|complete|full|impressive|beautiful|professional|advanced|complex)\b/.test(p);
   const multiFeature = /\b(and|with|plus|including|also)\b/g.test(p) && (p.match(/\b(and|with|plus|including|also)\b/g)?.length || 0) >= 3;
   const tinyEdit = len < 120 && /\b(change|tweak|fix|rename|color|colour|text|move|smaller|bigger|remove|add a button)\b/.test(p);
-  if (tinyEdit) return { id: 'deepseek-v4-flash', reason: 'quick edit' };
-  if (wantsBest || multiFeature || len > 600) return { id: 'deepseek-v4-pro', reason: 'building for quality' };
-  if (len > 200) return { id: 'glm-5.1', reason: 'standard build' };
-  return { id: 'deepseek-v4-flash', reason: 'quick build' };
+  if (tinyEdit) return pick('deepseek-v4-flash', 'quick edit');
+  if (wantsBest || multiFeature || len > 600) return pick('deepseek-v4-pro', 'building for quality');
+  if (len > 200) return pick('glm-5.1', 'standard build');
+  return pick('deepseek-v4-flash', 'quick build');
 }
 
 export async function handleRoute(req: Request, c: Ctx): Promise<Response> {
@@ -477,8 +483,9 @@ export async function runBuild(
           await send('status', { stage: 'Finalizing what was built…' }); // keep partial output
         } else {
           // The selected/routed model failed (unavailable id, rate limit, etc.). Retry
-          // it PLAINLY first (it may have only rejected the reasoning flag), then fall
-          // back through known-good models — quality first — telling the user WHY.
+          // it PLAINLY first (it may have only rejected the reasoning flag). If it still
+          // fails, DON'T silently downgrade to a fixed flash model — let Auto (gpt-oss)
+          // intelligently pick a DIFFERENT model, excluding any we've already tried.
           const selectedLabel = activeModel.label;
           let selErr: unknown = e;
           let ok = false;
@@ -486,14 +493,17 @@ export async function runBuild(
           catch (e2) { if (streamer.produced) ok = true; else selErr = e2; }
           if (!ok && !streamer.produced) {
             const reason = shortReason(selErr);
-            for (const fbId of ['qwen3-coder', 'deepseek-v4-flash', 'glm-5.1', 'auto']) {
-              const fb = resolveModel(fbId);
-              if (fb.id === activeModel.id) continue;
+            const tried = new Set<string>([activeModel.id]);
+            for (let attempt = 0; attempt < 3 && !ok && !streamer.produced; attempt++) {
+              const choice = await routeModel(c, prompt, [...tried]);
+              if (tried.has(choice.id)) break; // Auto has nothing new to suggest
+              tried.add(choice.id);
+              const fb = resolveModel(choice.id);
               activeModel = fb;
-              await send('status', { stage: `${selectedLabel} unavailable (${reason}) — using ${fb.label}` });
-              await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: `${selectedLabel} unavailable: ${reason}` });
-              try { await streamWith(fb, null); ok = true; break; }
-              catch { if (streamer.produced) { ok = true; break; } }
+              await send('status', { stage: `${selectedLabel} unavailable (${reason}) — Auto picked ${fb.label}` });
+              await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: `${selectedLabel} unavailable (${reason}); Auto chose ${fb.label}: ${choice.reason}` });
+              try { await streamWith(fb, null); ok = true; }
+              catch (e3) { if (streamer.produced) ok = true; else selErr = e3; }
             }
           }
           if (!ok && !streamer.produced) throw selErr;

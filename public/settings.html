@@ -18,7 +18,7 @@
   </header>
 
   <div class="page">
-    <div class="page-head"><div><h1>Settings</h1><p>Build AI agents and store secrets. Used by your apps and the builder.</p></div></div>
+    <div class="page-head"><div><h1>Settings</h1><p>Account, GitHub, and AI agents for your apps.</p></div></div>
     <div id="gate"></div>
 
     <div id="main" class="hidden">
@@ -47,23 +47,20 @@
         </details>
       </div>
 
-      <!-- Secrets -->
+      <!-- Backend & secrets -->
       <div class="panel">
-        <h3>🔑 Secrets</h3>
-        <p class="muted" style="margin-top:-.4rem">Stored encrypted (AES-GCM) at rest. Names are visible; values are write-only and never shown again.</p>
-        <div id="secretList"></div>
-        <div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap;max-width:560px">
-          <input id="sName" class="auth-input" style="flex:1;min-width:160px" placeholder="NAME (e.g. OPENAI_KEY)" />
-          <input id="sVal" class="auth-input" style="flex:2;min-width:200px" type="password" placeholder="value" />
-          <button id="sAdd" class="btn primary">Save</button>
-        </div>
-        <div id="sMsg" class="muted" style="font-size:.85rem;margin-top:.5rem"></div>
+        <h3>🔑 Backend &amp; secrets</h3>
+        <p class="muted" style="margin-top:-.4rem">Yield never stores your secrets. Your app's backend &amp; API keys live in your own free Cloudflare Worker, connected to your GitHub — Yield writes the code, you add the secret values in Cloudflare.</p>
+        <ol class="muted" style="line-height:1.8;margin:.4rem 0 0 1.1rem">
+          <li><b>Store your code</b> — connect GitHub (above).</li>
+          <li><b>Make a Cloudflare account</b> — free at <a class="toplink" href="https://dash.cloudflare.com/sign-up" target="_blank">cloudflare.com</a> → Workers &amp; Pages.</li>
+          <li><b>Connect your repo</b> — Create → Workers → <b>Connect to Git</b> → pick the app's repo. (The first connect can error — retry / re-authorize GitHub; it usually works the second time.)</li>
+          <li><b>Ask Yield to build the backend</b> — open the app in the builder and paste the prompt below.</li>
+          <li><b>Add your secrets in Cloudflare</b> — your Worker → Settings → <b>Variables and Secrets</b> → add each secret Yield listed → Deploy.</li>
+        </ol>
+        <div class="backend-prompt" id="backendPrompt"></div>
+        <button class="btn ghost sm" id="copyPrompt" style="margin-top:.5rem">Copy prompt</button>
       </div>
-
-      <p class="muted" style="font-size:.82rem;margin-top:1.4rem">
-        Storage: in testing mode, projects, agents and secrets live in the app database. With GitHub connected,
-        your app code already syncs to your repos; project/agent storage moves to GitHub in production.
-      </p>
     </div>
   </div>
 
@@ -83,11 +80,18 @@
       const md = await fetch('/api/models').then(r=>r.json());
       models = (md.models||[]).filter(m=>m.id!=='auto');
       document.getElementById('aModel').innerHTML = models.map(m=>`<option value="${m.id}">${esc(m.label)}</option>`).join('');
-      loadAgents(); loadSecrets();
+      loadAgents();
 
       document.getElementById('aCreate').onclick = createAgent;
-      document.getElementById('sAdd').onclick = addSecret;
+      document.getElementById('backendPrompt').textContent = BACKEND_PROMPT;
+      document.getElementById('copyPrompt').onclick = (e) => { navigator.clipboard && navigator.clipboard.writeText(BACKEND_PROMPT); e.target.textContent = 'Copied ✓'; };
     })();
+
+    const BACKEND_PROMPT = `Set up a secure backend for this app as a Cloudflare Worker in a "worker/" folder:
+- Put ALL secrets/API keys in the Worker and read them from its environment (env.SECRET_NAME) — never put a secret in the frontend.
+- Add the endpoints the app needs (enable CORS) and update the frontend to call my deployed Worker's URL.
+- Add a short worker/README.md with the deploy steps and the EXACT list of secrets I must set in Cloudflare (Worker → Settings → Variables and Secrets).
+Then tell me each secret NAME to add in Cloudflare and what value it expects.`;
 
     async function renderAuthPanel(user) {
       const [bill, gh] = await Promise.all([
@@ -151,28 +155,6 @@
       await fetch('/api/agents/'+id, { method:'DELETE' }); loadAgents();
     }
 
-    async function loadSecrets() {
-      const { secrets } = await fetch('/api/secrets').then(r=>r.json());
-      const el = document.getElementById('secretList');
-      if (!secrets || !secrets.length) { el.innerHTML = '<p class="muted">No secrets yet.</p>'; return; }
-      el.innerHTML = secrets.map(s => `
-        <div class="kv"><span>🔒 <b>${esc(s.name)}</b></span>
-          <button class="btn ghost sm" onclick="delSecret('${s.id}')">Delete</button></div>`).join('');
-    }
-    async function addSecret() {
-      const name = document.getElementById('sName').value.trim();
-      const value = document.getElementById('sVal').value;
-      const msg = document.getElementById('sMsg');
-      const res = await fetch('/api/secrets', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ name, value }) });
-      const data = await res.json();
-      if (!res.ok) { msg.textContent = data.error || 'Failed'; return; }
-      document.getElementById('sName').value=''; document.getElementById('sVal').value='';
-      msg.textContent = 'Saved ✓'; loadSecrets();
-    }
-    async function delSecret(id) {
-      if (!confirm('Delete this secret?')) return;
-      await fetch('/api/secrets/'+id, { method:'DELETE' }); loadSecrets();
-    }
   </script>
 </body>
 </html>

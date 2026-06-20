@@ -1,7 +1,7 @@
 // Yield builder — client logic.
 const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
-  thinking: 'high', files: [], activeFile: 'index.html', streaming: false,
+  thinking: 'medium', files: [], activeFile: 'index.html', streaming: false,
   working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 const MAX_AUTOFIX = 2;
@@ -1001,11 +1001,12 @@ function wireEvents() {
   // Thinking-level selector (persisted).
   const thinkSel = $('#thinkingSel');
   if (thinkSel) {
-    try { const saved = localStorage.getItem('yield_thinking'); if (saved) state.thinking = saved; } catch { /* ignore */ }
+    // Key bumped to _v2 so any old sticky "Max" preference resets to the new default.
+    try { const saved = localStorage.getItem('yield_thinking_v2'); if (saved) state.thinking = saved; } catch { /* ignore */ }
     thinkSel.value = state.thinking;
     thinkSel.addEventListener('change', () => {
       state.thinking = thinkSel.value;
-      try { localStorage.setItem('yield_thinking', state.thinking); } catch { /* ignore */ }
+      try { localStorage.setItem('yield_thinking_v2', state.thinking); } catch { /* ignore */ }
     });
   }
   $('#upgradeBtn').addEventListener('click', upgrade);

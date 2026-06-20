@@ -41,7 +41,8 @@ export interface Env {
   GLM_API_KEY?: string;           // GLM 5.1
   GPTOSS_API_KEY?: string;        // gpt-oss-20b (Auto router)
   NEMOGUARD_API_KEY?: string;     // NeMoGuard JailbreakDetect
-  OPENROUTER_API_KEY?: string;    // Qwen3 Coder / Gemma / Laguna (via OpenRouter)
+  OPENROUTER_API_KEY?: string;    // Qwen3 Coder / Laguna (via OpenRouter)
+  GEMMA_API_KEY?: string;         // Gemma 4 31B (via NVIDIA; or name a secret after the model id)
   NEMOTRON_API_KEY?: string;      // Nemotron 3 Ultra 550B (via NVIDIA; or name a secret after the model id)
 
   SESSION_SECRET: string;

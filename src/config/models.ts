@@ -138,16 +138,17 @@ export const CODER_MODELS: ModelDef[] = [
   },
   {
     id: 'gemma-4-31b',
-    label: 'Gemma 4 31B (free)',
-    modelId: 'google/gemma-4-31b-it:free',
+    label: 'Gemma 4 31B',
+    modelId: 'google/gemma-4-31b-it',
     role: 'coder',
     tier: 'standard',
     speed: 4,
-    blurb: "Google's Gemma 4 31B — fast, capable open model, free via OpenRouter.",
-    pros: ['Free to use', 'Fast for its size', 'Solid for everyday apps & UI'],
-    cons: ['Smaller than the flagship coders', 'Free tier is rate-limited'],
-    // Same OpenRouter provider + key as Qwen (OpenAI-compatible).
-    provider: { apiKeyEnv: 'OPENROUTER_API_KEY', baseUrl: 'https://openrouter.ai/api/v1' },
+    blurb: "Google's Gemma 4 31B — fast, capable open model for everyday apps.",
+    pros: ['Fast for its size', 'Solid for everyday apps & UI', 'Good instruction-following'],
+    cons: ['Smaller than the flagship coders', 'Less depth on complex logic'],
+    // NVIDIA endpoint. Key resolves from GEMMA_API_KEY, a secret named after the
+    // model id (google/gemma-4-31b-it), or NVIDIA_API_KEY.
+    provider: { apiKeyEnv: 'GEMMA_API_KEY' },
   },
   {
     id: 'laguna-m1',

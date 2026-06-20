@@ -18,9 +18,12 @@ DEEPSEEK_PRO_API_KEY=     # DeepSeek V4 Pro
 GLM_API_KEY=              # GLM 5.1
 GPTOSS_API_KEY=           # gpt-oss-20b (Auto router)
 NEMOGUARD_API_KEY=        # NeMoGuard JailbreakDetect (prompt guard)
-# Qwen3 Coder 480B / Gemma 4 31B / Laguna M.1 run on OpenRouter (one key for all).
+# Qwen3 Coder 480B / Laguna M.1 run on OpenRouter (one key for both).
 # Get one at https://openrouter.ai/keys
 OPENROUTER_API_KEY=       # OpenRouter coder models
+# Gemma 4 31B runs on NVIDIA — leave blank to use NVIDIA_API_KEY, or name a
+# secret exactly "google/gemma-4-31b-it" and the resolver will use it.
+GEMMA_API_KEY=            # Gemma 4 31B (via NVIDIA)
 # Nemotron 3 Ultra runs on NVIDIA — leave blank to use NVIDIA_API_KEY, or name a
 # secret exactly "nvidia/nemotron-3-ultra-550b-a55b" and the resolver will use it.
 NEMOTRON_API_KEY=         # Nemotron 3 Ultra 550B (via NVIDIA)

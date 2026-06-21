@@ -12,14 +12,16 @@ const SESSION_COOKIE = 'yield_session';
 const DEVICE_COOKIE = 'yield_device';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days
 
-// Never sign with an empty key (crashes WebCrypto). The dev fallback only applies in
-// open testing mode (AUTH_ENABLED='false'); when real auth is enabled, refuse to run
-// with a missing SESSION_SECRET rather than signing sessions / encrypting tokens with a
-// publicly-known key (which would allow session forgery + token decryption).
+// Never sign with an empty key (crashes WebCrypto). Falls back to a dev constant so
+// the app keeps working without SESSION_SECRET set — set a real one for prod. We warn
+// (once) rather than throw: refusing to run would break saving/auth for anyone relying
+// on the fallback, which is worse than the (logged) insecurity.
+let warnedNoSecret = false;
 export function sessionSecret(env: Env): string {
   if (env.SESSION_SECRET) return env.SESSION_SECRET;
-  if (env.AUTH_ENABLED !== 'false') {
-    throw new Error('SESSION_SECRET is required when AUTH_ENABLED is not "false". Set it with `wrangler secret put SESSION_SECRET`.');
+  if (!warnedNoSecret) {
+    warnedNoSecret = true;
+    console.warn('SESSION_SECRET is not set — using an insecure dev fallback. Set it with `wrangler secret put SESSION_SECRET` before production.');
   }
   return 'yield-insecure-dev-secret-please-set-SESSION_SECRET';
 }

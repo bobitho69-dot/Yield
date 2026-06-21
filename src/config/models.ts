@@ -47,6 +47,15 @@ export interface ModelDef {
   provider: ProviderConfig;
   /** Hidden from the picker (router/guard utility models). */
   internal?: boolean;
+  /**
+   * Rate-limited upstream (e.g. Groq's free tier: ~1k req/day, 30/min). When set,
+   * paid ("priority") users get the full quota and free users are held to `freeShare`
+   * of it, so paid users always keep headroom. Caps are per BUILD (each build makes a
+   * few model calls); the upstream 429 fallback is the hard backstop.
+   */
+  limited?: { perDay: number; perMin: number; freeShare: number };
+  /** Omit the max_tokens cap (some providers, e.g. Groq, reject an over-large value). */
+  noMaxTokens?: boolean;
 }
 
 export const CODER_MODELS: ModelDef[] = [
@@ -177,6 +186,23 @@ export const CODER_MODELS: ModelDef[] = [
     // named exactly after the modelId, and falls back to NVIDIA_API_KEY.
     provider: { apiKeyEnv: 'NEMOTRON_API_KEY' },
   },
+  {
+    id: 'qwen3.6-27b',
+    label: 'Qwen3.6 27B (Groq)',
+    modelId: 'qwen/qwen3.6-27b',
+    role: 'coder',
+    tier: 'standard',
+    speed: 5,
+    blurb: 'Qwen3.6 27B on Groq — blazing-fast inference with strong coding.',
+    pros: ['Extremely fast (Groq LPU)', 'Strong, modern coder', 'Great for quick iterations'],
+    cons: ['Shared rate limit — Priority members go first', 'Smaller than the flagship coders'],
+    // Groq free tier: ~1000 req/day, 30/min. Caps below are per BUILD (a build makes a
+    // few calls); paid users get the full quota, free users get 70%. 429 = hard backstop.
+    limited: { perDay: 500, perMin: 15, freeShare: 0.7 },
+    noMaxTokens: true, // Groq 400s on an over-large max_tokens — let it use its own max.
+    // Groq (OpenAI-compatible). Set the Cloudflare secret "Groqai" to your Groq API key.
+    provider: { apiKeyEnv: 'Groqai', baseUrl: 'https://api.groq.com/openai/v1' },
+  },
 ];
 
 // Auto router — analyzes the prompt and picks the best coder model.
@@ -258,6 +284,12 @@ export function keyForModel(env: Env, model: ModelDef): string {
 export function endpointFor(env: Env, model: ModelDef): { baseUrl: string; apiKey: string; modelId: string } {
   const baseUrl = model.provider.baseUrl || env.NVIDIA_CHAT_BASE;
   return { baseUrl, apiKey: keyForModel(env, model), modelId: model.modelId };
+}
+
+/** max_tokens body field for a model — omitted for providers that 400 on a large cap
+ *  (e.g. Groq), so the provider uses its own default/max instead. Spread into ChatOptions. */
+export function tokenCap(model: ModelDef, max: number): { max_tokens?: number } {
+  return model.noMaxTokens ? {} : { max_tokens: max };
 }
 
 /** Public list for the model picker (Auto + coder models, with pros/cons). */

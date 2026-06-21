@@ -56,8 +56,10 @@ and the SHARED CONTRACT every agent follows — exact file names, global/exporte
 names, CSS class names/framework, and data shapes — so the separately-built pieces fit
 together perfectly.>
 Rules: 2-5 agents, only for big apps; each agent owns DIFFERENT files (never the same
-file twice); put the shared contract in EVERY brief; you may write some files yourself
-(e.g. index.html that wires it together) and delegate the rest. "| model-id" is optional.
+file twice); put the shared contract in EVERY brief; ALWAYS write index.html yourself
+(the entry point) and delegate only the other files, so the app always has a working
+entry even if an agent fails. Never finish a turn having ONLY delegated — code must be
+produced. "| model-id" is optional.
 
 (These two are YOUR tools as the coder. They are different from runtime "agents" in
 section 5, which are AIs your finished app calls.)

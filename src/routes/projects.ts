@@ -61,9 +61,16 @@ export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: st
       return json({ ok: true });
     }
     if (req.method === 'DELETE') {
-      const path = c.url.searchParams.get('path');
+      // Normalize the same way PUT does, so "/index.html" and "index.html" match.
+      const path = (c.url.searchParams.get('path') || '').replace(/^\/+/, '');
       if (!path) return error(400, 'path required');
       await deleteFileRow(c.env, id, path);
+      // Re-mirror the remaining files (keeps projects.code in sync) and push to GitHub,
+      // mirroring what PUT does — otherwise a deleted file can resurrect from the
+      // legacy code fallback or linger in the repo.
+      const files = await listFiles(c.env, id);
+      await saveFiles(c.env, id, files, null);
+      await syncProjectToGithub(c, project, files);
       return json({ ok: true });
     }
     return error(405, 'Method not allowed');

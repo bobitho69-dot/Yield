@@ -3,6 +3,8 @@ const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
   thinking: 'medium', files: [], activeFile: 'index.html', previewPage: 'index.html', streaming: false,
   working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
+  buildToken: 0, // bumped whenever the active project changes, to fence stale build streams
+  previewEpoch: 0, // bumped on every preview reload, so the bug-check ignores stale-page errors
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
 const MAX_AUTOFIX = 2;
 
@@ -118,6 +120,9 @@ async function loadProjects() {
 
 async function openProject(id) {
   const { project, messages, building } = await fetch(`/api/projects/${id}`).then((r) => r.json());
+  // New project context: fence any in-flight build stream/watch from the old project.
+  state.buildToken++;
+  if (buildWatchTimer) { clearInterval(buildWatchTimer); buildWatchTimer = null; }
   state.projectId = project.id;
   state.previewPage = 'index.html';
   setProjectUrl();
@@ -136,19 +141,24 @@ async function openProject(id) {
 let buildWatchTimer = null;
 function startBuildWatch() {
   if (buildWatchTimer || !state.projectId) return;
+  const myToken = state.buildToken;       // fence to the project being watched
+  const watchedId = state.projectId;
   state.working = true; updateComposer();
   const note = addBubble('ai', '<div class="meta">background build</div>⏳ Still building in the background — this updates automatically.');
   let polls = 0;
+  const stop = () => { clearInterval(buildWatchTimer); buildWatchTimer = null; };
   const finish = async (msg) => {
-    clearInterval(buildWatchTimer); buildWatchTimer = null;
+    stop();
+    if (myToken !== state.buildToken) return; // user switched projects — don't touch the UI
     state.working = false; updateComposer();
     await loadFiles(); refreshPreview();
     note.innerHTML = `<div class="meta">background build</div>${msg}`;
   };
   buildWatchTimer = setInterval(async () => {
+    if (myToken !== state.buildToken) return stop(); // abandoned — the project changed
     polls++;
     let building = true;
-    try { building = (await fetch(`/api/projects/${state.projectId}`).then((r) => r.json())).building; } catch { /* retry */ }
+    try { building = (await fetch(`/api/projects/${watchedId}`).then((r) => r.json())).building; } catch { /* retry */ }
     if (!building) return finish('✓ Background build finished and saved.');
     if (polls >= 50) return finish('Loaded the latest saved version.'); // ~2.5 min hard stop
   }, 3000);
@@ -203,6 +213,7 @@ function setProjectUrl() {
 }
 
 function refreshPreview() {
+  state.previewEpoch++; // errors after this point belong to the new page load
   const fr = $('#preview');
   const page = state.previewPage || 'index.html';
   if (state.projectId) fr.removeAttribute('srcdoc'), fr.src = `/p/${state.projectId}/${page}?t=${Date.now()}`;
@@ -228,7 +239,7 @@ function renderAuth() {
   }
   if (state.user) {
     el.innerHTML = `<div class="user-chip">
-      ${state.user.avatar_url ? `<img class="avatar" src="${state.user.avatar_url}" alt="">` : ''}
+      ${state.user.avatar_url ? `<img class="avatar" src="${safeUrl(state.user.avatar_url)}" alt="">` : ''}
       <button id="logoutBtn" class="btn ghost sm">Sign out</button></div>`;
     $('#logoutBtn').addEventListener('click', logout);
     $('#upgradeBtn').classList.toggle('hidden', state.user.plan === 'priority');
@@ -346,6 +357,11 @@ async function streamPrompt(prompt, opts = {}) {
 // to /api/generate and a reconnect GET to /api/projects/:id/stream (the Durable
 // Object replays everything that happened, then streams live). Returns hasFiles.
 async function consumeStream(res, opts = {}) {
+  // Fence this stream to the project that was active when it started. If the user
+  // switches projects mid-build, `live()` goes false and we stop writing this
+  // build's files/preview into the now-different project's UI.
+  const myToken = state.buildToken;
+  const live = () => myToken === state.buildToken;
   const aiBubble = addBubble('ai streaming',
     (opts.resume ? '<div class="meta">↻ reconnected to your build…</div>' : '<div class="meta">thinking…</div>') +
     '<div class="body"><span class="dots">▌</span></div>');
@@ -483,24 +499,28 @@ async function consumeStream(res, opts = {}) {
           setMeta(`${payload.stage}…`);
         } else if (ev === 'meta') {
           setMeta(`${payload.label}${payload.routeReason ? ` · ${payload.routeReason}` : ''}`);
-          if (payload.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
+          if (payload.projectId && live() && !state.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
         } else if (ev === 'chat') {
           chatAcc += payload;
           setBody(fmt(chatAcc));
           $('#messages').scrollTop = $('#messages').scrollHeight;
         } else if (ev === 'done') {
           finished = true;
-          if (payload.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
+          if (payload.projectId && live() && !state.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
           if (payload.chat) chatAcc = payload.chat;
-          if (payload.hasCode && Array.isArray(payload.files) && payload.files.length) {
+          // Only write files/preview into the UI if this build still owns the screen
+          // (the user hasn't switched to a different project mid-build).
+          if (payload.hasCode && Array.isArray(payload.files) && payload.files.length && live()) {
             hasFiles = true;
             state.files = payload.files;
             if (!state.files.find((f) => f.path === state.activeFile)) {
               state.activeFile = state.files.find((f) => f.path === 'index.html') ? 'index.html' : state.files[0].path;
             }
-            renderFileTree(); showActiveFile();
+            renderFileTree();
+            // Don't clobber the editor if the user is actively typing in it.
+            if (document.activeElement !== $('#codeEditor')) showActiveFile();
           }
-          state.pendingSecrets = Array.isArray(payload.secretsNeeded) ? payload.secretsNeeded : [];
+          if (live()) state.pendingSecrets = Array.isArray(payload.secretsNeeded) ? payload.secretsNeeded : [];
           const agentNames = payload.agents ? Object.keys(payload.agents) : [];
           let extra = '';
           if (agentNames.length) extra += `<div class="meta">⚡ created agent(s): ${agentNames.map(esc).join(', ')}</div>`;
@@ -633,25 +653,34 @@ function switchTab(name) {
   if (name === 'settings') renderSettingsPane();
 }
 
+// Iterative (not recursive) so `working`/queue handling has a single owner and a
+// try/finally guarantees the composer is never left stuck on "Working…" if any step
+// throws (e.g. a secrets-save fetch rejecting).
 async function runCycle(text, opts) {
   state.working = true; updateComposer();
-  const hasFiles = await streamPrompt(text, opts);
-  if (state.pendingSecrets.length) await promptForSecrets();
-  if (hasFiles) {
-    const errors = await bugCheck();
-    if (errors.length && state.autofixCount < MAX_AUTOFIX) {
-      state.autofixCount++;
-      const fixPrompt = 'The running app reported these runtime errors. Find the bug and return the full updated file(s) that fix it:\n' + errors.join('\n');
-      await runCycle(fixPrompt, { label: `↻ Auto-fix ${state.autofixCount}/${MAX_AUTOFIX} — ${errors.length} runtime error(s)` });
-      return;
+  let nextText = text, nextOpts = opts || {};
+  try {
+    for (;;) {
+      const hasFiles = await streamPrompt(nextText, nextOpts);
+      if (state.pendingSecrets.length) await promptForSecrets();
+      if (!hasFiles) break;
+      const errors = await bugCheck();
+      if (errors.length && state.autofixCount < MAX_AUTOFIX) {
+        state.autofixCount++;
+        nextText = 'The running app reported these runtime errors. Find the bug and return the full updated file(s) that fix it:\n' + errors.join('\n');
+        nextOpts = { label: `↻ Auto-fix ${state.autofixCount}/${MAX_AUTOFIX} — ${errors.length} runtime error(s)` };
+        continue;
+      }
+      break;
     }
-  }
-  state.working = false; updateComposer();
-  // Run the next scheduled prompt, if any.
-  if (state.queue.length) {
-    const next = state.queue.shift();
-    renderQueue();
-    startUserPrompt(next);
+  } finally {
+    state.working = false; updateComposer();
+    // Run the next scheduled prompt, if any.
+    if (state.queue.length) {
+      const next = state.queue.shift();
+      renderQueue();
+      startUserPrompt(next);
+    }
   }
 }
 
@@ -677,12 +706,14 @@ async function bugCheck() {
   state.previewErrors = [];
   $('#guardNote').innerHTML = '<span class="checking">Checking the app for runtime errors…</span>';
   refreshPreview();
+  const epoch = state.previewEpoch; // only count errors from THIS reload, not the old page
   await sleep(3200);
   $('#guardNote').textContent = 'Prompts are screened by an automatic safety guard.';
-  // De-dupe; only hard errors (error/rejection) trigger an auto-fix.
+  // De-dupe; only hard errors (error/rejection) from the current page trigger an auto-fix.
   const seen = new Set();
   const hard = [];
   for (const e of state.previewErrors) {
+    if (e.epoch !== epoch) continue; // stale error from a previous page load
     if (seen.has(e.message)) continue; seen.add(e.message);
     if (e.kind === 'error' || e.kind === 'rejection') hard.push(e.message);
   }
@@ -812,7 +843,7 @@ async function renderSettingsPane() {
   el.querySelectorAll('.copy').forEach((b) => (b.onclick = () => navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy)));
   const gh = await fetch('/api/github/status').then((r) => r.json()).catch(() => ({ connected: false }));
   $('#setGh').innerHTML = gh.connected
-    ? `Connected as @${esc(gh.login)}. ${state.githubRepo ? `Repo: <a href="${state.githubUrl}" target="_blank" style="color:var(--brand-2)">${esc(state.githubRepo)}</a>` : '<button class="btn ghost sm" id="setGhPush">Save this app to a repo</button>'}`
+    ? `Connected as @${esc(gh.login)}. ${state.githubRepo ? `Repo: <a href="${safeUrl(state.githubUrl)}" target="_blank" style="color:var(--brand-2)">${esc(state.githubRepo)}</a>` : '<button class="btn ghost sm" id="setGhPush">Save this app to a repo</button>'}`
     : `<a class="btn primary sm" href="${ghRedirect()}">Connect GitHub</a>`;
   const gp = $('#setGhPush'); if (gp) gp.onclick = openGithubDialog;
   populateVersions();
@@ -910,7 +941,7 @@ async function openGithubDialog() {
   if (state.githubRepo) {
     body.innerHTML = `<h3>⎇ Synced to GitHub</h3>
       <p class="gh-sub">This project pushes to <b>${esc(state.githubRepo)}</b> automatically on every build and save.</p>
-      <a class="btn ghost" href="${state.githubUrl}" target="_blank">Open repository ↗</a>
+      <a class="btn ghost" href="${safeUrl(state.githubUrl)}" target="_blank">Open repository ↗</a>
       <button class="btn primary" id="ghPush">Push current code now</button>
       <div class="gh-section"><button class="btn ghost" id="ghUnlink">Unlink this repo</button></div>
       <div id="ghMsg"></div>`;
@@ -1012,7 +1043,7 @@ function wireEvents() {
     if (fr && e.source !== fr.contentWindow) return;
     if (d.kind === 'ready') { if (state.selectMode) postSelect(true); return; }
     if (d.kind === 'selected') { onElementSelected(d); return; }
-    state.previewErrors.push({ kind: d.kind, message: String(d.message || '').slice(0, 400) });
+    state.previewErrors.push({ kind: d.kind, message: String(d.message || '').slice(0, 400), epoch: state.previewEpoch });
   });
 
   // Visual select-to-edit.
@@ -1032,6 +1063,8 @@ function wireEvents() {
     if (!e.target.closest('.model-mini')) $('#modelPanel').classList.add('hidden');
   });
   $('#newBtn').addEventListener('click', () => {
+    state.buildToken++;
+    if (buildWatchTimer) { clearInterval(buildWatchTimer); buildWatchTimer = null; }
     state.projectId = null; state.files = []; state.activeFile = 'index.html'; state.previewPage = 'index.html'; $('#codeEditor').value = '';
     $('#projectTitle').value = 'Untitled app';
     try { history.replaceState(null, '', '/app'); } catch { /* ignore */ }
@@ -1075,3 +1108,6 @@ function handleQueryFlags() {
 
 // ---------- utils ----------
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+// Safe to drop into an href/src: only allow http(s) and same-origin relative URLs,
+// then escape. Blocks javascript:/data: and attribute breakout.
+function safeUrl(u) { const s = String(u || ''); return /^(https?:\/\/|\/)/i.test(s) ? esc(s) : '#'; }

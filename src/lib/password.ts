@@ -4,7 +4,9 @@
 import { safeEqual } from './response';
 
 const ENC = new TextEncoder();
-const ITERATIONS = 100_000;
+// OWASP-recommended minimum for PBKDF2-SHA256. Stored hashes encode their own
+// iteration count, so existing hashes still verify and new ones use this.
+const ITERATIONS = 600_000;
 
 function b64(bytes: Uint8Array): string {
   let s = '';

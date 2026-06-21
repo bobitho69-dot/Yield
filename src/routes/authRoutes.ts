@@ -45,7 +45,10 @@ export async function handleAuth(req: Request, c: Ctx, provider?: string, action
     if ((provider === 'github' && !prov.github) || (provider === 'google' && !prov.google)) {
       return error(503, `${provider} login isn’t configured yet. Use email + password.`, { code: 'provider_disabled' });
     }
-    const redirectTo = c.url.searchParams.get('redirect') || '/app';
+    // Only allow same-origin relative paths (a single leading slash, not "//evil.com")
+    // — otherwise an attacker could craft a login link that redirects off-site.
+    const reqRedirect = c.url.searchParams.get('redirect') || '/app';
+    const redirectTo = /^\/(?!\/)/.test(reqRedirect) ? reqRedirect : '/app';
     // Optional elevated scope (e.g. ?scope=repo&store_token=1) to enable code storage.
     const scopeOverride = c.url.searchParams.get('scope') || undefined;
     const storeToken = c.url.searchParams.get('store_token') === '1';

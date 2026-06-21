@@ -29,6 +29,7 @@ const SSE_HEADERS = {
 
 export class BuildSession extends DurableObject<Env> {
   private building = false;
+  private alarmRunning = false;
   private projectId: string | null = null;
   // Replay buffer: every event broadcast so far, so a late/reconnecting tab can
   // catch up to live. Capped to bound memory on long builds.
@@ -51,7 +52,9 @@ export class BuildSession extends DurableObject<Env> {
     // Start the build (if idle) and attach to its live stream.
     if (path.endsWith('/run') && req.method === 'POST') {
       const job = (await req.json().catch(() => null)) as Job | null;
-      if (job && !this.building) await this.begin(job);
+      // Claim the build synchronously (no await between the check and the set) so two
+      // near-simultaneous /run requests can't both start it.
+      if (job && !this.building) { this.building = true; await this.begin(job); }
       return this.attach();
     }
     // Reconnect a refreshed/reopened tab to an in-progress (or just-finished) build.
@@ -91,8 +94,12 @@ export class BuildSession extends DurableObject<Env> {
   // Runs the entire build. Independent of any client request, so a tab refresh
   // can't kill it; the DO stays alive for the whole handler (up to ~15 min).
   async alarm(): Promise<void> {
+    // Re-entrancy guard: if the platform fires/retries the alarm while one is already
+    // running in this instance, don't start a second concurrent build (double spend).
+    if (this.alarmRunning) return;
+    this.alarmRunning = true;
     const job = await this.ctx.storage.get<Job>('job');
-    if (!job) { this.building = false; return; }
+    if (!job) { this.building = false; this.alarmRunning = false; return; }
     this.building = true;
     this.projectId = job.body.projectId || null;
     const env = this.env;
@@ -115,6 +122,7 @@ export class BuildSession extends DurableObject<Env> {
       this.broadcast('error', { message: String(e?.message || e).slice(0, 400) });
     } finally {
       this.building = false;
+      this.alarmRunning = false;
       await this.ctx.storage.delete(['building', 'projectId', 'job']).catch(() => {});
       if (this.projectId) await env.KV.delete(`build:${this.projectId}`).catch(() => {});
       this.broadcast('end', {});

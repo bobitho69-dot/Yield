@@ -423,9 +423,13 @@ async function consumeStream(res, opts = {}) {
   };
   // Roster: mark each agent/worker as working (⏳), done (✅) or failed (⚠️). Created
   // as soon as an agent is launched, so launched agents show as working immediately —
-  // even before they emit any code, and even if they end up producing nothing.
-  const setWorker = (name, status, detail) => {
+  // even before they emit any code, and even if they end up producing nothing. Each
+  // chip shows the agent name AND the model it's running on ("Name · Model").
+  const workerModels = {}; // name -> model label (remembered across start/code/done)
+  const setWorker = (name, status, detail, model) => {
     if (!name) return;
+    if (model) workerModels[name] = model;
+    const m = workerModels[name];
     const lc = ensureLiveCode();
     const roster = lc.querySelector('.lc-roster');
     let chip = roster.querySelector(`[data-who="${CSS.escape(name)}"]`);
@@ -439,7 +443,7 @@ async function consumeStream(res, opts = {}) {
     chip.classList.toggle('done', status === 'done');
     chip.classList.toggle('fail', status === 'fail');
     const icon = status === 'done' ? '✅' : status === 'fail' ? '⚠️' : '⏳';
-    chip.textContent = `${icon} ${name}${detail ? ' · ' + detail : ''}`;
+    chip.textContent = `${icon} ${name}${m ? ' · ' + m : ''}${detail ? ' · ' + detail : ''}`;
   };
   const appendCode = (p) => {
     const lc = ensureLiveCode();
@@ -451,7 +455,8 @@ async function consumeStream(res, opts = {}) {
     if (!sec) {
       const wrap = document.createElement('div');
       wrap.className = 'lc-file';
-      wrap.innerHTML = `<div class="lc-head">🤖 ${esc(who)} · <span class="lc-path">${esc(p.path || '')}</span></div><pre class="lc-pre"></pre>`;
+      const mdl = workerModels[who] ? ` <span class="lc-model">· ${esc(workerModels[who])}</span>` : '';
+      wrap.innerHTML = `<div class="lc-head">🤖 ${esc(who)}${mdl} · <span class="lc-path">${esc(p.path || '')}</span></div><pre class="lc-pre"></pre>`;
       lc.querySelector('.lc-body').appendChild(wrap);
       sec = codeSecs[key] = { pre: wrap.querySelector('.lc-pre'), text: '' };
     }
@@ -461,7 +466,7 @@ async function consumeStream(res, opts = {}) {
       sec.pre.scrollTop = sec.pre.scrollHeight;
     }
     const w = lc.querySelector('.lc-who');
-    if (w) w.textContent = `· ${who} writing ${p.path || ''}`;
+    if (w) w.textContent = `· ${who}${workerModels[who] ? ' (' + workerModels[who] + ')' : ''} writing ${p.path || ''}`;
   };
 
   let chatAcc = '';
@@ -494,11 +499,14 @@ async function consumeStream(res, opts = {}) {
         } else if (ev === 'code') {
           appendCode(payload);
         } else if (ev === 'worker') {
-          setWorker(payload.name, payload.status, payload.detail);
+          setWorker(payload.name, payload.status, payload.detail, payload.model);
         } else if (ev === 'status') {
           setMeta(`${payload.stage}…`);
         } else if (ev === 'meta') {
           setMeta(`${payload.label}${payload.routeReason ? ` · ${payload.routeReason}` : ''}`);
+          // Remember the main coder's model so its roster chip shows it (no chip is
+          // created here — only when it actually starts writing code).
+          if (payload.label) workerModels['Yield'] = payload.label;
           if (payload.projectId && live() && !state.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
         } else if (ev === 'chat') {
           chatAcc += payload;

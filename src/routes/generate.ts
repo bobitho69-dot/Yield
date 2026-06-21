@@ -104,20 +104,21 @@ export async function handleRoute(req: Request, c: Ctx): Promise<Response> {
 }
 
 // Prompt Max: rewrite the user's request into a sharper, more complete build brief
-// (same intent, better specified) using the fast Auto router model. Best-effort —
-// returns the original prompt on any failure or a non-sane rewrite.
+// (same intent, better specified). Uses a FAST, non-reasoning model and NO reasoning
+// flag so it stays snappy — the Auto router (gpt-oss) is a reasoning model and "thinks"
+// far too long for a quick rewrite. Best-effort — returns the original prompt on any
+// failure, a timeout, or a non-sane rewrite.
 async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<void>): Promise<{ prompt: string; changed: boolean }> {
   try {
-    const router = resolveModel(ROUTER_MODEL.id);
-    const ep = endpointFor(c.env, router);
+    const fast = resolveModel('deepseek-v4-flash');
+    const ep = endpointFor(c.env, fast);
     const { text } = await chat({
       baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId,
       messages: [
         { role: 'system', content: ENHANCE_SYSTEM },
         { role: 'user', content: prompt.slice(0, 4000) },
       ],
-      temperature: 0.5, max_tokens: 1400, timeoutMs: 35000,
-      extra: { reasoning_effort: 'low' }, // keep it fast
+      temperature: 0.4, max_tokens: 700, timeoutMs: 15000, // short cap + tight timeout = snappy
     });
     await heartbeat();
     const out = (text || '').replace(/^["'`]+|["'`]+$/g, '').trim();

@@ -44,6 +44,7 @@ export interface Env {
   OPENROUTER_API_KEY?: string;    // Qwen3 Coder / Laguna (via OpenRouter)
   GEMMA_API_KEY?: string;         // Gemma 4 31B (via NVIDIA; or name a secret after the model id)
   NEMOTRON_API_KEY?: string;      // Nemotron 3 Ultra 550B (via NVIDIA; or name a secret after the model id)
+  Groqai?: string;                // Qwen3.6 27B via Groq (api.groq.com) — your Groq API key
 
   SESSION_SECRET: string;
   GITHUB_CLIENT_ID: string;

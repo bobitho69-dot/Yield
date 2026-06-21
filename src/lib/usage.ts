@@ -127,6 +127,39 @@ export async function gateGeneration(c: Ctx): Promise<GateResult> {
   return { allowed: true, status: 200, usage };
 }
 
+/**
+ * Paid-priority gate for a rate-limited upstream model (e.g. Groq). Paid ("priority")
+ * users get the full quota; free users are held to `freeShare` of it so paid users
+ * always have headroom on the shared limit. Returns true (and reserves a slot) if THIS
+ * user may use the model right now; false means the caller should route to another
+ * model. Tracks a per-day + per-minute counter in ONE KV key (1 read + 1 write).
+ */
+export async function reserveLimitedModel(
+  c: Ctx,
+  modelId: string,
+  limits: { perDay: number; perMin: number; freeShare: number },
+): Promise<boolean> {
+  const paid = c.user?.plan === 'priority';
+  const dayCap = paid ? limits.perDay : Math.max(1, Math.floor(limits.perDay * limits.freeShare));
+  const minCap = paid ? limits.perMin : Math.max(1, Math.floor(limits.perMin * limits.freeShare));
+  const key = `limuse:${modelId}`;
+  const today = ymd();
+  const minute = Math.floor(Date.now() / 60000);
+  let st: { d: string; dc: number; m: number; mc: number } = { d: today, dc: 0, m: minute, mc: 0 };
+  try {
+    const raw = await c.env.KV.get(key);
+    if (raw) st = JSON.parse(raw);
+  } catch {
+    /* treat as fresh */
+  }
+  if (st.d !== today) { st.d = today; st.dc = 0; } // new day -> reset daily window
+  if (st.m !== minute) { st.m = minute; st.mc = 0; } // new minute -> reset burst window
+  if (st.dc >= dayCap || st.mc >= minCap) return false; // over THIS user's cap -> yield
+  st.dc++; st.mc++;
+  await c.env.KV.put(key, JSON.stringify(st), { expirationTtl: 60 * 60 * 26 }).catch(() => {});
+  return true;
+}
+
 /** Record a successful generation against monthly budget + daily quotas. */
 export async function recordGeneration(c: Ctx): Promise<void> {
   const DAY = 60 * 60 * 26;

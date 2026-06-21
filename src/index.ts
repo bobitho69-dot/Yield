@@ -107,6 +107,7 @@ export default {
       }
       return res!;
     } catch (e: any) {
+      console.error('unhandled request error:', e?.stack || e);
       return error(500, 'Internal error', { detail: String(e?.message || e).slice(0, 300) });
     }
   },
@@ -118,7 +119,9 @@ async function handleBuildStream(c: Ctx, id: string): Promise<Response> {
   if (!c.env.BUILDER) return error(503, 'Builds stream unavailable');
   const project = await getProject(c.env, id);
   if (!project) return error(404, 'Project not found');
-  if (c.user && project.user_id !== c.user.id) return error(403, 'Not your project');
+  // Build streams (and the projects that own them) always belong to a user; an
+  // anonymous request has no business attaching to one. Require ownership.
+  if (!c.user || project.user_id !== c.user.id) return error(403, 'Not your project');
   const stub = c.env.BUILDER.get(c.env.BUILDER.idFromName(id));
   return stub.fetch('https://build.yield/attach');
 }

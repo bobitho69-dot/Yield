@@ -117,7 +117,9 @@ function guessName(before: string, lang: string, only: boolean): string {
 }
 
 function extractFilesFromText(text: string): { chat: string; files: FileRow[] } {
-  const fenceRe = /```([a-zA-Z0-9.\-_/]*)[ \t]*\n([\s\S]*?)\n```/g;
+  // Tolerant of a missing newline before the closing fence and of an UNTERMINATED
+  // fence (model truncated) — otherwise that code is silently dropped → empty build.
+  const fenceRe = /```([a-zA-Z0-9.\-_/]*)[ \t]*\n([\s\S]*?)(?:\n?```|$)/g;
   const blocks: { lang: string; code: string; index: number }[] = [];
   let m: RegExpExecArray | null;
   while ((m = fenceRe.exec(text))) blocks.push({ lang: m[1], code: m[2], index: m.index });
@@ -172,6 +174,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   let curResearch: { name: string; model: string | null; lines: string[] } | null = null;
   let lastStatus = '';
   const chatLines: string[] = [];
+  const thinkLines: string[] = []; // raw <think> text, kept only to recover code a reasoning model buried there
   const files: { path: string; lines: string[] }[] = [];
   const agents: { name: string; model: string | null; lines: string[] }[] = [];
   const tasks: { name: string; model: string | null; lines: string[] }[] = [];
@@ -182,9 +185,9 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     // Route <think>…</think> reasoning to the Thinking panel.
     if (inThink) {
       const close = line.indexOf('</think>');
-      if (close === -1) { await send('thinking', line + '\n'); return; }
+      if (close === -1) { thinkLines.push(line); await send('thinking', line + '\n'); return; }
       const before = line.slice(0, close);
-      if (before) await send('thinking', before + '\n');
+      if (before) { thinkLines.push(before); await send('thinking', before + '\n'); }
       inThink = false;
       const after = line.slice(close + 8);
       if (after.trim()) await handleLine(after);
@@ -253,10 +256,23 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     async end() {
       if (buf.length) { await handleLine(buf); buf = ''; }
     },
-    // Clear transient parse state before a retry so a partial line buffered from a
-    // failed attempt can't prefix/corrupt the next attempt's output.
-    reset() { buf = ''; mode = 'chat'; inThink = false; curFile = null; curAgent = null; curTask = null; curResearch = null; },
-    get produced() { return chatLines.length > 0 || files.length > 0 || agents.length > 0 || tasks.length > 0 || research.length > 0; },
+    // Clear ALL parse state before a retry — not just the transient cursors but the
+    // accumulated output — so a partial/empty attempt can't leave stale or duplicate
+    // entries that survive into the retry's result. Only ever called when nothing
+    // worth keeping was produced (see `produced`).
+    reset() {
+      buf = ''; mode = 'chat'; inThink = false; lastStatus = '';
+      curFile = curAgent = curTask = curResearch = null;
+      files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = 0;
+    },
+    // "Produced something worth keeping": real file content, real chat, or a delegation.
+    // A bare "=== file: path ===" header with no body must NOT count — otherwise a
+    // dropped connection right after a header would disable the retry/fallback ladder
+    // and then get filtered out to an empty build.
+    get produced() {
+      return files.some((f) => f.lines.some((l) => l.trim())) || chatLines.some((l) => l.trim()) ||
+        agents.length > 0 || tasks.length > 0 || research.length > 0;
+    },
     result() {
       // Drop reasoning-model scratchpads if any leaked into the text.
       let chat = chatLines.join('\n')
@@ -280,8 +296,11 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       // The model didn't use === file: === — recover code from fences / raw HTML.
       // (Only when no tasks/research were delegated; those produce the files instead.)
       if (fs.length === 0 && tks.length === 0 && rsc.length === 0) {
-        const fb = extractFilesFromText(chat);
-        if (fb.files.length) { fs = fb.files; chat = fb.chat || 'Here is your app.'; }
+        // Recover code from the chat text; as a last resort, from the reasoning text
+        // (some models emit the whole app as fences/raw HTML inside <think>).
+        let fb = extractFilesFromText(chat);
+        if (!fb.files.length && thinkLines.length) fb = extractFilesFromText(thinkLines.join('\n'));
+        if (fb.files.length) { fs = fb.files; chat = chat || fb.chat || 'Here is your app.'; }
       }
       return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc };
     },
@@ -593,9 +612,6 @@ export async function runBuild(
     };
 
     let result = await streamOnce();
-    // Did the model delegate to research/build agents? (Used to guarantee output:
-    // if it delegated but no code came back, we build directly rather than finish empty.)
-    const delegated = result.research.length > 0 || result.tasks.length > 0;
 
     // Helper AIs: if the coder asked to research/plan a tricky part first
     // ("=== research: Name ==="), run those helpers in parallel, surface their
@@ -681,12 +697,14 @@ export async function runBuild(
       if (ok.length) agentNote = `\n\n🤖 Built in parallel by ${ok.length} agent${ok.length > 1 ? 's' : ''}: ${ok.join(', ')}.`;
     }
 
-    // GUARANTEED OUTPUT: if the orchestrator delegated to research/build agents but
-    // ended up with NO files (agents failed, returned prose, or it never wrote any
-    // itself), don't finish empty — build the app directly with the orchestrator. This
-    // is the "launched agents then nothing was built" case.
-    if (!files.length && (delegated || result.tasks.length > 0)) {
-      await send('status', { stage: 'Agents returned no code — building it directly…' });
+    // GUARANTEED OUTPUT: an app-builder result with NO files is almost always a failed
+    // build — the model returned only prose, delegated to agents that produced nothing,
+    // or its code was unparseable. Do ONE direct build pass to recover, regardless of
+    // whether it delegated. Skip only for obvious small-talk, which legitimately has no
+    // files (otherwise "thanks!" would fabricate an app).
+    const chitchat = /^(thanks?|thank you|ok(ay)?|cool|nice|great|awesome|hi|hello|hey|yo|yes|no|sure|👍|🙏)[\s!.?]*$/i.test(prompt.trim());
+    if (!files.length && !chitchat) {
+      await send('status', { stage: 'No code yet — building it directly…' });
       await heartbeat();
       messages.push({ role: 'assistant', content: (chatBody || 'I planned the app.').slice(0, 1500) });
       messages.push({

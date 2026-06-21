@@ -241,6 +241,14 @@ export async function deleteFileRow(env: Env, projectId: string, path: string): 
   await env.DB.prepare('DELETE FROM files WHERE project_id=? AND path=?').bind(projectId, path).run();
 }
 
+// Mirror index.html into projects.code (legacy/preview) without rewriting every file
+// row — used after a single-file edit/delete so we don't do an N+1 upsert each time.
+export async function setProjectCode(env: Env, projectId: string, indexHtml: string | null): Promise<void> {
+  await env.DB.prepare('UPDATE projects SET code=COALESCE(?,code), updated_at=? WHERE id=?')
+    .bind(indexHtml, now(), projectId)
+    .run();
+}
+
 // Save a set of files, and mirror index.html into projects.code for legacy/preview.
 export async function saveFiles(env: Env, projectId: string, files: FileRow[], model: string | null): Promise<void> {
   for (const f of files) await upsertFile(env, projectId, f.path, f.content);

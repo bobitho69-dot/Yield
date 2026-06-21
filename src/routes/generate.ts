@@ -9,8 +9,8 @@
 import type { Ctx, Env } from '../types';
 import { sse, json, error } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
-import { gateGeneration, recordGeneration, reserveLimitedModel } from '../lib/usage';
-import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, tokenCap, type ModelDef } from '../config/models';
+import { gateGeneration, recordGeneration } from '../lib/usage';
+import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, type ModelDef } from '../config/models';
 import { chat, chatStream } from '../lib/nvidia';
 import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, ENHANCE_SYSTEM, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
@@ -360,7 +360,7 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
       try {
         const { text } = await chat({
           baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-          temperature: 0.4, ...tokenCap(model, 8000), timeoutMs: 150000,
+          temperature: 0.4, max_tokens: 8000, timeoutMs: 150000,
           ...(eff ? { extra: { reasoning_effort: eff } } : {}),
         });
         await heartbeat();
@@ -399,7 +399,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-            temperature: 0.3, ...tokenCap(model, 30000), timeoutMs: 300000,
+            temperature: 0.3, max_tokens: 30000, timeoutMs: 300000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await sub.feed(delta); await heartbeat(); },
@@ -471,7 +471,7 @@ async function verifyAndRepair(
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-            temperature: 0.2, top_p: 0.95, ...tokenCap(model, 40000), timeoutMs: 600000,
+            temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await repair.feed(delta); await heartbeat(); },
@@ -550,21 +550,6 @@ export async function runBuild(
       modelId = choice.id;
       routeReason = choice.reason;
     }
-
-    // 3.5) Paid-priority gate: rate-limited models (e.g. Groq) reserve headroom for
-    //      paid users. If a free user is at the free cap (or the model is fully busy),
-    //      transparently route them to a different model instead.
-    {
-      const picked = resolveModel(modelId);
-      if (picked.limited && !(await reserveLimitedModel(c, picked.id, picked.limited))) {
-        const limitedIds = CODER_MODELS.filter((m) => m.limited).map((m) => m.id);
-        const alt = await routeModel(c, buildPrompt, limitedIds);
-        modelId = alt.id;
-        const altLabel = resolveModel(modelId).label;
-        routeReason = `${picked.label} is reserved for Priority members right now — using ${altLabel}`;
-        await send('status', { stage: `${picked.label} is busy — switching to ${altLabel}` });
-      }
-    }
     const model = resolveModel(modelId);
 
     // 4) Project (normally pre-created by the caller; resolve it here).
@@ -634,7 +619,7 @@ export async function runBuild(
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-            temperature: 0.3, top_p: 0.95, ...tokenCap(mdef, 40000), timeoutMs: 600000,
+            temperature: 0.3, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await streamer.feed(delta); await heartbeat(); },

@@ -776,10 +776,8 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
   // the browser tab is refreshed or closed. The response is the DO's live stream.
   if (project && c.env.BUILDER) {
     try {
-      // Mark "building" immediately so a refresh in the first moments already shows
-      // the in-progress state (the DO refreshes this flag on a throttle and clears it
-      // when done). Short TTL so a never-started build doesn't look stuck for an hour.
-      await c.env.KV.put(`build:${project.id}`, String(Date.now()), { expirationTtl: 150 }).catch(() => {});
+      // The DO's begin() sets the "building" flag synchronously before it returns the
+      // stream, so we don't pre-write it here (saves a KV write per build).
       const stub = c.env.BUILDER.get(c.env.BUILDER.idFromName(project.id));
       return await stub.fetch('https://build.yield/run', {
         method: 'POST',
@@ -794,14 +792,11 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
   // Fallback: inline streaming via waitUntil (best-effort durability).
   const { response, send, close } = sse();
   const flagKey = project ? `build:${project.id}` : null;
-  let lastBeat = 0;
-  const heartbeat = async () => {
-    const t = Date.now();
-    if (flagKey && t - lastBeat > 30000) { lastBeat = t; await c.env.KV.put(flagKey, String(t), { expirationTtl: 150 }).catch(() => {}); }
-  };
+  // Write the "building" flag once (not per token); delete it when the build ends.
+  const heartbeat = async () => {};
   c.ctx.waitUntil(
     (async () => {
-      if (flagKey) { lastBeat = Date.now(); await c.env.KV.put(flagKey, String(lastBeat), { expirationTtl: 150 }).catch(() => {}); }
+      if (flagKey) await c.env.KV.put(flagKey, String(Date.now()), { expirationTtl: 1800 }).catch(() => {});
       try { await runBuild(c, startBody, send, heartbeat); }
       finally {
         if (flagKey) await c.env.KV.delete(flagKey).catch(() => {});

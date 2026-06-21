@@ -27,16 +27,15 @@ const SSE_HEADERS = {
   connection: 'keep-alive',
 };
 
-// "Building" flag lifetime in KV. The flag is refreshed at most every BUILD_FLAG_BEAT
-// (not on every token), so a build does ~2 KV writes/min instead of thousands; it
-// auto-expires BUILD_FLAG_TTL after the last refresh if a build dies without cleanup.
-const BUILD_FLAG_TTL = 150; // seconds
-const BUILD_FLAG_BEAT = 30_000; // ms between KV refreshes
+// "Building" flag lifetime in KV. We write the flag ONCE when a build starts and
+// delete it when it ends — no periodic "heartbeat" refresh — so a build costs 1 KV
+// write + 1 delete instead of thousands. The TTL is only a safety net to clear the
+// flag if a build dies without running its cleanup; normal builds delete it on finish.
+const BUILD_FLAG_TTL = 1800; // seconds (30 min) — longer than any realistic build
 
 export class BuildSession extends DurableObject<Env> {
   private building = false;
   private alarmRunning = false;
-  private lastBeat = 0;
   private projectId: string | null = null;
   // Replay buffer: every event broadcast so far, so a late/reconnecting tab can
   // catch up to live. Capped to bound memory on long builds.
@@ -81,8 +80,7 @@ export class BuildSession extends DurableObject<Env> {
     this.projectId = job.body.projectId || null;
     await this.ctx.storage.put({ building: true, projectId: this.projectId, job }).catch(() => {});
     if (this.projectId) {
-      this.lastBeat = Date.now();
-      await this.env.KV.put(`build:${this.projectId}`, String(this.lastBeat), { expirationTtl: BUILD_FLAG_TTL }).catch(() => {});
+      await this.env.KV.put(`build:${this.projectId}`, String(Date.now()), { expirationTtl: BUILD_FLAG_TTL }).catch(() => {});
     }
     try {
       await this.ctx.storage.setAlarm(Date.now()); // fire ASAP, in its own context
@@ -113,16 +111,10 @@ export class BuildSession extends DurableObject<Env> {
     const env = this.env;
 
     const send = async (event: string, data: unknown) => { this.broadcast(event, data); };
-    // Throttled: refresh the KV "building" flag at most every BUILD_FLAG_BEAT, even
-    // though this is called on every streamed token — so we don't hammer KV with
-    // thousands of writes per build.
-    const heartbeat = async () => {
-      if (!this.projectId) return;
-      const t = Date.now();
-      if (t - this.lastBeat < BUILD_FLAG_BEAT) return;
-      this.lastBeat = t;
-      await env.KV.put(`build:${this.projectId}`, String(t), { expirationTtl: BUILD_FLAG_TTL }).catch(() => {});
-    };
+    // No-op: the "building" flag is written once in begin() and deleted on finish, so
+    // we deliberately do NOT touch KV per token. Kept as a hook the streaming helpers
+    // can call without caring whether it does anything.
+    const heartbeat = async () => {};
     const c: Ctx = {
       env,
       ctx: this.ctx as unknown as ExecutionContext,

@@ -31,9 +31,11 @@ async function readInt(env: Env, key: string): Promise<number> {
 }
 
 // KV has no atomic increment; for a budget meter, last-writer-wins is acceptable.
+// Never throw — if KV is unavailable or the daily write quota is exhausted, the
+// generation has already been delivered/saved (D1), so a failed counter is harmless.
 async function bump(env: Env, key: string, ttlSeconds: number): Promise<number> {
   const next = (await readInt(env, key)) + 1;
-  await env.KV.put(key, String(next), { expirationTtl: ttlSeconds });
+  await env.KV.put(key, String(next), { expirationTtl: ttlSeconds }).catch(() => {});
   return next;
 }
 

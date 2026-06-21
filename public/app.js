@@ -1,7 +1,7 @@
 // Yield builder — client logic.
 const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
-  thinking: 'medium', files: [], activeFile: 'index.html', previewPage: 'index.html', streaming: false,
+  thinking: 'medium', promptMax: false, files: [], activeFile: 'index.html', previewPage: 'index.html', streaming: false,
   working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
   buildToken: 0, // bumped whenever the active project changes, to fence stale build streams
   previewEpoch: 0, // bumped on every preview reload, so the bug-check ignores stale-page errors
@@ -351,7 +351,7 @@ async function streamPrompt(prompt, opts = {}) {
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId, thinking: state.thinking }),
+      body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId, thinking: state.thinking, enhance: state.promptMax }),
     });
     if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) {
       const err = await res.json().catch(() => ({}));
@@ -1140,6 +1140,24 @@ function wireEvents() {
     thinkSel.addEventListener('change', () => {
       state.thinking = thinkSel.value;
       try { localStorage.setItem('yield_thinking_v2', state.thinking); } catch { /* ignore */ }
+    });
+  }
+  // Prompt Max toggle (persisted) — auto-improve the prompt before building.
+  const pmaxBtn = $('#promptMaxBtn');
+  if (pmaxBtn) {
+    try { state.promptMax = localStorage.getItem('yield_prompt_max') === '1'; } catch { /* ignore */ }
+    const renderPmax = () => {
+      pmaxBtn.classList.toggle('on', state.promptMax);
+      pmaxBtn.setAttribute('aria-pressed', String(state.promptMax));
+      pmaxBtn.title = state.promptMax
+        ? 'Prompt Max is ON — your prompt is auto-improved before building. Click to turn off.'
+        : 'Prompt Max — auto-improve your prompt before building. Click to turn on.';
+    };
+    renderPmax();
+    pmaxBtn.addEventListener('click', () => {
+      state.promptMax = !state.promptMax;
+      try { localStorage.setItem('yield_prompt_max', state.promptMax ? '1' : '0'); } catch { /* ignore */ }
+      renderPmax();
     });
   }
   $('#upgradeBtn').addEventListener('click', upgrade);

@@ -12,7 +12,7 @@ import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
 import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, type ModelDef } from '../config/models';
 import { chat, chatStream } from '../lib/nvidia';
-import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, routerSystem } from '../lib/prompts';
+import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, ENHANCE_SYSTEM, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import { verifyFiles } from '../lib/verify';
 import {
@@ -26,6 +26,7 @@ export interface GenBody {
   model?: string;
   projectId?: string;
   thinking?: string; // reasoning effort: 'low' | 'medium' | 'high'
+  enhance?: boolean; // Prompt Max: rewrite/improve the prompt before building
 }
 
 // Validate the user's chosen thinking level; default to medium (balanced — high
@@ -100,6 +101,32 @@ export async function handleRoute(req: Request, c: Ctx): Promise<Response> {
   const choice = await routeModel(c, body.prompt);
   const model = resolveModel(choice.id);
   return json({ ...choice, label: model.label, tier: model.tier, pros: model.pros, cons: model.cons });
+}
+
+// Prompt Max: rewrite the user's request into a sharper, more complete build brief
+// (same intent, better specified) using the fast Auto router model. Best-effort —
+// returns the original prompt on any failure or a non-sane rewrite.
+async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<void>): Promise<{ prompt: string; changed: boolean }> {
+  try {
+    const router = resolveModel(ROUTER_MODEL.id);
+    const ep = endpointFor(c.env, router);
+    const { text } = await chat({
+      baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId,
+      messages: [
+        { role: 'system', content: ENHANCE_SYSTEM },
+        { role: 'user', content: prompt.slice(0, 4000) },
+      ],
+      temperature: 0.5, max_tokens: 1400, timeoutMs: 35000,
+      extra: { reasoning_effort: 'low' }, // keep it fast
+    });
+    await heartbeat();
+    const out = (text || '').replace(/^["'`]+|["'`]+$/g, '').trim();
+    // Only adopt a sane rewrite: non-empty, not a refusal, not absurdly long, actually different.
+    if (out && out.length >= 12 && out.length <= 6000 && out.toLowerCase() !== prompt.trim().toLowerCase()) {
+      return { prompt: out, changed: true };
+    }
+  } catch { /* fall back to the original prompt */ }
+  return { prompt, changed: false };
 }
 
 // Fallback: pull files out of a model reply that didn't use the === file: ===
@@ -500,12 +527,26 @@ export async function runBuild(
       return;
     }
 
+    // 2.5) Prompt Max: rewrite the prompt into a better build brief before building.
+    let buildPrompt = prompt;
+    if (body.enhance && prompt.length >= 8) {
+      await send('status', { stage: '⚡ Prompt Max — improving your prompt…' });
+      await heartbeat();
+      const enh = await enhancePrompt(c, prompt, heartbeat);
+      buildPrompt = enh.prompt;
+      if (enh.changed) {
+        // Show what it became (Thinking panel) so the user can see what was built from.
+        await send('thinking', `⚡ Prompt Max rewrote your request as:\n\n${buildPrompt}\n\n`);
+        await send('status', { stage: '⚡ Prompt Max applied' });
+      }
+    }
+
     // 3) Resolve model (Auto -> route via gpt-oss-20b).
     let modelId = body.model || 'auto';
     let routeReason: string | undefined;
     if (modelId === 'auto') {
       await send('status', { stage: 'Picking the best model' });
-      const choice = await routeModel(c, prompt);
+      const choice = await routeModel(c, buildPrompt);
       modelId = choice.id;
       routeReason = choice.reason;
     }
@@ -558,7 +599,7 @@ export async function runBuild(
         else if (m.role === 'assistant' && m.content) messages.push({ role: 'assistant', content: m.content });
       }
     }
-    messages.push({ role: 'user', content: prompt });
+    messages.push({ role: 'user', content: buildPrompt });
 
     // 6) Stream: separate chat from multi-file output. Coder models run with MAX
     //    reasoning (reasoning_effort: high) and a long timeout for thorough code.
@@ -800,7 +841,7 @@ export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
   let project = body.projectId ? await getProject(c.env, body.projectId) : null;
   if (project && c.user && project.user_id !== c.user.id) return error(403, 'Not your project');
   if (!project && c.user) project = await createProject(c.env, c.user.id, prompt.slice(0, 60));
-  const startBody: GenBody = { prompt, model: body.model, projectId: project?.id, thinking: body.thinking };
+  const startBody: GenBody = { prompt, model: body.model, projectId: project?.id, thinking: body.thinking, enhance: body.enhance };
 
   // Preferred: run the build inside a Durable Object. The DO's lifetime is
   // independent of this HTTP request, so the build keeps running and SAVES even if

@@ -569,6 +569,23 @@ async function consumeStream(res, opts = {}) {
 
   if (!finished && !chatAcc) setBody(esc(opts.resume ? 'Loaded the latest saved version.' : 'No response — try again.'));
   aiBubble.classList.remove('streaming');
+  // Make the file tree authoritative: re-sync from what the server actually saved,
+  // so the tree reflects reality even if the 'done' payload and saved state diverge.
+  // (Only when the build belonged to the project still on screen.)
+  if (finished && live() && state.projectId) {
+    try {
+      const { files } = await fetch(`/api/projects/${state.projectId}/files`).then((r) => r.json());
+      if (Array.isArray(files) && files.length) {
+        state.files = files;
+        if (!state.files.find((f) => f.path === state.activeFile)) {
+          state.activeFile = state.files.find((f) => f.path === 'index.html') ? 'index.html' : state.files[0].path;
+        }
+        hasFiles = true;
+        renderFileTree();
+        if (document.activeElement !== $('#codeEditor')) showActiveFile();
+      }
+    } catch { /* leave whatever the done handler set */ }
+  }
   loadStatus();
   if (state.user) loadProjects();
   return hasFiles;

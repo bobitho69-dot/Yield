@@ -405,16 +405,31 @@ async function consumeStream(res, opts = {}) {
     }
     return lc;
   };
+  // Roster: mark each agent/worker as working (⏳), done (✅) or failed (⚠️). Created
+  // as soon as an agent is launched, so launched agents show as working immediately —
+  // even before they emit any code, and even if they end up producing nothing.
+  const setWorker = (name, status, detail) => {
+    if (!name) return;
+    const lc = ensureLiveCode();
+    const roster = lc.querySelector('.lc-roster');
+    let chip = roster.querySelector(`[data-who="${CSS.escape(name)}"]`);
+    if (!chip) {
+      chip = document.createElement('span');
+      chip.className = 'lc-chip'; chip.dataset.who = name;
+      roster.appendChild(chip);
+    }
+    // Never downgrade a finished worker back to "working".
+    if (status === 'start' && (chip.classList.contains('done') || chip.classList.contains('fail'))) return;
+    chip.classList.toggle('done', status === 'done');
+    chip.classList.toggle('fail', status === 'fail');
+    const icon = status === 'done' ? '✅' : status === 'fail' ? '⚠️' : '⏳';
+    chip.textContent = `${icon} ${name}${detail ? ' · ' + detail : ''}`;
+  };
   const appendCode = (p) => {
     const lc = ensureLiveCode();
     const who = p.agent || 'Yield';
-    // Roster of who's working.
-    const roster = lc.querySelector('.lc-roster');
-    if (!roster.querySelector(`[data-who="${CSS.escape(who)}"]`)) {
-      const chip = document.createElement('span');
-      chip.className = 'lc-chip'; chip.dataset.who = who; chip.textContent = '🤖 ' + who;
-      roster.appendChild(chip);
-    }
+    // Roster of who's working — create a "working" chip on this agent's first code.
+    if (!lc.querySelector(`.lc-roster [data-who="${CSS.escape(who)}"]`)) setWorker(who, 'start');
     const key = who + '␟' + (p.path || '');
     let sec = codeSecs[key];
     if (!sec) {
@@ -462,6 +477,8 @@ async function consumeStream(res, opts = {}) {
           appendResearch(payload);
         } else if (ev === 'code') {
           appendCode(payload);
+        } else if (ev === 'worker') {
+          setWorker(payload.name, payload.status, payload.detail);
         } else if (ev === 'status') {
           setMeta(`${payload.stage}…`);
         } else if (ev === 'meta') {
@@ -490,7 +507,13 @@ async function consumeStream(res, opts = {}) {
           setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')) + extra);
           const ts = aiBubble.querySelector('.think summary'); if (ts) ts.textContent = '💭 Thinking';
           const lc = aiBubble.querySelector('.livecode');
-          if (lc) { lc.open = false; const s = lc.querySelector('summary'); if (s) s.innerHTML = '👁 Code'; }
+          if (lc) {
+            // Flip any still-"working" chips to done now that the build is over.
+            lc.querySelectorAll('.lc-chip').forEach((chip) => {
+              if (!chip.classList.contains('done') && !chip.classList.contains('fail')) setWorker(chip.dataset.who, 'done');
+            });
+            lc.open = false; const s = lc.querySelector('summary'); if (s) s.innerHTML = '👁 Code';
+          }
           const rp = aiBubble.querySelector('.research');
           if (rp) rp.open = false;
         } else if (ev === 'blocked') {

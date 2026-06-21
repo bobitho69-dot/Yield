@@ -377,6 +377,7 @@ async function verifyAndRepair(
     return files;
   }
   await send('status', { stage: `Verifying — fixing ${hardIssues.length} issue(s)…` });
+  await send('worker', { name: 'Verify', kind: 'verify', status: 'start' });
   await heartbeat();
   const dump = files.map((f) => `=== file: ${f.path} ===\n${f.content}`).join('\n\n');
   const messages = [
@@ -413,11 +414,12 @@ async function verifyAndRepair(
   }
   await repair.end();
   const fixed = repair.result().files;
-  if (!fixed.length) return files; // repair produced nothing — keep the original build
+  if (!fixed.length) { await send('worker', { name: 'Verify', kind: 'verify', status: 'done' }); return files; }
   const byPath = new Map(files.map((f) => [f.path, f] as const));
   for (const f of fixed) byPath.set(f.path, f);
   const merged = [...byPath.values()];
   const after = verifyFiles(merged);
+  await send('worker', { name: 'Verify', kind: 'verify', status: after.hardIssues.length ? 'fail' : 'done', detail: `${fixed.length} file(s)` });
   await send('status', { stage: after.hardIssues.length ? `Verified — ${fixed.length} file(s) updated` : 'Verified — all checks passed ✓' });
   return merged;
 }
@@ -642,10 +644,16 @@ export async function runBuild(
         `You are part of a team building ONE app. App goal:\n${prompt.slice(0, 1500)}\n\n` +
         `Orchestrator plan/notes:\n${(chatBody || '').slice(0, 2000)}` +
         (files.length ? `\n\nThe orchestrator already wrote these files — do NOT recreate them: ${files.map((f) => f.path).join(', ')}` : '');
+      // Mark every agent as working up-front (roster appears immediately), then
+      // flip each to done/failed — so launched agents are visibly working even
+      // before they emit any code, and even if they produce nothing.
+      for (const t of result.tasks) await send('worker', { name: t.name, kind: 'build', status: 'start' });
       const results = await Promise.all(result.tasks.map(async (t) => {
         await send('status', { stage: `Agent ${t.name} working…` });
         const res = await runSubAgent(c.env, t, sharedContext, send, wantEffort);
-        await send('status', { stage: res.files.length ? `Agent ${t.name}: ${res.files.length} file(s) ✓` : `Agent ${t.name}: no output` });
+        const n = res.files.length;
+        await send('worker', { name: t.name, kind: 'build', status: n ? 'done' : 'fail', detail: n ? `${n} file(s)` : (res.error || 'no output') });
+        await send('status', { stage: n ? `Agent ${t.name}: ${n} file(s) ✓` : `Agent ${t.name}: no output` });
         return res;
       }));
       await heartbeat();

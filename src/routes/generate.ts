@@ -121,7 +121,15 @@ async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<vo
       temperature: 0.4, max_tokens: 700, timeoutMs: 15000, // short cap + tight timeout = snappy
     });
     await heartbeat();
-    const out = (text || '').replace(/^["'`]+|["'`]+$/g, '').trim();
+    // Strip any reasoning/tool-call artifacts the model may have emitted, so the rewrite
+    // (which is shown in the Thinking panel AND fed to the builder) stays clean.
+    const out = (text || '')
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+      .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+      .replace(/<\/?(?:think|reasoning|tool_call|tool_response)[^>]*>/gi, '')
+      .replace(/^["'`\s]+|["'`\s]+$/g, '')
+      .trim();
     // Only adopt a sane rewrite: non-empty, not a refusal, not absurdly long, actually different.
     if (out && out.length >= 12 && out.length <= 6000 && out.toLowerCase() !== prompt.trim().toLowerCase()) {
       return { prompt: out, changed: true };
@@ -142,6 +150,24 @@ function guessName(before: string, lang: string, only: boolean): string {
   if (l === 'js' || l === 'javascript') return 'app.js';
   if (l === 'json') return 'data.json';
   return `file.${l || 'txt'}`;
+}
+
+// Guess a filename for a bare ```lang code fence (used live when a model ignores the
+// "=== file: ===" format). Honors an explicit name in the fence (```index.html) or in
+// the preceding chat line, else maps the language to a sensible default file.
+function fenceGuess(token: string, recentChat: string[]): string {
+  const t = ((token || '').trim().split(':').pop() || '').trim();
+  if (/\.[A-Za-z0-9]+$/.test(t)) return t.replace(/^\/+/, '');
+  const tail = recentChat.slice(-3).join('\n');
+  const named = tail.match(/([\w./-]+\.(?:html?|css|js|mjs|json|svg|md|ts|jsx|tsx))/i);
+  if (named) return named[1].replace(/^\/+/, '');
+  const l = t.toLowerCase();
+  if (l === 'html' || l === '') return 'index.html';
+  if (l === 'css') return 'styles.css';
+  if (l === 'js' || l === 'javascript' || l === 'jsx') return 'app.js';
+  if (l === 'json') return 'data.json';
+  if (l === 'svg') return 'image.svg';
+  return `file.${l}`;
 }
 
 function extractFilesFromText(text: string): { chat: string; files: FileRow[] } {
@@ -200,6 +226,8 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   let buf = '';
   let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' = 'chat';
   let inThink = false;
+  let inToolCall = false; // inside a <tool_call>…</tool_call> artifact (dropped)
+  let fenceOpen = false; // inside a ```-fenced file we inferred from a bare code fence
   let curFile: { path: string; lines: string[] } | null = null;
   let curAgent: { name: string; model: string | null; lines: string[] } | null = null;
   let curTask: { name: string; model: string | null; lines: string[] } | null = null;
@@ -231,6 +259,24 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       if (before.trim()) await handleLine(before);
       inThink = true;
       await handleLine(line.slice(open + 7)); // remainder is inside <think>
+      return;
+    }
+    // Drop tool-calling artifacts some models emit (<tool_call>…</tool_call>) so they
+    // never leak into the chat as plain text.
+    if (inToolCall) {
+      const close = line.indexOf('</tool_call>');
+      if (close === -1) return; // still inside — drop
+      inToolCall = false;
+      const after = line.slice(close + 12);
+      if (after.trim()) await handleLine(after);
+      return;
+    }
+    const tcOpen = line.indexOf('<tool_call>');
+    if (tcOpen !== -1) {
+      const before = line.slice(0, tcOpen);
+      if (before.trim()) await handleLine(before);
+      inToolCall = true;
+      await handleLine(line.slice(tcOpen + 11)); // remainder is inside <tool_call>
       return;
     }
 
@@ -268,7 +314,30 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       secrets.push({ name: m[1].trim(), description: (m[2] || '').trim() });
       return; // single-line; doesn't change mode
     }
-    if (SUMMARY.test(line)) { mode = 'chat'; curFile = null; await send('status', { stage: 'Wrapping up…' }); return; }
+    if (SUMMARY.test(line)) { mode = 'chat'; fenceOpen = false; curFile = null; await send('status', { stage: 'Wrapping up…' }); return; }
+    // Markdown code fences: some models ignore "=== file: ===" and wrap code in ```lang
+    // blocks. Route that code into the CODE section live (as files) instead of dumping
+    // it into the chat. Also strips a stray ``` wrapper inside a real === file === block.
+    const fenceM = line.match(/^\s*```([A-Za-z0-9.\-_/:+]*)\s*$/);
+    if (fenceM) {
+      if (mode === 'file' && fenceOpen) { fenceOpen = false; mode = 'chat'; curFile = null; return; } // closing fence
+      if (mode === 'chat') { // opening fence -> start an inferred file
+        let path = fenceGuess(fenceM[1], chatLines);
+        if (files.some((f) => f.path === path)) {
+          const dot = path.lastIndexOf('.');
+          const base = dot > 0 ? path.slice(0, dot) : path;
+          const ext = dot > 0 ? path.slice(dot) : '';
+          let n = 2;
+          while (files.some((f) => f.path === `${base}-${n}${ext}`)) n++;
+          path = `${base}-${n}${ext}`;
+        }
+        curFile = { path, lines: [] }; files.push(curFile); mode = 'file'; fenceOpen = true;
+        if (path !== lastStatus) { lastStatus = path; await send('status', { stage: `Writing ${path}` }); }
+        await send('code', { agent: agentLabel, path, delta: '', start: true });
+        return;
+      }
+      if (mode === 'file' && !fenceOpen) return; // stray ``` wrapper inside a === file === block — drop it
+    }
     if (mode === 'chat') { chatLines.push(line); await send('chat', line + '\n'); }
     else if (mode === 'file' && curFile) { curFile.lines.push(line); await send('code', { agent: agentLabel, path: curFile.path, delta: line + '\n' }); }
     else if (mode === 'agent' && curAgent) curAgent.lines.push(line);
@@ -294,7 +363,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     // entries that survive into the retry's result. Only ever called when nothing
     // worth keeping was produced (see `produced`).
     reset() {
-      buf = ''; mode = 'chat'; inThink = false; lastStatus = '';
+      buf = ''; mode = 'chat'; inThink = false; inToolCall = false; fenceOpen = false; lastStatus = '';
       curFile = curAgent = curTask = curResearch = null;
       files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = 0;
     },
@@ -311,6 +380,8 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       let chat = chatLines.join('\n')
         .replace(/<think>[\s\S]*?<\/think>/gi, '')
         .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+        .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+        .replace(/<\/?(?:think|reasoning|tool_call|tool_response)[^>]*>/gi, '')
         .trim();
       let fs: FileRow[] = files
         .map((f) => ({ path: f.path, content: cleanFile(f.lines.join('\n')) }))

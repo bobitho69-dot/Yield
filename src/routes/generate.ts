@@ -323,7 +323,7 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
 // Run one parallel build agent (from a "=== task: ===" block). It streams its code
 // live (tagged with the agent's name via `send`) and returns the file(s) it built.
 // Falls back through stable models so one bad model id doesn't waste the agent.
-async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}): Promise<{ name: string; files: FileRow[]; error?: string }> {
+async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}): Promise<{ name: string; files: FileRow[]; error?: string; model?: string }> {
   const messages = [
     { role: 'system' as const, content: SUBAGENT_SYSTEM },
     { role: 'system' as const, content: sharedContext },
@@ -332,10 +332,12 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
   const order = [task.model, 'deepseek-v4-flash', 'glm-5.1'].filter(Boolean) as string[];
   const seen = new Set<string>();
   let lastErr = 'agent produced nothing';
+  let usedModel = '';
   for (const cid of order) {
     const model = resolveModel(cid);
     if (seen.has(model.id)) continue; // dedupe on the RESOLVED id
     seen.add(model.id);
+    usedModel = model.id;
     const ep = endpointFor(env, model);
     // Try with the chosen reasoning effort first; if the model rejects the flag,
     // retry plainly (null).
@@ -353,7 +355,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
         );
         await sub.end();
         const files = sub.result().files;
-        if (files.length) return { name: task.name, files };
+        if (files.length) return { name: task.name, files, model: model.id };
         lastErr = `no files from ${model.id}`;
         break; // got a clean response but no files — move to the next model
       } catch (e: any) {
@@ -361,13 +363,13 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
         // (e.g. a slow timeout) instead of throwing the work away.
         try { await sub.end(); } catch { /* ignore */ }
         const partial = sub.result().files;
-        if (partial.length) return { name: task.name, files: partial };
+        if (partial.length) return { name: task.name, files: partial, model: model.id };
         lastErr = String(e?.message || e);
         // effort failed -> loop retries plainly; plain failed -> next model
       }
     }
   }
-  return { name: task.name, files: [], error: lastErr };
+  return { name: task.name, files: [], error: lastErr, model: usedModel };
 }
 
 // Verify the finished app actually holds together and auto-repair it once if not.
@@ -387,7 +389,7 @@ async function verifyAndRepair(
     return files;
   }
   await send('status', { stage: `Verifying — fixing ${hardIssues.length} issue(s)…` });
-  await send('worker', { name: 'Verify', kind: 'verify', status: 'start' });
+  await send('worker', { name: 'Verify', kind: 'verify', status: 'start', model: model.label });
   await heartbeat();
   const dump = files.map((f) => `=== file: ${f.path} ===\n${f.content}`).join('\n\n');
   const messages = [
@@ -424,12 +426,12 @@ async function verifyAndRepair(
   }
   await repair.end();
   const fixed = repair.result().files;
-  if (!fixed.length) { await send('worker', { name: 'Verify', kind: 'verify', status: 'done' }); return files; }
+  if (!fixed.length) { await send('worker', { name: 'Verify', kind: 'verify', status: 'done', model: model.label }); return files; }
   const byPath = new Map(files.map((f) => [f.path, f] as const));
   for (const f of fixed) byPath.set(f.path, f);
   const merged = [...byPath.values()];
   const after = verifyFiles(merged);
-  await send('worker', { name: 'Verify', kind: 'verify', status: after.hardIssues.length ? 'fail' : 'done', detail: `${fixed.length} file(s)` });
+  await send('worker', { name: 'Verify', kind: 'verify', status: after.hardIssues.length ? 'fail' : 'done', detail: `${fixed.length} file(s)`, model: model.label });
   await send('status', { stage: after.hardIssues.length ? `Verified — ${fixed.length} file(s) updated` : 'Verified — all checks passed ✓' });
   return merged;
 }
@@ -657,14 +659,15 @@ export async function runBuild(
         `Orchestrator plan/notes:\n${(chatBody || '').slice(0, 2000)}` +
         (files.length ? `\n\nThe orchestrator already wrote these files — do NOT recreate them: ${files.map((f) => f.path).join(', ')}` : '');
       // Mark every agent as working up-front (roster appears immediately), then
-      // flip each to done/failed — so launched agents are visibly working even
-      // before they emit any code, and even if they produce nothing.
-      for (const t of result.tasks) await send('worker', { name: t.name, kind: 'build', status: 'start' });
+      // flip each to done/failed — tagged with the MODEL each agent is running on,
+      // so the roster shows which AI is doing the work (not just the agent's name).
+      const labelFor = (id?: string | null) => resolveModel(id || 'deepseek-v4-flash').label;
+      for (const t of result.tasks) await send('worker', { name: t.name, kind: 'build', status: 'start', model: labelFor(t.model) });
       const results = await Promise.all(result.tasks.map(async (t) => {
         await send('status', { stage: `Agent ${t.name} working…` });
         const res = await runSubAgent(c.env, t, sharedContext, send, wantEffort, heartbeat);
         const n = res.files.length;
-        await send('worker', { name: t.name, kind: 'build', status: n ? 'done' : 'fail', detail: n ? `${n} file(s)` : (res.error || 'no output') });
+        await send('worker', { name: t.name, kind: 'build', status: n ? 'done' : 'fail', detail: n ? `${n} file(s)` : (res.error || 'no output'), model: labelFor(res.model || t.model) });
         await send('status', { stage: n ? `Agent ${t.name}: ${n} file(s) ✓` : `Agent ${t.name}: no output` });
         return res;
       }));

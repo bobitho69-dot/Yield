@@ -253,6 +253,9 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     async end() {
       if (buf.length) { await handleLine(buf); buf = ''; }
     },
+    // Clear transient parse state before a retry so a partial line buffered from a
+    // failed attempt can't prefix/corrupt the next attempt's output.
+    reset() { buf = ''; mode = 'chat'; inThink = false; curFile = null; curAgent = null; curTask = null; curResearch = null; },
     get produced() { return chatLines.length > 0 || files.length > 0 || agents.length > 0 || tasks.length > 0 || research.length > 0; },
     result() {
       // Drop reasoning-model scratchpads if any leaked into the text.
@@ -289,7 +292,7 @@ export type SendFn = (event: string, data: unknown) => Promise<void>;
 
 // Run one helper/research AI (from a "=== research: ===" block). It does NOT write
 // code — it returns findings/analysis (text) that the coder then builds with.
-async function runResearchAgent(env: Env, req: ResearchReq, context: string, effort: 'low' | 'medium' | 'high'): Promise<{ name: string; findings: string }> {
+async function runResearchAgent(env: Env, req: ResearchReq, context: string, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}): Promise<{ name: string; findings: string }> {
   const messages = [
     { role: 'system' as const, content: RESEARCH_SYSTEM },
     { role: 'user' as const, content: `Context: ${context}\n\nResearch task ("${req.name}"):\n${req.instructions}` },
@@ -297,17 +300,19 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
   const order = [req.model, 'glm-5.1', 'deepseek-v4-flash'].filter(Boolean) as string[];
   const seen = new Set<string>();
   for (const cid of order) {
-    if (seen.has(cid)) continue;
-    seen.add(cid);
     const model = resolveModel(cid);
+    if (seen.has(model.id)) continue; // dedupe on the RESOLVED id (a bad id resolves to the default)
+    seen.add(model.id);
     const ep = endpointFor(env, model);
     for (const eff of [effort, null] as const) {
+      await heartbeat();
       try {
         const { text } = await chat({
           baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
           temperature: 0.4, max_tokens: 8000, timeoutMs: 150000,
           ...(eff ? { extra: { reasoning_effort: eff } } : {}),
         });
+        await heartbeat();
         if (text && text.trim()) return { name: req.name, findings: text.trim() };
       } catch { /* try plain, then next model */ }
     }
@@ -318,7 +323,7 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
 // Run one parallel build agent (from a "=== task: ===" block). It streams its code
 // live (tagged with the agent's name via `send`) and returns the file(s) it built.
 // Falls back through stable models so one bad model id doesn't waste the agent.
-async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn, effort: 'low' | 'medium' | 'high'): Promise<{ name: string; files: FileRow[]; error?: string }> {
+async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}): Promise<{ name: string; files: FileRow[]; error?: string }> {
   const messages = [
     { role: 'system' as const, content: SUBAGENT_SYSTEM },
     { role: 'system' as const, content: sharedContext },
@@ -328,9 +333,9 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
   const seen = new Set<string>();
   let lastErr = 'agent produced nothing';
   for (const cid of order) {
-    if (seen.has(cid)) continue;
-    seen.add(cid);
     const model = resolveModel(cid);
+    if (seen.has(model.id)) continue; // dedupe on the RESOLVED id
+    seen.add(model.id);
     const ep = endpointFor(env, model);
     // Try with the chosen reasoning effort first; if the model rejects the flag,
     // retry plainly (null).
@@ -344,7 +349,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
             temperature: 0.3, max_tokens: 30000, timeoutMs: 300000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
-          async (delta) => { await sub.feed(delta); },
+          async (delta) => { await sub.feed(delta); await heartbeat(); },
         );
         await sub.end();
         const files = sub.result().files;
@@ -352,6 +357,11 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
         lastErr = `no files from ${model.id}`;
         break; // got a clean response but no files — move to the next model
       } catch (e: any) {
+        // Keep partial output if this attempt already wrote file(s) before erroring
+        // (e.g. a slow timeout) instead of throwing the work away.
+        try { await sub.end(); } catch { /* ignore */ }
+        const partial = sub.result().files;
+        if (partial.length) return { name: task.name, files: partial };
         lastErr = String(e?.message || e);
         // effort failed -> loop retries plainly; plain failed -> next model
       }
@@ -554,6 +564,7 @@ export async function runBuild(
           const selectedLabel = activeModel.label;
           let selErr: unknown = e;
           let ok = false;
+          streamer.reset(); // clear any partial-line state before retrying
           try { await streamWith(activeModel, null); ok = true; }
           catch (e2) { if (streamer.produced) ok = true; else selErr = e2; }
           if (!ok && !streamer.produced) {
@@ -567,6 +578,7 @@ export async function runBuild(
               activeModel = fb;
               await send('status', { stage: `${selectedLabel} unavailable (${reason}) — Auto picked ${fb.label}` });
               await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: `${selectedLabel} unavailable (${reason}); Auto chose ${fb.label}: ${choice.reason}` });
+              streamer.reset();
               try { await streamWith(fb, null); ok = true; }
               catch (e3) { if (streamer.produced) ok = true; else selErr = e3; }
             }
@@ -595,7 +607,7 @@ export async function runBuild(
       const findings = await Promise.all(reqs.map(async (r) => {
         await send('status', { stage: `🔬 ${r.name} researching…` });
         await send('research', { name: r.name, status: 'working' });
-        const f = await runResearchAgent(c.env, r, rctx, wantEffort);
+        const f = await runResearchAgent(c.env, r, rctx, wantEffort, heartbeat);
         await send('research', { name: r.name, findings: f.findings });
         await heartbeat();
         return f;
@@ -650,7 +662,7 @@ export async function runBuild(
       for (const t of result.tasks) await send('worker', { name: t.name, kind: 'build', status: 'start' });
       const results = await Promise.all(result.tasks.map(async (t) => {
         await send('status', { stage: `Agent ${t.name} working…` });
-        const res = await runSubAgent(c.env, t, sharedContext, send, wantEffort);
+        const res = await runSubAgent(c.env, t, sharedContext, send, wantEffort, heartbeat);
         const n = res.files.length;
         await send('worker', { name: t.name, kind: 'build', status: n ? 'done' : 'fail', detail: n ? `${n} file(s)` : (res.error || 'no output') });
         await send('status', { stage: n ? `Agent ${t.name}: ${n} file(s) ✓` : `Agent ${t.name}: no output` });

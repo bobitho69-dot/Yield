@@ -287,7 +287,7 @@ function renderQuota(s) {
   if (!state.authEnabled) { q.textContent = 'unlimited'; return; }
   if (state.user?.plan === 'priority') q.textContent = 'Priority · unlimited';
   else if (s.remainingToday != null) q.textContent = `${s.remainingToday} free builds left today`;
-  else q.textContent = '';
+  else q.textContent = 'unlimited';
 }
 
 function renderMessages(msgs) {

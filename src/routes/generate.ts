@@ -577,6 +577,9 @@ export async function runBuild(
     };
 
     let result = await streamOnce();
+    // Did the model delegate to research/build agents? (Used to guarantee output:
+    // if it delegated but no code came back, we build directly rather than finish empty.)
+    const delegated = result.research.length > 0 || result.tasks.length > 0;
 
     // Helper AIs: if the coder asked to research/plan a tricky part first
     // ("=== research: Name ==="), run those helpers in parallel, surface their
@@ -625,7 +628,7 @@ export async function runBuild(
       };
     }
 
-    const chatBody = result.chat;
+    let chatBody = result.chat;
     const agentReqs = result.agents;
     let files = result.files;
 
@@ -653,6 +656,32 @@ export async function runBuild(
       files = [...byPath.values()];
       const ok = results.filter((x) => x.files.length).map((x) => x.name);
       if (ok.length) agentNote = `\n\n🤖 Built in parallel by ${ok.length} agent${ok.length > 1 ? 's' : ''}: ${ok.join(', ')}.`;
+    }
+
+    // GUARANTEED OUTPUT: if the orchestrator delegated to research/build agents but
+    // ended up with NO files (agents failed, returned prose, or it never wrote any
+    // itself), don't finish empty — build the app directly with the orchestrator. This
+    // is the "launched agents then nothing was built" case.
+    if (!files.length && (delegated || result.tasks.length > 0)) {
+      await send('status', { stage: 'Agents returned no code — building it directly…' });
+      await heartbeat();
+      messages.push({ role: 'assistant', content: (chatBody || 'I planned the app.').slice(0, 1500) });
+      messages.push({
+        role: 'user',
+        content:
+          'No code was produced yet. Do NOT delegate to build agents and do NOT request research — ' +
+          'write the COMPLETE app YOURSELF right now: output every file in full using "=== file: path ===" ' +
+          'blocks. Every button/link/page must work; no placeholders; no mock data unless I asked for it.',
+      });
+      const direct = await streamOnce();
+      if (direct.files.length) {
+        const byPath = new Map<string, FileRow>();
+        for (const f of files) byPath.set(f.path, f);
+        for (const f of direct.files) byPath.set(f.path, f);
+        files = [...byPath.values()];
+        chatBody = chatBody || direct.chat;
+        for (const a of direct.agents) if (!agentReqs.find((x) => x.name === a.name)) agentReqs.push(a);
+      }
     }
 
     // Verify the finished app and auto-repair broken links / missing pages /

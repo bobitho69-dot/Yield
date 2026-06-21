@@ -130,6 +130,10 @@ export async function recordGeneration(c: Ctx): Promise<void> {
   const DAY = 60 * 60 * 26;
   const MONTH = 60 * 60 * 24 * 32;
   await bump(c.env, `usage:month:${ym()}`, MONTH);
+  // Per-user / per-device daily counters only matter when limits are actually
+  // enforced. In open testing mode (AUTH_ENABLED='false') the gate is disabled, so
+  // these writes serve no purpose — skip them to avoid the extra KV write/read.
+  if (c.env.AUTH_ENABLED === 'false') return;
   if (c.user) await bump(c.env, `usage:user:${c.user.id}:${ymd()}`, DAY);
   else await bump(c.env, `usage:dev:${c.deviceId}:${ymd()}`, DAY);
 }

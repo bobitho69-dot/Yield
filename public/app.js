@@ -433,7 +433,7 @@ async function consumeStream(res, opts = {}) {
       lc.className = 'livecode';
       lc.open = true;
       lc.innerHTML = '<summary>👁 Code <span class="lc-who"></span></summary><div class="lc-roster"></div><div class="lc-body"></div>';
-      aiBubble.insertBefore(lc, aiBubble.querySelector('.body'));
+      aiBubble.appendChild(lc); // keep the live code box at the BOTTOM of the message
     }
     return lc;
   };

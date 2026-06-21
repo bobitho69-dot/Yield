@@ -11,8 +11,10 @@ const MAX_AUTOFIX = 2;
 // ---------- Boot ----------
 init();
 async function init() {
+  // Never let a failed data load abort boot — wireEvents() MUST run or the whole app
+  // is dead (no listeners bound). Each loader swallows its own errors.
   await Promise.all([loadStatus(), loadModels()]);
-  if (state.user) await Promise.all([loadProjects(), loadGithub()]);
+  if (state.user) await Promise.all([loadProjects(), loadGithub()]).catch(() => {});
   wireEvents();
   refreshPreview();
   renderFileTree();
@@ -36,8 +38,10 @@ async function loadStatus() {
 }
 
 async function loadModels() {
-  const { models } = await fetch('/api/models').then((r) => r.json());
-  state.models = models || [];
+  try {
+    const { models } = await fetch('/api/models').then((r) => r.json());
+    state.models = models || [];
+  } catch { state.models = state.models || []; }
   renderModelPanel();
   updateModelButton();
 }
@@ -119,10 +123,22 @@ async function loadProjects() {
 }
 
 async function openProject(id) {
-  const { project, messages, building } = await fetch(`/api/projects/${id}`).then((r) => r.json());
-  // New project context: fence any in-flight build stream/watch from the old project.
+  let data;
+  try {
+    const res = await fetch(`/api/projects/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+  } catch {
+    addBubble('ai', '<div class="meta">error</div>Could not open that project — it may have been deleted.');
+    return;
+  }
+  const { project, messages, building } = data;
+  if (!project || !project.id) { addBubble('ai', '<div class="meta">error</div>That project could not be found.'); return; }
+  // New project context: fence any in-flight build stream/watch from the old project,
+  // and clear its "Working…" state (the new project gets its own via resumeBuild).
   state.buildToken++;
   if (buildWatchTimer) { clearInterval(buildWatchTimer); buildWatchTimer = null; }
+  state.working = false; updateComposer();
   state.projectId = project.id;
   state.previewPage = 'index.html';
   setProjectUrl();
@@ -717,10 +733,15 @@ async function promptForSecrets() {
   for (const s of needed) {
     const val = window.prompt(`This app needs a secret:\n\n${s.name}${s.description ? '\n(' + s.description + ')' : ''}\n\nEnter the value (stored encrypted for this app):`);
     if (val) {
-      await fetch(`/api/secrets?project=${state.projectId}`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: s.name, value: val }),
-      });
-      addBubble('ai', `<div class="meta">secret saved</div>🔒 <b>${esc(s.name)}</b> saved &amp; available to this app.`);
+      try {
+        const res = await fetch(`/api/secrets?project=${state.projectId}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: s.name, value: val }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        addBubble('ai', `<div class="meta">secret saved</div>🔒 <b>${esc(s.name)}</b> saved &amp; available to this app.`);
+      } catch {
+        addBubble('ai', `<div class="meta">error</div>⚠ Couldn't save secret <b>${esc(s.name)}</b> — please try again.`);
+      }
     }
   }
   refreshPreview();
@@ -754,11 +775,16 @@ async function saveFile() {
   if (f) f.content = content; else state.files.push({ path: state.activeFile, content });
   if (state.projectId) {
     $('#saveState').textContent = 'Saving…';
-    await fetch(`/api/projects/${state.projectId}/files`, {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: state.activeFile, content }),
-    });
-    $('#saveState').textContent = 'Saved ✓';
-    setTimeout(() => ($('#saveState').textContent = ''), 1500);
+    try {
+      const res = await fetch(`/api/projects/${state.projectId}/files`, {
+        method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: state.activeFile, content }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      $('#saveState').textContent = 'Saved ✓';
+      setTimeout(() => ($('#saveState').textContent = ''), 1500);
+    } catch {
+      $('#saveState').textContent = '⚠ Save failed — retry'; // left visible so the user notices
+    }
   }
   refreshPreview();
 }

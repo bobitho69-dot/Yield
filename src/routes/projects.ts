@@ -13,7 +13,7 @@ import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
 import {
   createProject, deleteProject, deleteFileRow, getProject, getProjectBySlug, getProjectFiles,
-  listAgents, listFiles, listMessages, listProjects, renameProject, saveFiles, upsertFile,
+  listAgents, listFiles, listMessages, listProjects, renameProject, setProjectCode, upsertFile,
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
 import { renderPromptLog, fmtTime } from '../lib/promptlog';
@@ -54,9 +54,9 @@ export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: st
       const path = (body.path || '').replace(/^\/+/, '');
       if (!path) return error(400, 'path required');
       await upsertFile(c.env, id, path, body.content ?? '');
-      // mirror index.html into projects.code; sync the whole project to GitHub
+      // mirror index.html into projects.code (cheap update, no N+1 re-upsert); sync to GitHub
       const files = await listFiles(c.env, id);
-      await saveFiles(c.env, id, files, null);
+      await setProjectCode(c.env, id, files.find((f) => f.path === 'index.html')?.content ?? null);
       await syncProjectToGithub(c, project, files);
       return json({ ok: true });
     }
@@ -65,11 +65,10 @@ export async function handleProjects(req: Request, c: Ctx, id?: string, sub?: st
       const path = (c.url.searchParams.get('path') || '').replace(/^\/+/, '');
       if (!path) return error(400, 'path required');
       await deleteFileRow(c.env, id, path);
-      // Re-mirror the remaining files (keeps projects.code in sync) and push to GitHub,
-      // mirroring what PUT does — otherwise a deleted file can resurrect from the
-      // legacy code fallback or linger in the repo.
+      // Re-mirror index.html into projects.code (keeps the legacy fallback in sync) and
+      // push to GitHub — otherwise a deleted file can resurrect or linger in the repo.
       const files = await listFiles(c.env, id);
-      await saveFiles(c.env, id, files, null);
+      await setProjectCode(c.env, id, files.find((f) => f.path === 'index.html')?.content ?? null);
       await syncProjectToGithub(c, project, files);
       return json({ ok: true });
     }

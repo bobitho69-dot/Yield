@@ -10,7 +10,7 @@
 import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
 import { gateGeneration, recordGeneration } from '../lib/usage';
-import { resolveModel, endpointFor, tokenCap } from '../config/models';
+import { resolveModel, endpointFor } from '../config/models';
 import { chat } from '../lib/nvidia';
 import { createAgent, deleteAgent, getAgent, listAgents, logUsage, updateAgent } from '../lib/db';
 
@@ -110,7 +110,7 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
       try {
         const { text } = await chat({
           baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.modelId, messages,
-          ...tokenCap(m, 4000), timeoutMs: 40000,
+          max_tokens: 4000, timeoutMs: 40000,
           ...(eff ? { extra: { reasoning_effort: eff } } : {}),
         });
         if (text && text.trim()) {

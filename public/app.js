@@ -570,9 +570,10 @@ async function consumeStream(res, opts = {}) {
   if (!finished && !chatAcc) setBody(esc(opts.resume ? 'Loaded the latest saved version.' : 'No response — try again.'));
   aiBubble.classList.remove('streaming');
   // Make the file tree authoritative: re-sync from what the server actually saved,
-  // so the tree reflects reality even if the 'done' payload and saved state diverge.
-  // (Only when the build belonged to the project still on screen.)
-  if (finished && live() && state.projectId) {
+  // so the tree always reflects reality after a build (independent of the 'done'
+  // payload or the build-token fence). It loads the CURRENT project's files, so it's
+  // correct even if the user switched projects mid-build.
+  if (finished && state.projectId) {
     try {
       const { files } = await fetch(`/api/projects/${state.projectId}/files`).then((r) => r.json());
       if (Array.isArray(files) && files.length) {

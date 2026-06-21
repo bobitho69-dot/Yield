@@ -14,9 +14,6 @@
 
 import type { Ctx, Env } from '../types';
 
-function ymd(d = new Date()): string {
-  return d.toISOString().slice(0, 10);
-}
 function ym(d = new Date()): string {
   return d.toISOString().slice(0, 7);
 }
@@ -28,15 +25,6 @@ async function readInt(env: Env, key: string): Promise<number> {
   } catch {
     return 0; // don't let a KV hiccup 500 the request
   }
-}
-
-// KV has no atomic increment; for a budget meter, last-writer-wins is acceptable.
-// Never throw — if KV is unavailable or the daily write quota is exhausted, the
-// generation has already been delivered/saved (D1), so a failed counter is harmless.
-async function bump(env: Env, key: string, ttlSeconds: number): Promise<number> {
-  const next = (await readInt(env, key)) + 1;
-  await env.KV.put(key, String(next), { expirationTtl: ttlSeconds }).catch(() => {});
-  return next;
 }
 
 export interface UsageState {
@@ -73,90 +61,43 @@ export interface GateResult {
   usage: UsageState;
 }
 
-/** Decide whether THIS request may run a generation. Does not yet record usage. */
+/**
+ * Decide whether THIS request may run a generation. Builds are UNLIMITED — there are
+ * no per-user, per-device, daily, or budget caps (projects live in the user's own
+ * GitHub, so volume doesn't cost us storage). The ONLY thing that can pause generation
+ * is a MANUAL emergency kill-switch — HIGH_USAGE_OVERRIDE='on' or the KV flag
+ * flag:high_usage='on' — and even then Priority members and open testing mode are
+ * never paused. Automatic budget tripping (source 'budget') is ignored.
+ */
 export async function gateGeneration(c: Ctx): Promise<GateResult> {
   const usage = await getUsageState(c.env);
-
-  // Open testing mode: no gating at all.
-  if (c.env.AUTH_ENABLED === 'false') return { allowed: true, status: 200, usage };
-
-  const isPaid = c.user?.plan === 'priority';
-
-  // Paid users are always allowed (that's the deal: they fund the high-usage time).
-  if (isPaid) return { allowed: true, status: 200, usage };
-
-  // During high-usage mode, free + anonymous are paused.
-  if (usage.highUsage) {
+  const manualPause = usage.source === 'override-on' || usage.source === 'flag-on';
+  if (manualPause && c.env.AUTH_ENABLED !== 'false' && c.user?.plan !== 'priority') {
     return {
       allowed: false,
       status: 402,
       code: 'high_usage',
-      reason:
-        "It's High Usage Time right now — Yield hit its free hosting budget for the month, so generation is paused for free accounts to keep the app free to run. Priority members ($20/mo) keep full access and fund these busy periods. Try again later, or upgrade.",
+      reason: 'Generation is temporarily paused — please try again shortly.',
       usage,
     };
   }
-
-  // Per-user / per-device daily limits keep the free tier sustainable.
-  if (c.user) {
-    const limit = parseInt(c.env.FREE_DAILY_LIMIT, 10) || 15;
-    const used = await readInt(c.env, `usage:user:${c.user.id}:${ymd()}`);
-    if (used >= limit) {
-      return {
-        allowed: false,
-        status: 429,
-        code: 'daily_limit',
-        reason: `You've used your ${limit} free generations for today. Resets at midnight UTC — or upgrade to Priority for unlimited.`,
-        usage,
-      };
-    }
-  } else {
-    const limit = parseInt(c.env.ANON_DAILY_LIMIT, 10) || 3;
-    const used = await readInt(c.env, `usage:dev:${c.deviceId}:${ymd()}`);
-    if (used >= limit) {
-      return {
-        allowed: false,
-        status: 401,
-        code: 'login_required',
-        reason: `You've used your ${limit} free trial generations. Sign in (free) for more.`,
-        usage,
-      };
-    }
-  }
-
   return { allowed: true, status: 200, usage };
 }
 
-/** Record a successful generation against monthly budget + daily quotas. */
-export async function recordGeneration(c: Ctx): Promise<void> {
-  const DAY = 60 * 60 * 26;
-  const MONTH = 60 * 60 * 24 * 32;
-  await bump(c.env, `usage:month:${ym()}`, MONTH);
-  // Per-user / per-device daily counters only matter when limits are actually
-  // enforced. In open testing mode (AUTH_ENABLED='false') the gate is disabled, so
-  // these writes serve no purpose — skip them to avoid the extra KV write/read.
-  if (c.env.AUTH_ENABLED === 'false') return;
-  if (c.user) await bump(c.env, `usage:user:${c.user.id}:${ymd()}`, DAY);
-  else await bump(c.env, `usage:dev:${c.deviceId}:${ymd()}`, DAY);
+/** No-op: builds are unlimited, so there are no usage counters to maintain. (D1
+ *  usage_events analytics are still written separately by logUsage.) */
+export async function recordGeneration(_c: Ctx): Promise<void> {
+  /* intentionally empty — no build limits */
 }
 
-/** Public snapshot for the status endpoint / UI banner. */
+/** Public snapshot for the status endpoint / UI banner. Builds are unlimited. */
 export async function usageSnapshot(c: Ctx) {
   const usage = await getUsageState(c.env);
-  let remainingToday: number | null = null;
-  if (c.user?.plan !== 'priority') {
-    if (c.user) {
-      const limit = parseInt(c.env.FREE_DAILY_LIMIT, 10) || 15;
-      remainingToday = Math.max(0, limit - (await readInt(c.env, `usage:user:${c.user.id}:${ymd()}`)));
-    } else {
-      const limit = parseInt(c.env.ANON_DAILY_LIMIT, 10) || 3;
-      remainingToday = Math.max(0, limit - (await readInt(c.env, `usage:dev:${c.deviceId}:${ymd()}`)));
-    }
-  }
   return {
-    highUsage: usage.highUsage,
+    highUsage: usage.highUsage, // true only via the manual kill-switch now
     plan: c.user?.plan ?? 'anonymous',
-    remainingToday,
-    monthlyUsedPct: Math.min(100, Math.round((usage.monthlyCount / usage.budget) * 100)),
+    remainingToday: null,       // unlimited
+    unlimited: true,
+    monthlyUsedPct: 0,
   };
 }

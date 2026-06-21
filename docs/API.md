@@ -54,6 +54,7 @@ re-attached via `GET /api/projects/:id/stream`.
 | `thinking` | `"<reasoning chunk>"` | model reasoning (Thinking panel) |
 | `research` | `{ name, status?, findings? }` | a helper AI's progress/findings |
 | `code` | `{ agent, path, delta }` | a file being written live (tagged by which AI) |
+| `worker` | `{ name, kind, status, detail? }` | an agent's lifecycle: `status` = `start`/`done`/`fail` (`kind` = build/verify) — drives the "who's working" roster |
 | `chat` | `"<text chunk>"` | the assistant's conversational reply |
 | `done` | `{ chat, files:[{path,content}], hasCode, projectId, secretsNeeded, agents }` | final result |
 | `blocked` | `{ message, detail }` | prompt blocked by the jailbreak guard |

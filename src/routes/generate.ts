@@ -165,6 +165,10 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   const AGENT = /^={2,}\s*agent:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
   const TASK = /^={2,}\s*task:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
   const RESEARCH = /^={2,}\s*research:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
+  // Closing recap the model emits AFTER all files — flips parsing back to chat so the
+  // text streams into the chat bubble (a "here's what I built / next steps" message)
+  // instead of being appended to the last file.
+  const SUMMARY = /^={2,}\s*(?:summary|recap|done|notes)\s*={2,}\s*$/i;
   let buf = '';
   let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' = 'chat';
   let inThink = false;
@@ -236,6 +240,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       secrets.push({ name: m[1].trim(), description: (m[2] || '').trim() });
       return; // single-line; doesn't change mode
     }
+    if (SUMMARY.test(line)) { mode = 'chat'; curFile = null; await send('status', { stage: 'Wrapping up…' }); return; }
     if (mode === 'chat') { chatLines.push(line); await send('chat', line + '\n'); }
     else if (mode === 'file' && curFile) { curFile.lines.push(line); await send('code', { agent: agentLabel, path: curFile.path, delta: line + '\n' }); }
     else if (mode === 'agent' && curAgent) curAgent.lines.push(line);
@@ -402,57 +407,65 @@ async function verifyAndRepair(
   heartbeat: () => Promise<void>, effort: 'low' | 'medium' | 'high',
 ): Promise<FileRow[]> {
   if (!files.length) return files;
-  const { hardIssues, softIssues } = verifyFiles(files);
-  if (!hardIssues.length) {
-    await send('status', { stage: 'Verified — checks passed ✓' });
-    return files;
+  // Up to 2 repair passes: re-verify after each so the app actually converges to a
+  // complete, working state (one pass often leaves or re-introduces an issue).
+  for (let pass = 1; pass <= 2; pass++) {
+    const { hardIssues, softIssues } = verifyFiles(files);
+    if (!hardIssues.length) {
+      await send('status', { stage: 'Verified — checks passed ✓' });
+      return files;
+    }
+    await send('status', { stage: `Verifying — fixing ${hardIssues.length} issue(s)…` });
+    await send('worker', { name: 'Verify', kind: 'verify', status: 'start', model: model.label });
+    await heartbeat();
+    const dump = files.map((f) => `=== file: ${f.path} ===\n${f.content}`).join('\n\n');
+    const messages = [
+      { role: 'system' as const, content: CONVO_SYSTEM },
+      { role: 'system' as const, content: PLATFORM_GUIDE },
+      {
+        role: 'user' as const,
+        content:
+          `Here is the app that was just built:\n\n${dump}\n\n` +
+          `Automated verification found problems that MUST be fixed so the app actually works:\n` +
+          [...hardIssues, ...softIssues].map((i) => `- ${i}`).join('\n') +
+          `\n\nFix EVERY issue:\n` +
+          `- If a file was cut off / truncated, or left parts out ("rest of the code", "// ..."), RE-OUTPUT THAT WHOLE FILE from its first line to its last — never abbreviate or summarize code.\n` +
+          `- Fill any empty file with its real, working code.\n` +
+          `- Create any page or file that a link/script references but is missing — build it FULLY (no "coming soon"). Every nav link must lead to a real, complete page.\n` +
+          `- Make every button, link and form do something real; remove dead links (href="#") and raw dialogs.\n` +
+          `- Remove ALL placeholder/stub text; use real content. Do NOT add mock/sample data unless the app was explicitly asked for it.\n` +
+          `Re-output IN FULL every file you change or add, using === file: path === blocks. Output ONLY files — no chat, no <think>.`,
+      },
+    ];
+    const repair = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, 'Verify');
+    const ep = endpointFor(env, model);
+    for (const eff of [effort, null] as const) {
+      try {
+        await chatStream(
+          {
+            baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+            temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
+            ...(eff ? { extra: { reasoning_effort: eff } } : {}),
+          },
+          async (delta) => { await repair.feed(delta); await heartbeat(); },
+          async (rr) => { await send('thinking', rr); await heartbeat(); },
+        );
+        break;
+      } catch { if (repair.produced) break; /* effort rejected -> retry plain -> give up */ }
+    }
+    await repair.end();
+    const fixed = repair.result().files;
+    if (!fixed.length) { await send('worker', { name: 'Verify', kind: 'verify', status: 'done', model: model.label }); return files; }
+    const byPath = new Map(files.map((f) => [f.path, f] as const));
+    for (const f of fixed) byPath.set(f.path, f);
+    files = [...byPath.values()];
+    const after = verifyFiles(files);
+    await send('worker', { name: 'Verify', kind: 'verify', status: after.hardIssues.length ? 'fail' : 'done', detail: `${fixed.length} file(s)`, model: model.label });
+    if (!after.hardIssues.length) { await send('status', { stage: 'Verified — all checks passed ✓' }); return files; }
+    // else: issues remain — loop once more for a targeted second pass.
   }
-  await send('status', { stage: `Verifying — fixing ${hardIssues.length} issue(s)…` });
-  await send('worker', { name: 'Verify', kind: 'verify', status: 'start', model: model.label });
-  await heartbeat();
-  const dump = files.map((f) => `=== file: ${f.path} ===\n${f.content}`).join('\n\n');
-  const messages = [
-    { role: 'system' as const, content: CONVO_SYSTEM },
-    { role: 'system' as const, content: PLATFORM_GUIDE },
-    {
-      role: 'user' as const,
-      content:
-        `Here is the app that was just built:\n\n${dump}\n\n` +
-        `Automated verification found problems that MUST be fixed so the app actually works:\n` +
-        [...hardIssues, ...softIssues].map((i) => `- ${i}`).join('\n') +
-        `\n\nFix EVERY issue:\n` +
-        `- Create any page or file that a link/script references but is missing — build it FULLY (no "coming soon"). Every nav link must lead to a real, complete page.\n` +
-        `- Make every button, link and form do something real; remove dead links (href="#") and raw dialogs.\n` +
-        `- Remove ALL placeholder/stub text; use real content. Do NOT add mock/sample data unless the app was explicitly asked for it.\n` +
-        `Re-output IN FULL every file you change or add, using === file: path === blocks. Output ONLY files — no chat, no <think>.`,
-    },
-  ];
-  const repair = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, 'Verify');
-  const ep = endpointFor(env, model);
-  for (const eff of [effort, null] as const) {
-    try {
-      await chatStream(
-        {
-          baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
-          temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
-          ...(eff ? { extra: { reasoning_effort: eff } } : {}),
-        },
-        async (delta) => { await repair.feed(delta); await heartbeat(); },
-        async (rr) => { await send('thinking', rr); await heartbeat(); },
-      );
-      break;
-    } catch { if (repair.produced) break; /* effort rejected -> retry plain -> give up */ }
-  }
-  await repair.end();
-  const fixed = repair.result().files;
-  if (!fixed.length) { await send('worker', { name: 'Verify', kind: 'verify', status: 'done', model: model.label }); return files; }
-  const byPath = new Map(files.map((f) => [f.path, f] as const));
-  for (const f of fixed) byPath.set(f.path, f);
-  const merged = [...byPath.values()];
-  const after = verifyFiles(merged);
-  await send('worker', { name: 'Verify', kind: 'verify', status: after.hardIssues.length ? 'fail' : 'done', detail: `${fixed.length} file(s)`, model: model.label });
-  await send('status', { stage: after.hardIssues.length ? `Verified — ${fixed.length} file(s) updated` : 'Verified — all checks passed ✓' });
-  return merged;
+  await send('status', { stage: 'Verified — applied best-effort fixes' });
+  return files;
 }
 
 // The full build pipeline: jailbreak guard -> usage gate -> model route -> stream

@@ -226,7 +226,6 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   let buf = '';
   let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' = 'chat';
   let inThink = false;
-  let inToolCall = false; // inside a <tool_call>…</tool_call> artifact (dropped)
   let fenceOpen = false; // inside a ```-fenced file we inferred from a bare code fence
   let curFile: { path: string; lines: string[] } | null = null;
   let curAgent: { name: string; model: string | null; lines: string[] } | null = null;
@@ -261,24 +260,9 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       await handleLine(line.slice(open + 7)); // remainder is inside <think>
       return;
     }
-    // Drop tool-calling artifacts some models emit (<tool_call>…</tool_call>) so they
-    // never leak into the chat as plain text.
-    if (inToolCall) {
-      const close = line.indexOf('</tool_call>');
-      if (close === -1) return; // still inside — drop
-      inToolCall = false;
-      const after = line.slice(close + 12);
-      if (after.trim()) await handleLine(after);
-      return;
-    }
-    const tcOpen = line.indexOf('<tool_call>');
-    if (tcOpen !== -1) {
-      const before = line.slice(0, tcOpen);
-      if (before.trim()) await handleLine(before);
-      inToolCall = true;
-      await handleLine(line.slice(tcOpen + 11)); // remainder is inside <tool_call>
-      return;
-    }
+    // Note: we do NOT short-circuit on a <tool_call> here — an unclosed one would eat
+    // the whole build (files included). Tool-call artifacts are stripped from the final
+    // chat text in result() instead, which can never drop file output.
 
     let m;
     if ((m = line.match(FILE))) {
@@ -363,7 +347,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     // entries that survive into the retry's result. Only ever called when nothing
     // worth keeping was produced (see `produced`).
     reset() {
-      buf = ''; mode = 'chat'; inThink = false; inToolCall = false; fenceOpen = false; lastStatus = '';
+      buf = ''; mode = 'chat'; inThink = false; fenceOpen = false; lastStatus = '';
       curFile = curAgent = curTask = curResearch = null;
       files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = 0;
     },

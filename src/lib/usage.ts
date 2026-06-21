@@ -27,6 +27,14 @@ async function readInt(env: Env, key: string): Promise<number> {
   }
 }
 
+// KV has no atomic increment; for a budget meter, last-writer-wins is fine. Never
+// throws — a failed counter just means a slightly-late High Usage Time trip.
+async function bump(env: Env, key: string, ttlSeconds: number): Promise<number> {
+  const next = (await readInt(env, key)) + 1;
+  await env.KV.put(key, String(next), { expirationTtl: ttlSeconds }).catch(() => {});
+  return next;
+}
+
 export interface UsageState {
   highUsage: boolean;
   monthlyCount: number;
@@ -62,42 +70,49 @@ export interface GateResult {
 }
 
 /**
- * Decide whether THIS request may run a generation. Builds are UNLIMITED — there are
- * no per-user, per-device, daily, or budget caps (projects live in the user's own
- * GitHub, so volume doesn't cost us storage). The ONLY thing that can pause generation
- * is a MANUAL emergency kill-switch — HIGH_USAGE_OVERRIDE='on' or the KV flag
- * flag:high_usage='on' — and even then Priority members and open testing mode are
- * never paused. Automatic budget tripping (source 'budget') is ignored.
+ * Decide whether THIS request may run a generation. Builds are UNLIMITED in normal
+ * times — no per-user, per-device, or daily caps (projects live in the user's own
+ * GitHub, so volume doesn't cost us storage). The ONE exception is HIGH USAGE TIME:
+ * when monthly volume crosses FREE_REQUEST_BUDGET (i.e. usage starts to threaten
+ * Cloudflare cost) — or a manual kill-switch is flipped — free + anonymous generation
+ * is paused and only Priority ($20/mo) members can build. That is the whole point of
+ * Priority: it funds and stays available during the busy/costly periods.
  */
 export async function gateGeneration(c: Ctx): Promise<GateResult> {
   const usage = await getUsageState(c.env);
-  const manualPause = usage.source === 'override-on' || usage.source === 'flag-on';
-  if (manualPause && c.env.AUTH_ENABLED !== 'false' && c.user?.plan !== 'priority') {
+  if (c.env.AUTH_ENABLED === 'false') return { allowed: true, status: 200, usage }; // open testing: no gating
+  if (c.user?.plan === 'priority') return { allowed: true, status: 200, usage };     // Priority always allowed
+  if (usage.highUsage) {
     return {
       allowed: false,
       status: 402,
       code: 'high_usage',
-      reason: 'Generation is temporarily paused — please try again shortly.',
+      reason:
+        "It's High Usage Time right now — Yield is near its free hosting budget, so generation is " +
+        "paused for free accounts to keep the app free to run. Priority members ($20/mo) keep full " +
+        "access and fund these busy periods. Try again later, or upgrade.",
       usage,
     };
   }
-  return { allowed: true, status: 200, usage };
+  return { allowed: true, status: 200, usage }; // otherwise: unlimited
 }
 
-/** No-op: builds are unlimited, so there are no usage counters to maintain. (D1
- *  usage_events analytics are still written separately by logUsage.) */
-export async function recordGeneration(_c: Ctx): Promise<void> {
-  /* intentionally empty — no build limits */
+/** Count toward the monthly budget meter that trips High Usage Time when usage nears
+ *  Cloudflare's free ceiling. No per-user/daily counters — builds are unlimited. Only
+ *  meaningful when accounts are on (open testing mode never gates, so skip the write). */
+export async function recordGeneration(c: Ctx): Promise<void> {
+  if (c.env.AUTH_ENABLED === 'false') return;
+  await bump(c.env, `usage:month:${ym()}`, 60 * 60 * 24 * 32);
 }
 
-/** Public snapshot for the status endpoint / UI banner. Builds are unlimited. */
+/** Public snapshot for the status endpoint / UI banner. */
 export async function usageSnapshot(c: Ctx) {
   const usage = await getUsageState(c.env);
   return {
-    highUsage: usage.highUsage, // true only via the manual kill-switch now
+    highUsage: usage.highUsage,
     plan: c.user?.plan ?? 'anonymous',
-    remainingToday: null,       // unlimited
-    unlimited: true,
-    monthlyUsedPct: 0,
+    remainingToday: null,                // no daily limit — unlimited until High Usage Time
+    unlimited: !usage.highUsage,
+    monthlyUsedPct: Math.min(100, Math.round((usage.monthlyCount / usage.budget) * 100)),
   };
 }

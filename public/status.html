@@ -131,13 +131,20 @@
       }).join('');
       $('#platform').innerHTML = `<div class="sec-head">Platform</div>${platRows}`;
 
-      // Builds — unlimited (only a manual pause can stop them)
+      // Builds — unlimited until High Usage Time, when only Priority members build
       const u = d.usage;
       let buildsHtml;
-      if (u && u.paused) {
-        buildsHtml = row('Builds', 'rate_limited', 'Paused', 'Generation is temporarily paused.');
+      if (u) {
+        const hu = u.highUsage;
+        buildsHtml =
+          row('Builds', hu ? 'rate_limited' : 'operational',
+            hu ? 'High Usage Time' : 'Unlimited',
+            hu ? 'Free & anonymous builds are paused — Priority members keep building.'
+               : 'No per-user or daily limits. Priority members keep building during High Usage Time.') +
+          row('Free hosting budget', u.monthlyUsedPct >= 90 ? 'degraded' : 'operational', u.monthlyUsedPct + '% used',
+            u.monthlyUsedPct >= 90 ? 'Near the free ceiling — High Usage Time may begin soon.' : '');
       } else {
-        buildsHtml = row('Builds', 'operational', 'Unlimited', 'No per-user or daily limits — build as much as you like.');
+        buildsHtml = row('Builds', 'unknown', 'unavailable');
       }
       $('#builds').innerHTML = `<div class="sec-head">Builds</div>${buildsHtml}`;
 

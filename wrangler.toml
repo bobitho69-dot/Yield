@@ -57,15 +57,16 @@ APP_URL = "https://yield.example.workers.dev"
 NVIDIA_CHAT_BASE = "https://integrate.api.nvidia.com/v1"
 NVIDIA_JAILBREAK_URL = "https://ai.api.nvidia.com/v1/security/nvidia/nemoguard-jailbreak-detect/v1/classify"
 
-# Builds are UNLIMITED — no automatic per-user/daily/budget caps (projects live in the
-# user's own GitHub, so volume doesn't cost storage). The vars below are no longer
-# enforced and kept only for reference. The ONLY control is a MANUAL emergency pause:
-# set HIGH_USAGE_OVERRIDE="on" (or KV flag:high_usage="on") to pause non-Priority
-# generation if you ever need to (e.g. abuse). Priority members are never paused.
-FREE_REQUEST_BUDGET = "2500000"      # (unused — no budget gating)
+# Builds are UNLIMITED in normal times (no per-user/daily caps — projects live in the
+# user's own GitHub, so volume doesn't cost storage). The ONE exception is HIGH USAGE
+# TIME: when monthly generations cross FREE_REQUEST_BUDGET (usage nearing Cloudflare's
+# free ceiling, i.e. about to cost money), free + anonymous generation pauses and only
+# Priority ($20/mo) members can build — that's what Priority funds. Set
+# HIGH_USAGE_OVERRIDE="on" to force it manually (emergency pause).
+FREE_REQUEST_BUDGET = "2500000"      # monthly generations before High Usage Time trips
 FREE_DAILY_LIMIT = "15"              # (unused — no per-user daily limit)
 ANON_DAILY_LIMIT = "3"               # (unused — no anonymous daily limit)
-HIGH_USAGE_OVERRIDE = "auto"         # auto | on | off  (manual emergency pause)
+HIGH_USAGE_OVERRIDE = "auto"         # auto | on | off  (manual High Usage Time switch)
 
 # Master auth switch. "false" = OPEN TESTING MODE: no login required, everyone acts
 # as a shared guest, all limits off. Flip to "true" to require accounts (everything

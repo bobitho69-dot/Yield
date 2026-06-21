@@ -105,6 +105,12 @@ export async function handleHealth(c: Ctx): Promise<Response> {
     authEnabled: c.env.AUTH_ENABLED !== 'false',
     platform,
     ais: { up: aisUp, total: models.length, models },
-    usage: usage ? { paused: usage.highUsage, source: usage.source, unlimited: true } : null,
+    usage: usage
+      ? {
+          highUsage: usage.highUsage,
+          source: usage.source,
+          monthlyUsedPct: Math.min(100, Math.round((usage.monthlyCount / usage.budget) * 100)),
+        }
+      : null,
   });
 }

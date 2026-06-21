@@ -39,12 +39,15 @@ export function verifyFiles(files: { path: string; content: string }[]): VerifyR
 
   const paths = new Set(files.map((f) => f.path.replace(/^\/+/, '')));
   const has = (p: string) => paths.has(p) || paths.has(p.replace(/^\.\//, ''));
+  const contentOf = new Map(files.map((f) => [f.path.replace(/^\/+/, ''), f.content] as const));
 
   // Entry point must exist.
   if (!has('index.html')) hard.push('Missing entry point: there is no index.html (the page that loads first).');
 
-  // Broken local references: every src=/href= to a local checkable file must exist.
+  // Broken local references: every src=/href= to a local checkable file must exist —
+  // and any local script/style it loads must not be an empty stub.
   const missing = new Set<string>();
+  const emptyRefs = new Set<string>();
   for (const f of files) {
     if (!/\.html?$/i.test(f.path)) continue;
     const attrRe = /\b(?:src|href)\s*=\s*["']([^"']+)["']/gi;
@@ -57,15 +60,39 @@ export function verifyFiles(files: { path: string; content: string }[]): VerifyR
       const ext = (target.split('.').pop() || '').toLowerCase();
       if (!CHECKABLE.has(ext)) continue; // images/fonts may be generated or external
       const alt = ext === 'htm' ? target.replace(/\.htm$/, '.html') : target;
-      if (!has(target) && !has(alt)) missing.add(`${f.path} references "${ref}" but no such file was created`);
+      if (!has(target) && !has(alt)) { missing.add(`${f.path} references "${ref}" but no such file was created`); continue; }
+      // Loaded but empty = a stub that was never filled in (a half-built app).
+      if (ext === 'js' || ext === 'mjs' || ext === 'css') {
+        const body = contentOf.get(target) ?? contentOf.get(alt) ?? 'x';
+        if (!body.trim()) emptyRefs.add(`${f.path} loads "${ref}" but ${target} is empty`);
+      }
     }
   }
   for (const msg of missing) hard.push(`Broken link: ${msg}.`);
+  for (const msg of emptyRefs) hard.push(`Empty file: ${msg} — fill it in (write the real code) or remove the reference.`);
+
+  // Truncated documents — a page that opens <html>/<body> but never closes it is the
+  // classic sign the model ran out of tokens mid-file, leaving a half-built app.
+  for (const f of files) {
+    if (!/\.html?$/i.test(f.path)) continue;
+    const c = f.content;
+    if (/<body[\s>]/i.test(c) && !/<\/body>/i.test(c)) {
+      hard.push(`Truncated page: ${f.path} opens <body> but is missing </body> — it was cut off. Re-output the whole file, complete.`);
+    } else if (/<html[\s>]/i.test(c) && !/<\/html>/i.test(c)) {
+      hard.push(`Truncated page: ${f.path} is missing its closing </html> — it looks cut off. Re-output the whole file, complete.`);
+    }
+  }
 
   // Placeholder / unfinished markers in the actual content.
   const blob = files.map((f) => f.content).join('\n');
   if (/lorem ipsum|coming soon|\bTODO\b|\bFIXME\b|placeholder text|your (?:text|content|name) here|insert [\w ]+ here|\[\s*(?:todo|placeholder)\s*\]/i.test(blob)) {
     hard.push('Placeholder/unfinished content present (e.g. "lorem ipsum", "coming soon", "TODO", "your text here"). Replace it with real content.');
+  }
+
+  // Omission markers — the model described code instead of writing it ("rest of the
+  // code here", "// ...", "omitted for brevity"). That ships a non-working app.
+  if (/rest of (?:the|your|this) (?:code|file|html|app|page|implementation|markup|content)|(?:remaining|other) (?:code|files?|pages?|sections?|markup|content|lines)(?: are| is)? (?:unchanged|omitted|the same|here)|implementation (?:goes here|omitted|not shown)|omitted for brevity|truncated for (?:brevity|space)|<!--\s*\.\.\.[^>]*-->|\/\/\s*\.\.\.\s*(?:rest|more|continue|existing|etc|and so on)|\/\/\s*(?:rest of|add the rest|the rest|your code here|fill (?:in|this)|continue here)|\/\*\s*\.\.\.\s*(?:rest|more|existing)[^*]*\*\//i.test(blob)) {
+    hard.push('Unfinished output: parts were left out (e.g. "rest of the code here", "// ...", "omitted for brevity"). Every file must be written IN FULL, with no elisions.');
   }
 
   // Dead links — actionable elements that go nowhere.

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Yield — System Status</title>
+  <meta name="description" content="Live health of Yield: AI providers, platform, and usage." />
+  <style>
+    :root {
+      --bg: #0b0d12; --bg-2: #11141b; --panel: #151923; --panel-2: #1b202b; --line: #242a37;
+      --text: #e7ebf3; --muted: #97a0b3; --brand: #7c5cff; --brand-2: #00d4b4;
+      --ok: #22c55e; --warn: #ffb020; --err: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: radial-gradient(1100px 520px at 75% -12%, #1a1633 0%, var(--bg) 55%);
+      color: var(--text); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 2.2rem 1.1rem 3rem; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.4rem; }
+    .brand { font-weight: 800; font-size: 1.15rem; letter-spacing: -.01em; }
+    .brand .grad { background: linear-gradient(90deg, var(--brand), var(--brand-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    a { color: var(--brand-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .banner {
+      display: flex; align-items: center; gap: .75rem; padding: 1rem 1.15rem; border-radius: 14px;
+      border: 1px solid var(--line); background: var(--panel); margin-bottom: 1.4rem; font-weight: 600;
+    }
+    .banner .big-dot { width: 13px; height: 13px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 4px rgba(255,255,255,.04); }
+    .banner.ok { border-color: rgba(34,197,94,.4); }
+    .banner.bad { border-color: rgba(239,68,68,.4); }
+    .banner small { display: block; color: var(--muted); font-weight: 400; font-size: .82rem; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 1.1rem; overflow: hidden; }
+    .sec-head { padding: .8rem 1.15rem; font-weight: 700; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
+    .row { display: flex; align-items: center; gap: .8rem; padding: .85rem 1.15rem; border-bottom: 1px solid var(--line); }
+    .row:last-child { border-bottom: 0; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+    .name { font-weight: 600; }
+    .row .meta { margin-left: auto; color: var(--muted); font-size: .82rem; text-align: right; white-space: nowrap; }
+    .sub { color: var(--muted); font-size: .8rem; margin-top: .15rem; }
+    .pill { font-size: .72rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; border: 1px solid var(--line); }
+    .models { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .4rem; }
+    .models span { font-size: .72rem; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: .1rem .42rem; }
+    .bar { height: 7px; border-radius: 999px; background: var(--panel-2); overflow: hidden; margin-top: .5rem; border: 1px solid var(--line); }
+    .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--brand-2), var(--brand)); }
+    footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.4rem; color: var(--muted); font-size: .82rem; flex-wrap: wrap; }
+    button.refresh { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: .42rem .8rem; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; }
+    button.refresh:hover { border-color: var(--brand); }
+    .c-ok { background: var(--ok); } .t-ok { color: var(--ok); }
+    .c-warn { background: var(--warn); } .t-warn { color: var(--warn); }
+    .c-err { background: var(--err); } .t-err { color: var(--err); }
+    .c-mut { background: var(--muted); } .t-mut { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand"><span class="grad">Yield</span> · System Status</div>
+      <a href="/app">Open the builder →</a>
+    </header>
+
+    <div id="banner" class="banner"><span class="big-dot c-mut"></span><div>Checking status…</div></div>
+
+    <section id="ai"><div class="sec-head">AI Providers</div><div class="row"><span class="name">Loading…</span></div></section>
+    <section id="platform"><div class="sec-head">Platform</div><div class="row"><span class="name">Loading…</span></div></section>
+    <section id="usage"><div class="sec-head">Usage &amp; Rates</div><div class="row"><span class="name">Loading…</span></div></section>
+
+    <footer>
+      <span id="updated">—</span>
+      <button class="refresh" id="refreshBtn">↻ Refresh</button>
+    </footer>
+  </div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    // status string -> { dot class, text class, label }
+    const MAP = {
+      operational: ['c-ok', 't-ok', 'Operational'],
+      ok:          ['c-ok', 't-ok', 'Operational'],
+      degraded:    ['c-warn', 't-warn', 'Degraded'],
+      slow:        ['c-warn', 't-warn', 'Slow'],
+      rate_limited:['c-warn', 't-warn', 'Rate-limited'],
+      auth:        ['c-err', 't-err', 'Auth error (key)'],
+      unavailable: ['c-err', 't-err', 'Unavailable'],
+      down:        ['c-err', 't-err', 'Down'],
+      error:       ['c-err', 't-err', 'Error'],
+      unconfigured:['c-mut', 't-mut', 'Not configured'],
+      unknown:     ['c-mut', 't-mut', 'Unknown'],
+    };
+    const look = (s) => MAP[s] || MAP[(s || '').startsWith('error') ? 'error' : 'unknown'] || MAP.unknown;
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+    function rowHtml(name, status, meta, extraHtml) {
+      const [dot, , label] = look(status);
+      return `<div class="row">
+        <span class="dot ${dot}"></span>
+        <div><div class="name">${esc(name)}</div>${extraHtml || ''}</div>
+        <span class="meta">${esc(meta != null ? meta : label)}</span>
+      </div>`;
+    }
+
+    async function load() {
+      try {
+        const r = await fetch('/api/health', { cache: 'no-store' });
+        const d = await r.json();
+        render(d);
+      } catch (e) {
+        $('#banner').className = 'banner bad';
+        $('#banner').innerHTML = `<span class="big-dot c-err"></span><div>Couldn't reach the status API<small>${esc(e)}</small></div>`;
+      }
+    }
+
+    function render(d) {
+      // Overall banner
+      const healthy = !!d.ok;
+      $('#banner').className = 'banner ' + (healthy ? 'ok' : 'bad');
+      $('#banner').innerHTML = `<span class="big-dot ${healthy ? 'c-ok' : 'c-err'}"></span>
+        <div>${healthy ? 'All systems operational' : 'Some systems are degraded'}
+          <small>${d.app ? esc(d.app) + ' · ' : ''}${d.authEnabled ? 'Accounts required' : 'Open testing mode (no login)'}</small></div>`;
+
+      // AI providers
+      const ai = (d.providers || []).map((p) => {
+        const meta = p.status === 'operational' ? `${p.latencyMs} ms` : look(p.status)[2];
+        const models = `<div class="models">${(p.models || []).map((m) => `<span>${esc(m)}</span>`).join('')}</div>`;
+        const note = p.note && p.status !== 'operational' ? `<div class="sub">${esc(p.note)}</div>` : '';
+        return rowHtml(p.name, p.status, meta, models + note);
+      }).join('') || rowHtml('No providers', 'unknown', 'n/a');
+      $('#ai').innerHTML = `<div class="sec-head">AI Providers</div>${ai}`;
+
+      // Platform
+      const pf = d.platform || {};
+      const platRows = [
+        ['Worker (API)', pf.worker],
+        ['Database (D1)', pf.db],
+        ['Cache / KV', pf.kv],
+        ['Durable Objects', pf.durableObjects],
+      ].map(([n, s]) => {
+        const status = (s || '').startsWith('error') ? 'error' : (s || 'unknown');
+        const meta = (s || '').startsWith('error') ? s.slice(7, 60) : look(status)[2];
+        return rowHtml(n, status, meta);
+      }).join('');
+      $('#platform').innerHTML = `<div class="sec-head">Platform</div>${platRows}`;
+
+      // Usage & rates
+      const u = d.usage;
+      let usageHtml;
+      if (u) {
+        const hu = u.highUsage;
+        usageHtml =
+          rowHtml('High Usage Time', hu ? 'rate_limited' : 'operational',
+            hu ? 'ON — free generation paused' : 'Off',
+            `<div class="sub">${hu ? 'Free + anonymous builds are paused; Priority members keep full access.' : 'Everyone can build normally.'} (source: ${esc(u.source)})</div>`) +
+          rowHtml('Monthly free budget', u.monthlyUsedPct >= 90 ? 'degraded' : 'operational', u.monthlyUsedPct + '% used',
+            `<div class="bar"><i style="width:${Math.min(100, u.monthlyUsedPct)}%"></i></div>`) +
+          rowHtml('Free daily limit', 'ok', u.freeDailyLimit + ' builds/user/day') +
+          rowHtml('Anonymous daily limit', 'ok', u.anonDailyLimit + ' builds/device/day');
+      } else {
+        usageHtml = rowHtml('Usage state', 'unknown', 'unavailable');
+      }
+      $('#usage').innerHTML = `<div class="sec-head">Usage &amp; Rates</div>${usageHtml}`;
+
+      $('#updated').textContent = 'Last checked ' + new Date(d.time || Date.now()).toLocaleString();
+    }
+
+    $('#refreshBtn').addEventListener('click', load);
+    load();
+    setInterval(load, 60000); // refresh every 60s (provider probes are cached ~2 min server-side)
+  </script>
+</body>
+</html>

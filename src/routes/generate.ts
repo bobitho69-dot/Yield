@@ -17,7 +17,7 @@ import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import { verifyFiles } from '../lib/verify';
 import {
   addMessage, createAgent, createProject, getProject, getProjectFiles, listAgents, listMessages,
-  logUsage, saveFiles, updateAgent, type FileRow,
+  logUsage, saveFiles, setProjectBranding, updateAgent, type FileRow,
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
 
@@ -223,9 +223,15 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   // text streams into the chat bubble (a "here's what I built / next steps" message)
   // instead of being appended to the last file.
   const SUMMARY = /^={2,}\s*(?:summary|recap|done|notes)\s*={2,}\s*$/i;
+  // "=== name: My App ===" sets the auto app name; "=== logo ===" starts an inline-SVG
+  // app logo block (captured until the next marker). Both are used to brand a new app.
+  const NAME = /^={2,}\s*name:\s*(.+?)\s*={2,}\s*$/i;
+  const LOGO = /^={2,}\s*logo\s*={2,}\s*$/i;
   let buf = '';
-  let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' = 'chat';
+  let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' | 'logo' = 'chat';
   let inThink = false;
+  let appName = '';
+  const logoLines: string[] = [];
   let fenceOpen = false; // inside a ```-fenced file we inferred from a bare code fence
   let curFile: { path: string; lines: string[] } | null = null;
   let curAgent: { name: string; model: string | null; lines: string[] } | null = null;
@@ -298,6 +304,8 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       secrets.push({ name: m[1].trim(), description: (m[2] || '').trim() });
       return; // single-line; doesn't change mode
     }
+    if ((m = line.match(NAME))) { if (!appName) appName = m[1].trim().slice(0, 60); return; } // single-line
+    if (LOGO.test(line)) { mode = 'logo'; return; } // start inline-SVG logo block
     if (SUMMARY.test(line)) { mode = 'chat'; fenceOpen = false; curFile = null; await send('status', { stage: 'Wrapping up…' }); return; }
     // Markdown code fences: some models ignore "=== file: ===" and wrap code in ```lang
     // blocks. Route that code into the CODE section live (as files) instead of dumping
@@ -327,6 +335,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     else if (mode === 'agent' && curAgent) curAgent.lines.push(line);
     else if (mode === 'task' && curTask) curTask.lines.push(line);
     else if (mode === 'research' && curResearch) curResearch.lines.push(line);
+    else if (mode === 'logo') logoLines.push(line);
   }
 
   return {
@@ -347,9 +356,9 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     // entries that survive into the retry's result. Only ever called when nothing
     // worth keeping was produced (see `produced`).
     reset() {
-      buf = ''; mode = 'chat'; inThink = false; fenceOpen = false; lastStatus = '';
+      buf = ''; mode = 'chat'; inThink = false; fenceOpen = false; lastStatus = ''; appName = '';
       curFile = curAgent = curTask = curResearch = null;
-      files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = 0;
+      files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = logoLines.length = 0;
     },
     // "Produced something worth keeping": real file content, real chat, or a delegation.
     // A bare "=== file: path ===" header with no body must NOT count — otherwise a
@@ -390,9 +399,23 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
         if (!fb.files.length && thinkLines.length) fb = extractFilesFromText(thinkLines.join('\n'));
         if (fb.files.length) { fs = fb.files; chat = chat || fb.chat || 'Here is your app.'; }
       }
-      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc };
+      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc, name: appName, logo: sanitizeLogo(logoLines.join('\n')) };
     },
   };
+}
+
+// Pull a clean, safe inline SVG out of a "=== logo ===" block: keep only the <svg>…</svg>,
+// strip <script>/<foreignObject> and on* handlers, and cap size. Returns '' if none.
+function sanitizeLogo(text: string): string {
+  const m = text.match(/<svg[\s\S]*?<\/svg>/i);
+  if (!m) return '';
+  let svg = m[0]
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|xlink:href)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '');
+  if (svg.length > 8000) return ''; // a logo should be tiny; reject anything suspiciously large
+  return svg.trim();
 }
 
 export type SendFn = (event: string, data: unknown) => Promise<void>;
@@ -767,6 +790,8 @@ export async function runBuild(
         secrets: [...secretMap.values()],
         tasks: pass2.tasks.length ? pass2.tasks : pass1.tasks,
         research: [],
+        name: pass2.name || pass1.name,
+        logo: pass2.logo || pass1.logo,
       };
     }
 
@@ -868,6 +893,16 @@ export async function runBuild(
     try {
       if (project && c.user && hasFiles) await saveFiles(c.env, project.id, files, activeModel.id);
     } catch (e) { console.error('saveFiles failed:', e); }
+
+    // Auto-branding: on a NEW app's first successful build, set the generated app name
+    // and inline-SVG logo (only when not already set, so edits don't keep renaming).
+    try {
+      if (project && c.user && hasFiles && !project.logo) {
+        const name = (result.name || '').trim() || null;
+        const logo = (result.logo || '').trim() || null;
+        if (name || logo) await setProjectBranding(c.env, project.id, name, logo);
+      }
+    } catch (e) { console.error('branding step failed:', e); }
 
     await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents });
 

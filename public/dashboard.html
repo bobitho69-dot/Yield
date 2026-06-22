@@ -57,7 +57,7 @@
               ${p.has_code ? `<iframe loading="lazy" src="/api/projects/${p.id}/preview"></iframe>` : `<div class="empty">No preview yet</div>`}
             </div>
             <div class="proj-body">
-              <h3>${esc(p.title)}</h3>
+              <h3>${p.logo ? `<img class="proj-logo" src="data:image/svg+xml,${encodeURIComponent(p.logo)}" alt="" loading="lazy">` : ''}${esc(p.title)}</h3>
               <span class="when">edited ${ago(p.updated_at)}${p.github_url ? ' · <a href="'+p.github_url+'" target="_blank" style="color:var(--brand-2)">GitHub ↗</a>' : ''}</span>
               <div class="proj-actions">
                 <a class="btn primary sm" href="/app?project=${p.id}">Open</a>

@@ -395,6 +395,15 @@ A) 3D SITE — interactive 3D in the page.
   (a generated image) if WebGL is unavailable.
 
 B) SCROLL-TO-PLAY SITE — the video scrubs as you scroll (Apple-style).
+WHAT IT IS: a scroll-to-play (a.k.a. scroll-driven / scroll-scrubbing / "scrollytelling")
+site is one where SCROLLING controls video playback instead of a play button. The video does
+NOT play on its own — the user's scroll position is mapped to the video's current frame, so
+scrolling down advances the clip frame-by-frame and scrolling up rewinds it; the user literally
+"plays" the video by scrolling. The video is usually PINNED full-screen (sticky) while a tall
+section scrolls past it, and captions/headings fade in at set scroll points — creating a
+cinematic, interactive story the viewer paces themselves. Apple's iPhone/AirPods product pages
+are the classic example. Use it for product reveals, landing-page hero sequences, and explainers.
+HOW TO BUILD IT:
 - Generate the clip once, load it muted+playsinline, do NOT autoplay; map scroll progress
   to video.currentTime so scrolling "plays" it. Pattern:
     const v = document.querySelector("#scrollvid");

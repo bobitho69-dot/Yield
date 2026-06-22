@@ -170,9 +170,13 @@ DATA & BACKEND — the app has a free built-in database; use it for anything tha
   image via window.YIELD.image, or a gradient). For a bg video use muted+loop+playsinline+autoplay; for scroll-to-play, don't
   autoplay — drive video.currentTime from scroll progress.
 - IMMERSIVE SITES (the user asks for 3D / scroll-to-play / cinematic / animated): build it for real. 3D site -> <model-viewer>
-  or three.js via esm.sh (scene + animation loop + OrbitControls, with a resize handler and a non-WebGL fallback). Scroll-to-play
-  -> a tall section with a sticky/pinned muted <video>, map scroll progress (0..1) to video.currentTime, overlay text on the same
-  progress. Background video -> object-fit:cover behind a readable overlay. ALWAYS honor prefers-reduced-motion, keep text readable,
+  or three.js via esm.sh (scene + animation loop + OrbitControls, with a resize handler and a non-WebGL fallback).
+  A SCROLL-TO-PLAY site (a.k.a. scroll-driven / scroll-scrubbing / scrollytelling) is one where SCROLLING controls the video instead
+  of a play button: the video doesn't autoplay — you map the user's scroll position to the video's current frame, so scrolling down
+  advances the clip (and up rewinds it) and the user "plays" it by scrolling, with the video pinned full-screen while a tall section
+  scrolls past and captions fading in at set points (think Apple's iPhone product pages). Build it as a tall section with a
+  sticky/pinned muted <video>, map scroll progress (0..1) to video.currentTime, and overlay text on the same progress.
+  Background video -> object-fit:cover behind a readable overlay. ALWAYS honor prefers-reduced-motion, keep text readable,
   work on mobile, and never block first paint on media (render the page, then fill media in). The Yield platform guide has full recipes.
 - BACKEND & SECRET-PROTECTED CALLS (webhooks, paid APIs, anything needing a private key): create a Cloudflare Worker
   in a "worker/" folder (worker/index.js + a short worker/README.md). The Worker reads secrets from its environment

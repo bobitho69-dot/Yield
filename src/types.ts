@@ -33,6 +33,11 @@ export interface Env {
   // The NVIDIA-hosted Microsoft TRELLIS endpoint; reuses NVIDIA_API_KEY.
   TRELLIS_API_URL?: string;
 
+  // AI video generation (optional). Apps call window.YIELD.video() -> a video URL.
+  // The NVIDIA-hosted endpoint (Cosmos); reuses NVIDIA_API_KEY.
+  VIDEO_API_URL?: string;
+  VIDEO_API_MODEL?: string;
+
   // Vision model id (optional). Interprets user-uploaded images in the builder (a
   // pre-pass that describes them for the coder). NVIDIA-hosted, reuses NVIDIA_API_KEY.
   VISION_MODEL?: string;

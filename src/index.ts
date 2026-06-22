@@ -14,7 +14,7 @@ import { handleGithubStatus, handleGithubRepos, handleProjectGithub, handleVersi
 import { handleAgents } from './routes/agents';
 import { handleSecrets } from './routes/secrets';
 import { handleAppData } from './routes/appdata';
-import { handleMedia, handleModel3d } from './routes/media';
+import { handleMedia, handleModel3d, handleVideo } from './routes/media';
 
 import { PLATFORM_GUIDE } from './lib/platformGuide';
 
@@ -73,6 +73,8 @@ export default {
         res = await handleMedia(request, c);
       } else if (path === '/api/media/model3d') {
         res = await handleModel3d(request, c);
+      } else if (path === '/api/media/video') {
+        res = await handleVideo(request, c);
       } else if (path.startsWith('/api/apps/')) {
         const p = path.slice('/api/apps/'.length).split('/'); // [id, 'entities', entity, recordId?]
         if (p[1] === 'entities' && p[0] && p[2]) res = await handleAppData(request, c, p[0], p[2], p[3]);

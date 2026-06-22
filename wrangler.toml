@@ -94,6 +94,13 @@ IMAGE_API_MODEL = ""
 # (the model is "microsoft/trellis"); the value below is the expected NVIDIA genai URL.
 TRELLIS_API_URL = "https://ai.api.nvidia.com/v1/genai/microsoft/trellis"
 
+# AI video generation (NVIDIA Cosmos via NVIDIA — reuses NVIDIA_API_KEY, no extra
+# key). Apps call window.YIELD.video(prompt) and get back a video URL to play (great
+# for background videos or scroll-to-play sites). Video gen is slow → apps show a
+# loader. Leave empty to disable. VERIFY the exact hosted path at build.nvidia.com.
+VIDEO_API_URL = "https://ai.api.nvidia.com/v1/genai/nvidia/cosmos3-nano-reasoner"
+VIDEO_API_MODEL = ""
+
 # Vision model — lets the builder "see" images you upload in chat (UI mockups,
 # screenshots, logos, photos, diagrams). It runs as a pre-pass that describes the
 # image(s) in detail, then feeds that to the coder. NVIDIA-hosted, reuses

@@ -117,7 +117,8 @@ exists. Shape:
     agents:  { "AgentName": "agent-id", ... }, // ids of this app's public agents
     entities: { list, create, get, update, delete },  // the built-in database
     image:   function(prompt, opts) -> Promise<url>,   // AI image generation
-    model3d: function(prompt, opts) -> Promise<url>    // AI 3D-model (.glb) generation
+    model3d: function(prompt, opts) -> Promise<url>,   // AI 3D-model (.glb) generation
+    video:   function(prompt, opts) -> Promise<url>    // AI video generation
   }
 Note: there is NO window.YIELD.secrets — Yield never holds secrets. Private keys live
 in the user's own backend Worker (section 4 + 8); only publishable keys go in the frontend.
@@ -260,6 +261,25 @@ Notes:
 - If a build doesn't need 3D, don't add it — use window.YIELD.image() for flat art.
 
 ================================================================================
+## 6c. AI VIDEO GENERATION — window.YIELD.video(prompt)
+================================================================================
+Generate a real video clip from a text prompt (the built-in video model). Returns a
+Promise that resolves to a URL for a video (often a data: URL) you can drop into a
+<video> element. Great for hero/background video, scroll-to-play sequences, product
+loops, or ambient motion.
+  const url = await window.YIELD.video("slow aerial drone shot over misty pine forest at dawn, seamless loop");
+  const v = document.querySelector("#bg"); v.src = url; v.play().catch(()=>{});
+Notes:
+- Video generation is SLOW (it can take a while) — ALWAYS show a loading state, disable
+  the trigger while it runs, and handle failure (it can reject or return nothing) with a
+  graceful fallback (e.g. a generated still image via window.YIELD.image, or a gradient).
+- The clip is short. For a background, set the <video> to muted + playsinline + loop and
+  autoplay (autoplay only works when muted). For scroll-to-play, do NOT autoplay — drive
+  currentTime from scroll (see the recipe in section 10c).
+- Options (second arg, optional): { seed }. Do NOT call external video APIs directly.
+- Generate once and reuse the URL; don't regenerate the same clip on every interaction.
+
+================================================================================
 ## 7. END-USER LOGIN (per app, only if the app needs accounts) — Supabase
 ================================================================================
 If an app needs its OWN end-user accounts (sign up / log in), use Supabase. The Supabase
@@ -354,12 +374,61 @@ Patterns:
 - Performance: debounce search inputs; lazy-render long lists; avoid layout thrash in loops.
 
 ================================================================================
+## 10c. RICH-MEDIA SITES — 3D, scroll-to-play, and video (high-impact recipes)
+================================================================================
+When the user asks for an immersive/animated/3D/cinematic site, build it for real with
+the built-ins below. Always include a graceful fallback and a loading state — generation
+is slow, and motion must never block content or hurt accessibility (honor
+prefers-reduced-motion; keep text readable; make it work on mobile).
+
+A) 3D SITE — interactive 3D in the page.
+- Simplest: a generated model in Google's <model-viewer> (see section 6b) for a product
+  viewer / 3D hero — camera-controls + auto-rotate, set src = await window.YIELD.model3d(...).
+- Full 3D scenes: three.js via esm.sh (import * as THREE from "https://esm.sh/three"). Set
+  up a scene/camera/renderer, a requestAnimationFrame loop, lights, and OrbitControls
+  (https://esm.sh/three/examples/jsm/controls/OrbitControls.js). You can load a generated
+  .glb with GLTFLoader (.../jsm/loaders/GLTFLoader.js) and add it to the scene.
+- Always: resize handler (renderer.setSize on window resize), dispose on teardown, cap
+  pixel ratio (renderer.setPixelRatio(Math.min(devicePixelRatio,2))), and a static fallback
+  (a generated image) if WebGL is unavailable.
+
+B) SCROLL-TO-PLAY SITE — the video scrubs as you scroll (Apple-style).
+- Generate the clip once, load it muted+playsinline, do NOT autoplay; map scroll progress
+  to video.currentTime so scrolling "plays" it. Pattern:
+    const v = document.querySelector("#scrollvid");
+    v.src = await window.YIELD.video("a watch rotating 360 degrees on white, seamless");
+    v.muted = true; v.playsInline = true; v.preload = "auto";
+    const stage = document.querySelector("#stage"); // a tall (e.g. 300vh) section
+    function onScroll(){
+      const r = stage.getBoundingClientRect();
+      const total = stage.offsetHeight - innerHeight;
+      const p = Math.min(1, Math.max(0, -r.top / total)); // 0..1 through the section
+      if (v.duration) v.currentTime = p * v.duration;
+    }
+    addEventListener("scroll", onScroll, { passive:true });
+    v.addEventListener("loadedmetadata", onScroll);
+- Pin the <video> (position:sticky; top:0; height:100vh; object-fit:cover) inside the tall
+  section so it stays put while the section scrolls past. Add overlay text tied to the same
+  progress. Provide a reduced-motion fallback (show a key frame / generated image instead).
+- Scroll-triggered animations (not video): IntersectionObserver to reveal sections, or a
+  scroll-progress transform; keep it smooth and subtle.
+
+C) VIDEO IN THE SITE — background or accent video.
+- Background: <video autoplay muted loop playsinline> with object-fit:cover behind a
+  readable overlay (a semi-opaque layer or gradient) so foreground text keeps contrast.
+  Autoplay ONLY works when muted. Set src = await window.YIELD.video(...). Show a poster /
+  generated image until it loads, and fall back to that image if generation fails.
+- Accent loops: small muted looping clips for cards/heroes. Lazy-load (generate when near
+  viewport). Never block first paint on a video — render the page, then fill the media in.
+
+================================================================================
 ## 11. QUICK REFERENCE (endpoints & globals)
 ================================================================================
 - window.YIELD.entities.{list,create,get,update,delete}(entity, ...) — built-in DB.
 - window.YIELD.agents["Name"] — agent id; POST /api/agents/<id>/run { input | messages }.
 - window.YIELD.image(prompt, opts) — Promise<imageUrl>.
-- window.YIELD.model3d(prompt, opts) — Promise<glbUrl> (render with <model-viewer>; slow → show a loader).
+- window.YIELD.model3d(prompt, opts) — Promise<glbUrl> (render with <model-viewer> or three.js; slow → show a loader).
+- window.YIELD.video(prompt, opts) — Promise<videoUrl> (drop into <video>; bg video / scroll-to-play; slow → show a loader).
 - Declare a runtime AI before files: "=== agent: Name | model ===".
 - Your build tools: "=== research: Name ===" (helper AI, research first) and
   "=== task: Name | model ===" (parallel build agent, for big apps).
@@ -371,7 +440,8 @@ Patterns:
   a "user attached files" note — USE it (match a screenshot's design, use a logo/photo, read
   a doc's data) as you build.
 - Persisted data => entities. AI in the app => agents. Pictures => image(). 3D models =>
-  model3d(). Private keys + server => a Cloudflare Worker in worker/ (the user sets the
+  model3d(). Video (bg / scroll-to-play) => video(). 3D/scroll-to-play/video sites =>
+  section 10c. Private keys + server => a Cloudflare Worker in worker/ (the user sets the
   secrets in Cloudflare).
   Publishable keys (Supabase anon, Stripe pk_) are fine in the frontend. Research first =>
   research. Big build => split into task agents. That covers almost everything.`;

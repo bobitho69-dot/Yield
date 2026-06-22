@@ -98,7 +98,7 @@ TRELLIS_API_URL = "https://ai.api.nvidia.com/v1/genai/microsoft/trellis"
 # screenshots, logos, photos, diagrams). It runs as a pre-pass that describes the
 # image(s) in detail, then feeds that to the coder. NVIDIA-hosted, reuses
 # NVIDIA_API_KEY. Override the id here if NVIDIA renames it (verify at build.nvidia.com).
-VISION_MODEL = "meta/llama-3.2-90b-vision-instruct"
+VISION_MODEL = "qwen/qwen3.5-397b-a17b"
 
 # OAuth is OPTIONAL — email + password login works without it. These placeholders
 # let the app deploy today; the login UI auto-hides GitHub/Google until they're real.

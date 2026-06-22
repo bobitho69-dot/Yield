@@ -63,6 +63,19 @@ export const CODER_MODELS: ModelDef[] = [
     provider: { apiKeyEnv: 'KIMI_API_KEY' },
   },
   {
+    id: 'qwen3.5-397b',
+    label: 'Qwen3.5 397B',
+    modelId: 'qwen/qwen3.5-397b-a17b',
+    role: 'coder',
+    tier: 'pro',
+    speed: 2,
+    blurb: 'Huge 397B MoE (17B active) — elite code quality plus native vision.',
+    pros: ['Top-tier code quality', 'Multimodal — understands images', 'Great on large, multi-file apps'],
+    cons: ['Slower than flash models', 'Heavier token use', 'Overkill for tiny tweaks'],
+    // NVIDIA endpoint (default base URL); key falls back to NVIDIA_API_KEY.
+    provider: { apiKeyEnv: 'QWEN_API_KEY' },
+  },
+  {
     id: 'minimax-m3',
     label: 'MiniMax M3',
     modelId: 'minimaxai/minimax-m3',
@@ -214,7 +227,7 @@ export const GUARD_MODEL: ModelDef = {
 // (so any coder, even text-only ones, can "use" an uploaded screenshot/mockup/logo).
 // NVIDIA-hosted (OpenAI-compatible, reuses NVIDIA_API_KEY); the exact id is overridable
 // via the VISION_MODEL env var. Verify the current id at build.nvidia.com.
-const DEFAULT_VISION_MODEL = 'meta/llama-3.2-90b-vision-instruct';
+const DEFAULT_VISION_MODEL = 'qwen/qwen3.5-397b-a17b';
 export function visionModelId(env: Env): string {
   return (env.VISION_MODEL && env.VISION_MODEL.trim()) || DEFAULT_VISION_MODEL;
 }

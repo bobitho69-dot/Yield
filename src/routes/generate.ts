@@ -227,6 +227,10 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   // app logo block (captured until the next marker). Both are used to brand a new app.
   const NAME = /^={2,}\s*name:\s*(.+?)\s*={2,}\s*$/i;
   const LOGO = /^={2,}\s*logo\s*={2,}\s*$/i;
+  // "=== ask: Question? | Option A | Option B ===" — a clarifying question with optional
+  // clickable choices; surfaced as an 'ask' event (a pop-up) and produces no files.
+  const ASK = /^={2,}\s*ask:\s*(.+?)\s*={2,}\s*$/i;
+  let asked = false;
   let buf = '';
   let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' | 'logo' = 'chat';
   let inThink = false;
@@ -305,6 +309,12 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       return; // single-line; doesn't change mode
     }
     if ((m = line.match(NAME))) { if (!appName) appName = m[1].trim().slice(0, 60); return; } // single-line
+    if ((m = line.match(ASK))) { // single-line clarifying question with optional choices
+      const parts = m[1].split('|').map((s) => s.trim()).filter(Boolean);
+      const question = parts[0] || '';
+      if (question) { asked = true; await send('ask', { question, options: parts.slice(1, 7) }); }
+      return;
+    }
     if (LOGO.test(line)) { mode = 'logo'; return; } // start inline-SVG logo block
     if (SUMMARY.test(line)) { mode = 'chat'; fenceOpen = false; curFile = null; await send('status', { stage: 'Wrapping up…' }); return; }
     // Markdown code fences: some models ignore "=== file: ===" and wrap code in ```lang
@@ -356,7 +366,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     // entries that survive into the retry's result. Only ever called when nothing
     // worth keeping was produced (see `produced`).
     reset() {
-      buf = ''; mode = 'chat'; inThink = false; fenceOpen = false; lastStatus = ''; appName = '';
+      buf = ''; mode = 'chat'; inThink = false; fenceOpen = false; lastStatus = ''; appName = ''; asked = false;
       curFile = curAgent = curTask = curResearch = null;
       files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = logoLines.length = 0;
     },
@@ -399,7 +409,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
         if (!fb.files.length && thinkLines.length) fb = extractFilesFromText(thinkLines.join('\n'));
         if (fb.files.length) { fs = fb.files; chat = chat || fb.chat || 'Here is your app.'; }
       }
-      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc, name: appName, logo: sanitizeLogo(logoLines.join('\n')) };
+      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc, name: appName, logo: sanitizeLogo(logoLines.join('\n')), asked };
     },
   };
 }
@@ -792,6 +802,7 @@ export async function runBuild(
         research: [],
         name: pass2.name || pass1.name,
         logo: pass2.logo || pass1.logo,
+        asked: pass2.asked || pass1.asked,
       };
     }
 
@@ -838,7 +849,8 @@ export async function runBuild(
     // whether it delegated. Skip only for obvious small-talk, which legitimately has no
     // files (otherwise "thanks!" would fabricate an app).
     const chitchat = /^(thanks?|thank you|ok(ay)?|cool|nice|great|awesome|hi|hello|hey|yo|yes|no|sure|👍|🙏)[\s!.?]*$/i.test(prompt.trim());
-    if (!files.length && !chitchat) {
+    // Don't force a build when the model deliberately asked a clarifying question.
+    if (!files.length && !chitchat && !result.asked) {
       await send('status', { stage: 'No code yet — building it directly…' });
       await heartbeat();
       messages.push({ role: 'assistant', content: (chatBody || 'I planned the app.').slice(0, 1500) });

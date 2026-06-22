@@ -62,6 +62,11 @@ function shortReason(e: unknown): string {
   return code ? `error ${code}` : (msg.slice(0, 60) || 'error');
 }
 
+// Reliable anchor models tried as the FINAL fallback when the routed model and Auto's
+// re-picks all fail (e.g. a model id that 404s on this account). Ordered reliable-first
+// so a build still completes rather than erroring out. (Same anchors the sub-agents use.)
+const STABLE_FALLBACKS = ['glm-5.1', 'deepseek-v4-flash', 'nemotron-3-ultra'];
+
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
 export async function routeModel(c: Ctx, prompt: string, exclude: string[] = []): Promise<{ id: string; reason: string }> {
   // Pool of models Auto may choose from, minus any already-tried (failed) ones.
@@ -742,6 +747,15 @@ export async function runBuild(
     if (!project && c.user) project = await createProject(c.env, c.user.id, prompt.slice(0, 60));
     await heartbeat();
 
+    // Persist the user's prompt to history IMMEDIATELY — before the risky model work —
+    // so it is never lost if the build fails mid-flight. (A thrown build used to save
+    // NOTHING: the prompt vanished and the whole turn looked like "code isn't saving".)
+    let userMsgSaved = false;
+    if (project && c.user) {
+      try { await addMessage(c.env, { project_id: project.id, role: 'user', content: prompt }); userMsgSaved = true; }
+      catch (e) { console.error('early user-message save failed:', e); }
+    }
+
     await send('meta', { model: model.id, label: model.label, projectId: project?.id ?? null, routeReason });
 
     // 5) Build the message list: system + platform reference + current app +
@@ -841,6 +855,22 @@ export async function runBuild(
               streamer.reset();
               try { await streamWith(fb, null); ok = true; }
               catch (e3) { if (streamer.produced) ok = true; else selErr = e3; }
+            }
+            // LAST RESORT: Auto's picks can all be unavailable (a model id that 404s on
+            // this account, etc.), which would otherwise sink the whole build. Always end
+            // on the most reliable anchor models so a build still completes. These are the
+            // same stable fallbacks the sub-agents/research use.
+            for (const sid of STABLE_FALLBACKS) {
+              if (ok || streamer.produced) break;
+              if (tried.has(sid)) continue;
+              tried.add(sid);
+              const fb = resolveModel(sid);
+              activeModel = fb;
+              await send('status', { stage: `Retrying on ${fb.label}…` });
+              await send('meta', { model: fb.id, label: fb.label, projectId: project?.id ?? null, routeReason: `${selectedLabel} unavailable (${reason}); retrying on ${fb.label}` });
+              streamer.reset();
+              try { await streamWith(fb, null); ok = true; }
+              catch (e4) { if (streamer.produced) ok = true; else selErr = e4; }
             }
           }
           if (!ok && !streamer.produced) throw selErr;
@@ -1029,7 +1059,9 @@ export async function runBuild(
     // Tail work — fully best-effort; the build is already delivered + saved.
     try {
       if (project && c.user) {
-        await addMessage(c.env, { project_id: project.id, role: 'user', content: prompt });
+        // The user prompt was saved up-front (userMsgSaved); only save it here if that
+        // early write failed, so it's recorded exactly once.
+        if (!userMsgSaved) await addMessage(c.env, { project_id: project.id, role: 'user', content: prompt });
         await addMessage(c.env, { project_id: project.id, role: 'assistant', content: chatText, model: activeModel.id });
         if (hasFiles) await syncProjectToGithub(c, project, files);
       }
@@ -1037,7 +1069,17 @@ export async function runBuild(
       await logUsage(c.env, { user_id: c.user?.id ?? null, kind: hasFiles ? 'generate' : 'chat', model: activeModel.id, high_usage: gate.usage.highUsage });
     } catch (e) { console.error('post-build tail failed:', e); }
   } catch (e: any) {
-    await send('error', { message: String(e?.message || e).slice(0, 400) });
+    const reason = shortReason(e);
+    console.error('build failed:', e?.stack || e);
+    // Record the failure in history (best-effort) so the user's prompt + what went wrong
+    // are preserved instead of the whole turn vanishing.
+    try {
+      const project = body.projectId ? await getProject(c.env, body.projectId) : null;
+      if (project && c.user) {
+        await addMessage(c.env, { project_id: project.id, role: 'assistant', content: `⚠️ The build didn't finish (${reason}). Your prompt is saved — please try again.`, model: 'system' });
+      }
+    } catch { /* ignore */ }
+    await send('error', { message: `The AI provider errored (${reason}). Your prompt was saved — please try again.` });
   }
 }
 

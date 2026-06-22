@@ -60,6 +60,7 @@ export async function routeModel(c: Ctx, prompt: string, exclude: string[] = [])
     const { text } = await chat({
       baseUrl: ep.baseUrl,
       apiKey: ep.apiKey,
+      apiKeyBackup: ep.apiKeyBackup,
       model: ep.modelId,
       messages: [
         { role: 'system', content: routerSystem(menu) },
@@ -114,7 +115,7 @@ async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<vo
     const fast = resolveModel('deepseek-v4-flash');
     const ep = endpointFor(c.env, fast);
     const { text } = await chat({
-      baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId,
+      baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId,
       messages: [
         { role: 'system', content: ENHANCE_SYSTEM },
         { role: 'user', content: prompt.slice(0, 4000) },
@@ -453,7 +454,7 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
       await heartbeat();
       try {
         const { text } = await chat({
-          baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+          baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
           temperature: 0.4, max_tokens: 8000, timeoutMs: 150000,
           ...(eff ? { extra: { reasoning_effort: eff } } : {}),
         });
@@ -492,7 +493,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
       try {
         await chatStream(
           {
-            baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+            baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
             temperature: 0.3, max_tokens: 30000, timeoutMs: 300000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
@@ -564,7 +565,7 @@ async function verifyAndRepair(
       try {
         await chatStream(
           {
-            baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+            baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
             temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
@@ -712,7 +713,7 @@ export async function runBuild(
         const ep = endpointFor(c.env, mdef);
         await chatStream(
           {
-            baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId, messages,
+            baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
             temperature: 0.3, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },

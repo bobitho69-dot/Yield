@@ -236,28 +236,24 @@ export function keyFor(env: Env, apiKeyEnv: string): string {
 }
 
 /**
- * Resolve a model's API key, trying several candidate secret names so it works
- * whether you named the secret KIMI_API_KEY (recommended) or after the model id
- * itself (e.g. "moonshotai/kimi-k2-instruct"). Falls back to NVIDIA_API_KEY.
+ * Resolve a model's API key. The whole NVIDIA catalog shares NVIDIA_API_KEY (no
+ * per-model keys). Models on a DIFFERENT provider endpoint (e.g. OpenRouter) use that
+ * provider's key, falling back to the NVIDIA key.
  */
 export function keyForModel(env: Env, model: ModelDef): string {
-  const candidates = [
-    model.provider.apiKeyEnv, // e.g. KIMI_API_KEY
-    model.keyName, // the secret name you created (often the old/aliased id)
-    model.modelId, // e.g. moonshotai/kimi-k2-instruct
-    model.modelId.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase(), // MOONSHOTAI_KIMI_K2_INSTRUCT
-  ];
-  for (const name of candidates) {
-    const v = name ? envGet(env, name) : undefined;
-    if (v) return v;
-  }
+  if (model.provider.baseUrl) return envGet(env, model.provider.apiKeyEnv) || env.NVIDIA_API_KEY;
   return env.NVIDIA_API_KEY;
 }
 
-/** Resolve a model's concrete API endpoint + key + id (each AI is its own API). */
-export function endpointFor(env: Env, model: ModelDef): { baseUrl: string; apiKey: string; modelId: string } {
+/**
+ * Resolve a model's endpoint, key, and id. For NVIDIA-hosted models we also return a
+ * backup key (NVIDIA_API_KEY_BACKUP) the client falls back to on a rate-limit / quota
+ * (429/402) so one key hitting its limit doesn't break the build.
+ */
+export function endpointFor(env: Env, model: ModelDef): { baseUrl: string; apiKey: string; apiKeyBackup?: string; modelId: string } {
   const baseUrl = model.provider.baseUrl || env.NVIDIA_CHAT_BASE;
-  return { baseUrl, apiKey: keyForModel(env, model), modelId: model.modelId };
+  const apiKeyBackup = model.provider.baseUrl ? undefined : (env.NVIDIA_API_KEY_BACKUP || undefined);
+  return { baseUrl, apiKey: keyForModel(env, model), apiKeyBackup, modelId: model.modelId };
 }
 
 /** Public list for the model picker (Auto + coder models, with pros/cons). */

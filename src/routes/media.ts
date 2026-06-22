@@ -43,13 +43,14 @@ export async function generateImage(env: Env, prompt: string, opts: Record<strin
   const key = env.IMAGE_API_KEY || env.NVIDIA_API_KEY; // FLUX on NVIDIA reuses the nvapi key
   if (!url || !key || !prompt) return null;
   const defaults = { mode: 'base', cfg_scale: 3.5, width: 1024, height: 1024, seed: 0, steps: 4 };
-  const payload = { ...defaults, ...(env.IMAGE_API_MODEL ? { model: env.IMAGE_API_MODEL } : {}), prompt, ...opts };
+  const body = JSON.stringify({ ...defaults, ...(env.IMAGE_API_MODEL ? { model: env.IMAGE_API_MODEL } : {}), prompt, ...opts });
+  const post = (k: string) => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${k}`, 'content-type': 'application/json', accept: 'application/json' }, body });
   try {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let r = await post(key);
+    // On rate-limit / quota, retry once with the backup NVIDIA key if configured.
+    if ((r.status === 429 || r.status === 402) && env.NVIDIA_API_KEY_BACKUP && env.NVIDIA_API_KEY_BACKUP !== key) {
+      r = await post(env.NVIDIA_API_KEY_BACKUP);
+    }
     const data: any = await r.json().catch(() => ({}));
     if (!r.ok) return null;
     return extractUrl(data);

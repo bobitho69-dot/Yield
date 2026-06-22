@@ -97,17 +97,9 @@ GOOGLE_CLIENT_ID = "PLACEHOLDER_GOOGLE_CLIENT_ID"
 GOOGLE_CLIENT_SECRET = "PLACEHOLDER_GOOGLE_CLIENT_SECRET"
 
 # Secrets set via `wrangler secret put` (do NOT put real values here):
-#   NVIDIA_API_KEY            nvapi-...  (shared default + fallback for every AI)
-#   # Per-AI keys (optional; each AI is its own API, falls back to NVIDIA_API_KEY):
-#   KIMI_API_KEY             Kimi K2.6
-#   MINIMAX_API_KEY          MiniMax M3
-#   DEEPSEEK_FLASH_API_KEY   DeepSeek V4 Flash
-#   STEP_API_KEY             Step 3.7 Flash
-#   DEEPSEEK_PRO_API_KEY     DeepSeek V4 Pro
-#   GLM_API_KEY              GLM 5.1
-#   OPENROUTER_API_KEY       Qwen3 Coder 480B (via OpenRouter — its own key, not the NVIDIA one)
-#   GPTOSS_API_KEY           gpt-oss-20b (Auto router)
-#   NEMOGUARD_API_KEY        NeMoGuard JailbreakDetect
+#   NVIDIA_API_KEY            nvapi-...  THE key for the whole NVIDIA catalog (every model, the router, the guard, images)
+#   NVIDIA_API_KEY_BACKUP     nvapi-...  optional 2nd NVIDIA key — used automatically on a 429/402 (rate-limit/quota)
+#   OPENROUTER_API_KEY        optional — only for Qwen3 Coder / Laguna (the two OpenRouter models). Omit and they just fall back.
 #   SESSION_SECRET            random 32+ byte string (HMAC for session cookies)
 #   # GitHub/Google OAuth are OPTIONAL placeholder vars above (email+password works
 #   # without them); promote the *_SECRET ones to real secrets when you enable OAuth.

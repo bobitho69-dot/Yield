@@ -30,6 +30,7 @@ export interface ProjectRow {
   github_branch: string | null;
   github_synced_at: number | null;
   slug: string | null;
+  logo: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -178,7 +179,7 @@ export function getProjectBySlug(env: Env, slug: string): Promise<ProjectRow | n
 
 export function listProjects(env: Env, userId: string): Promise<{ results: any[] }> {
   return env.DB.prepare(
-    `SELECT id,user_id,title,model,is_public,github_repo,github_url,created_at,updated_at,
+    `SELECT id,user_id,title,model,is_public,github_repo,github_url,logo,created_at,updated_at,
             (LENGTH(code) > 0) AS has_code
        FROM projects WHERE user_id=? ORDER BY updated_at DESC LIMIT 100`,
   )
@@ -195,6 +196,15 @@ export async function saveProjectCode(env: Env, id: string, code: string, model:
 export async function renameProject(env: Env, id: string, title: string): Promise<void> {
   const slug = `${slugify(title)}-${id.slice(0, 6)}`;
   await env.DB.prepare('UPDATE projects SET title=?, slug=?, updated_at=? WHERE id=?').bind(title, slug, now(), id).run();
+}
+
+// Auto-branding from a build: set the generated app name (+ slug) and/or inline-SVG
+// logo. Each is applied only if provided; COALESCE keeps the existing value otherwise.
+export async function setProjectBranding(env: Env, id: string, title: string | null, logo: string | null): Promise<void> {
+  const slug = title ? `${slugify(title)}-${id.slice(0, 6)}` : null;
+  await env.DB.prepare('UPDATE projects SET title=COALESCE(?,title), slug=COALESCE(?,slug), logo=COALESCE(?,logo), updated_at=? WHERE id=?')
+    .bind(title, slug, logo, now(), id)
+    .run();
 }
 
 export async function deleteProject(env: Env, id: string): Promise<void> {

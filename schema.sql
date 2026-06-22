@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS projects (
   github_branch  TEXT,                       -- default branch
   github_synced_at INTEGER,                  -- unix seconds of last push
   slug         TEXT,                          -- readable share id (/p/<slug>)
+  logo         TEXT,                          -- auto-generated inline SVG app logo
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );

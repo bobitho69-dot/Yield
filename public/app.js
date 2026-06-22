@@ -514,6 +514,22 @@ async function consumeStream(res, opts = {}) {
           appendResearch(payload);
         } else if (ev === 'code') {
           appendCode(payload);
+        } else if (ev === 'ask') {
+          // Clarifying question with clickable choices — click sends it as the next prompt.
+          const el = document.createElement('div');
+          el.className = 'ask-card';
+          el.innerHTML = `<div class="ask-q">🤔 ${esc(payload.question)}</div>` +
+            (Array.isArray(payload.options) && payload.options.length
+              ? `<div class="ask-opts">${payload.options.map((o) => `<button class="ask-opt">${esc(o)}</button>`).join('')}</div>`
+              : '<div class="ask-hint">Type your answer below.</div>');
+          el.querySelectorAll('.ask-opt').forEach((b) => b.addEventListener('click', () => {
+            if (state.working) return;
+            el.querySelectorAll('.ask-opt').forEach((x) => { x.disabled = true; });
+            b.classList.add('chosen');
+            startUserPrompt(b.textContent);
+          }));
+          aiBubble.appendChild(el);
+          $('#messages').scrollTop = $('#messages').scrollHeight;
         } else if (ev === 'worker') {
           setWorker(payload.name, payload.status, payload.detail, payload.model);
         } else if (ev === 'status') {

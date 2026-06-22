@@ -530,6 +530,16 @@ async function consumeStream(res, opts = {}) {
           }));
           aiBubble.appendChild(el);
           $('#messages').scrollTop = $('#messages').scrollHeight;
+        } else if (ev === 'image') {
+          // An illustration the AI generated — show it inline in the chat.
+          if (payload.url) {
+            const fig = document.createElement('figure');
+            fig.className = 'chat-img';
+            fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" loading="lazy">` +
+              (payload.prompt ? `<figcaption>${esc(payload.prompt)}</figcaption>` : '');
+            aiBubble.appendChild(fig);
+            $('#messages').scrollTop = $('#messages').scrollHeight;
+          }
         } else if (ev === 'worker') {
           setWorker(payload.name, payload.status, payload.detail, payload.model);
         } else if (ev === 'status') {

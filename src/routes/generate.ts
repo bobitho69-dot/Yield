@@ -20,6 +20,7 @@ import {
   logUsage, saveFiles, setProjectBranding, updateAgent, type FileRow,
 } from '../lib/db';
 import { syncProjectToGithub } from './githubRoutes';
+import { generateImage } from './media';
 
 export interface GenBody {
   prompt: string;
@@ -230,6 +231,9 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   // "=== ask: Question? | Option A | Option B ===" — a clarifying question with optional
   // clickable choices; surfaced as an 'ask' event (a pop-up) and produces no files.
   const ASK = /^={2,}\s*ask:\s*(.+?)\s*={2,}\s*$/i;
+  // "=== image: a sunset over mountains ===" — generate an illustration to show in chat.
+  const IMAGE = /^={2,}\s*image:\s*(.+?)\s*={2,}\s*$/i;
+  const imagePrompts: string[] = [];
   let asked = false;
   let buf = '';
   let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' | 'logo' = 'chat';
@@ -309,6 +313,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       return; // single-line; doesn't change mode
     }
     if ((m = line.match(NAME))) { if (!appName) appName = m[1].trim().slice(0, 60); return; } // single-line
+    if ((m = line.match(IMAGE))) { const p = m[1].trim(); if (p && imagePrompts.length < 4) imagePrompts.push(p); return; } // single-line
     if ((m = line.match(ASK))) { // single-line clarifying question with optional choices
       const parts = m[1].split('|').map((s) => s.trim()).filter(Boolean);
       const question = parts[0] || '';
@@ -368,7 +373,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     reset() {
       buf = ''; mode = 'chat'; inThink = false; fenceOpen = false; lastStatus = ''; appName = ''; asked = false;
       curFile = curAgent = curTask = curResearch = null;
-      files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = logoLines.length = 0;
+      files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = logoLines.length = imagePrompts.length = 0;
     },
     // "Produced something worth keeping": real file content, real chat, or a delegation.
     // A bare "=== file: path ===" header with no body must NOT count — otherwise a
@@ -409,7 +414,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
         if (!fb.files.length && thinkLines.length) fb = extractFilesFromText(thinkLines.join('\n'));
         if (fb.files.length) { fs = fb.files; chat = chat || fb.chat || 'Here is your app.'; }
       }
-      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc, name: appName, logo: sanitizeLogo(logoLines.join('\n')), asked };
+      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc, name: appName, logo: sanitizeLogo(logoLines.join('\n')), asked, images: imagePrompts.slice(0, 4) };
     },
   };
 }
@@ -803,6 +808,7 @@ export async function runBuild(
         name: pass2.name || pass1.name,
         logo: pass2.logo || pass1.logo,
         asked: pass2.asked || pass1.asked,
+        images: [...pass1.images, ...pass2.images].slice(0, 4),
       };
     }
 
@@ -915,6 +921,17 @@ export async function runBuild(
         if (name || logo) await setProjectBranding(c.env, project.id, name, logo);
       }
     } catch (e) { console.error('branding step failed:', e); }
+
+    // Illustrations the model asked for ("=== image: ... ===") — generate each and show
+    // it inline in chat. Best-effort; never blocks the result.
+    try {
+      for (const p of result.images || []) {
+        await send('status', { stage: '🎨 Generating an image…' });
+        const url = await generateImage(c.env, p);
+        await heartbeat();
+        if (url) await send('image', { url, prompt: p });
+      }
+    } catch (e) { console.error('image step failed:', e); }
 
     await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents });
 

@@ -145,10 +145,9 @@ async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<vo
     // Strip any reasoning/tool-call artifacts the model may have emitted, so the rewrite
     // (which is shown in the Thinking panel AND fed to the builder) stays clean.
     const out = (text || '')
-      .replace(/<think>[\s\S]*?<\/think>/gi, '')
-      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
-      .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-      .replace(/<\/?(?:think|reasoning|tool_call|tool_response)[^>]*>/gi, '')
+      .replace(/<(think|thinking|reasoning|tool_call|tool_response)>[\s\S]*?<\/\1>/gi, '')
+      .replace(/<(?:think|thinking|reasoning|tool_call|tool_response)>[\s\S]*$/i, '')
+      .replace(/<\/?(?:think|thinking|reasoning|tool_call|tool_response)[^>]*>/gi, '')
       .replace(/^["'`\s]+|["'`\s]+$/g, '')
       .trim();
     // Only adopt a sane rewrite: non-empty, not a refusal, not absurdly long, actually different.
@@ -327,11 +326,16 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   const ASK = /^={2,}\s*ask:\s*(.+?)\s*={2,}\s*$/i;
   // "=== image: a sunset over mountains ===" — generate an illustration to show in chat.
   const IMAGE = /^={2,}\s*image:\s*(.+?)\s*={2,}\s*$/i;
+  // Reasoning wrappers some models emit (routed to the Thinking panel, never to chat).
+  const REASON_OPEN = /<(think|thinking|reasoning|tool_call)>/i;
+  // A real structural marker line (or code fence): if one appears mid-wrapper, the wrapper
+  // is treated as ended so an unclosed <tool_call> can't eat the app's files.
+  const STRUCTURAL = /^\s*(?:={2,}\s*(?:file|name|description|desc|tagline|agent|task|research|secret|logo|summary|recap|done|notes|ask|image)\b|```)/i;
   const imagePrompts: string[] = [];
   let asked = false;
   let buf = '';
   let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' | 'logo' = 'chat';
-  let inThink = false;
+  let reasonClose: string | null = null; // closing tag we're inside (</think>, </tool_call>, …)
   let appName = '';
   let appDescription = '';
   const logoLines: string[] = [];
@@ -350,28 +354,32 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   const secrets: SecretReq[] = [];
 
   async function handleLine(line: string): Promise<void> {
-    // Route <think>…</think> reasoning to the Thinking panel.
-    if (inThink) {
-      const close = line.indexOf('</think>');
-      if (close === -1) { thinkLines.push(line); await send('thinking', line + '\n'); return; }
-      const before = line.slice(0, close);
-      if (before) { thinkLines.push(before); await send('thinking', before + '\n'); }
-      inThink = false;
-      const after = line.slice(close + 8);
-      if (after.trim()) await handleLine(after);
-      return;
+    // Route reasoning wrappers (<think>/<thinking>/<reasoning>/<tool_call>) to the Thinking
+    // panel so they NEVER leak into the chat — including UNCLOSED ones (a reasoning model
+    // often opens <tool_call> and never closes it). Safety: while inside a wrapper, a real
+    // structural marker line (=== file: === etc., or a code fence) forces us back OUT, so an
+    // unclosed wrapper can never swallow the actual app.
+    if (reasonClose) {
+      if (!STRUCTURAL.test(line)) {
+        const close = line.toLowerCase().indexOf(reasonClose);
+        if (close === -1) { thinkLines.push(line); await send('thinking', line + '\n'); return; }
+        const before = line.slice(0, close);
+        if (before.trim()) { thinkLines.push(before); await send('thinking', before + '\n'); }
+        const after = line.slice(close + reasonClose.length);
+        reasonClose = null;
+        if (after.trim()) await handleLine(after);
+        return;
+      }
+      reasonClose = null; // structural marker mid-wrapper -> treat the wrapper as ended
     }
-    const open = line.indexOf('<think>');
-    if (open !== -1) {
-      const before = line.slice(0, open);
+    const om = line.match(REASON_OPEN);
+    if (om && om.index !== undefined) {
+      const before = line.slice(0, om.index);
       if (before.trim()) await handleLine(before);
-      inThink = true;
-      await handleLine(line.slice(open + 7)); // remainder is inside <think>
+      reasonClose = `</${om[1].toLowerCase()}>`;
+      await handleLine(line.slice(om.index + om[0].length)); // remainder is inside the wrapper
       return;
     }
-    // Note: we do NOT short-circuit on a <tool_call> here — an unclosed one would eat
-    // the whole build (files included). Tool-call artifacts are stripped from the final
-    // chat text in result() instead, which can never drop file output.
 
     let m;
     if ((m = line.match(FILE))) {
@@ -467,7 +475,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     // entries that survive into the retry's result. Only ever called when nothing
     // worth keeping was produced (see `produced`).
     reset() {
-      buf = ''; mode = 'chat'; inThink = false; fenceOpen = false; lastStatus = ''; appName = ''; appDescription = ''; asked = false;
+      buf = ''; mode = 'chat'; reasonClose = null; fenceOpen = false; lastStatus = ''; appName = ''; appDescription = ''; asked = false;
       curFile = curAgent = curTask = curResearch = null;
       files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = logoLines.length = imagePrompts.length = 0;
     },
@@ -481,11 +489,13 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     },
     result() {
       // Drop reasoning-model scratchpads if any leaked into the text.
+      // Backstop (the live handler already routes these to the Thinking panel): strip any
+      // reasoning wrapper that still slipped into chat — paired, OR an unclosed one that runs
+      // to the end of the text.
       let chat = chatLines.join('\n')
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
-        .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-        .replace(/<\/?(?:think|reasoning|tool_call|tool_response)[^>]*>/gi, '')
+        .replace(/<(think|thinking|reasoning|tool_call|tool_response)>[\s\S]*?<\/\1>/gi, '')
+        .replace(/<(?:think|thinking|reasoning|tool_call|tool_response)>[\s\S]*$/i, '')
+        .replace(/<\/?(?:think|thinking|reasoning|tool_call|tool_response)[^>]*>/gi, '')
         .trim();
       let fs: FileRow[] = files
         .map((f) => ({ path: f.path, content: cleanFile(f.lines.join('\n')) }))

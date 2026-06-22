@@ -42,6 +42,8 @@ export class BuildSession extends DurableObject<Env> {
   // can silently drop an over-size value (e.g. a job carrying big image attachments),
   // which would otherwise leave the alarm with no job and the build never running.
   private pendingJob: Job | null = null;
+  // Aborts the running build's model fetches when the user hits "stop".
+  private aborter: AbortController | null = null;
   // Replay buffer: every event broadcast so far, so a late/reconnecting tab can
   // catch up to live. Capped to bound memory on long builds.
   private events: { event: string; data: unknown }[] = [];
@@ -67,6 +69,12 @@ export class BuildSession extends DurableObject<Env> {
       // near-simultaneous /run requests can't both start it.
       if (job && !this.building) { this.building = true; await this.begin(job); }
       return this.attach();
+    }
+    // Stop the running build: abort its model fetches. runBuild sees the aborted signal,
+    // saves any partial work, and ends cleanly (a 'stopped' event, not an error).
+    if (path.endsWith('/stop') && req.method === 'POST') {
+      if (this.building && this.aborter) { this.aborter.abort(); this.broadcast('status', { stage: '■ Stopping…' }); }
+      return new Response(JSON.stringify({ ok: true, stopping: this.building }), { headers: { 'content-type': 'application/json' } });
     }
     // Reconnect a refreshed/reopened tab to an in-progress (or just-finished) build.
     if (path.endsWith('/attach')) return this.attach();
@@ -129,14 +137,17 @@ export class BuildSession extends DurableObject<Env> {
       deviceId: job.deviceId,
     };
 
+    this.aborter = new AbortController();
     try {
-      await runBuild(c, job.body, send, heartbeat);
+      await runBuild(c, job.body, send, heartbeat, this.aborter.signal);
     } catch (e: any) {
-      this.broadcast('error', { message: String(e?.message || e).slice(0, 400) });
+      // An aborted build is a user "stop", not an error — runBuild already handled it.
+      if (!this.aborter?.signal.aborted) this.broadcast('error', { message: String(e?.message || e).slice(0, 400) });
     } finally {
       this.building = false;
       this.alarmRunning = false;
       this.pendingJob = null;
+      this.aborter = null;
       await this.ctx.storage.delete(['building', 'projectId', 'job']).catch(() => {});
       if (this.projectId) await env.KV.delete(`build:${this.projectId}`).catch(() => {});
       this.broadcast('end', {});

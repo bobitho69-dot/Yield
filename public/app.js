@@ -4,6 +4,7 @@ const state = { user: null, authEnabled: true, providers: {}, models: [], model:
   thinking: 'medium', promptMax: false, files: [], activeFile: 'index.html', previewPage: 'index.html', streaming: false,
   working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
   attachments: [], // images/docs the user attached to the NEXT message (one-shot)
+  stopRequested: false, // user hit Stop — abort the build server-side, skip auto-fix/queue
   buildToken: 0, // bumped whenever the active project changes, to fence stale build streams
   previewEpoch: 0, // bumped on every preview reload, so the bug-check ignores stale-page errors
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
@@ -603,6 +604,11 @@ async function consumeStream(res, opts = {}) {
           else if (payload.code === 'login_required') extra = ' <a href="/login?redirect=/app" style="text-decoration:underline">Sign in</a>';
           setMeta('paused'); setBody(esc(payload.message || '') + extra);
           aiBubble.querySelector('#bu')?.addEventListener('click', (e) => { e.preventDefault(); upgrade(); });
+        } else if (ev === 'stopped') {
+          finished = true;
+          state.stopRequested = true;
+          setMeta('■ stopped'); setBody(fmt(chatAcc || payload.message || 'Stopped.'));
+          const lc = aiBubble.querySelector('.livecode'); if (lc) { lc.open = false; }
         } else if (ev === 'error') {
           finished = true;
           setMeta('error'); setBody(esc(payload.message || 'Generation failed'));
@@ -664,12 +670,26 @@ async function resumeBuild() {
 // ---------- Orchestration: lock while working + queue + auto bug-fix ----------
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Stop the running build: abort the AI server-side. The build saves any partial work and
+// ends; we also skip the auto-fix loop and the scheduled queue for this turn.
+async function stopBuild() {
+  if (!state.working || !state.projectId) return;
+  state.stopRequested = true;
+  const sb = $('#stopBtn'); if (sb) { sb.disabled = true; sb.textContent = '■ Stopping…'; }
+  try { await fetch(`/api/projects/${state.projectId}/stop`, { method: 'POST' }); } catch { /* the stream still ends */ }
+}
+
 function updateComposer() {
   const btn = $('#sendBtn');
   const prompt = $('#prompt');
   const composer = $('#composer');
+  const stopBtn = $('#stopBtn');
   if (!btn) return;
   composer && composer.classList.toggle('busy', state.working);
+  if (stopBtn) {
+    stopBtn.classList.toggle('hidden', !state.working);
+    if (state.working && !state.stopRequested) { stopBtn.disabled = false; stopBtn.textContent = '■ Stop'; }
+  }
   if (state.working) {
     const hasText = prompt && prompt.value.trim().length > 0;
     btn.innerHTML = hasText ? '＋ Schedule' : '<span class="spin"></span> Working…';
@@ -696,6 +716,7 @@ function renderQueue() {
 
 async function startUserPrompt(text, label, attachments) {
   state.autofixCount = 0;
+  state.stopRequested = false;
   await runCycle(text, { ...(label ? { label } : {}), ...(attachments && attachments.length ? { attachments } : {}) });
 }
 
@@ -852,6 +873,7 @@ async function runCycle(text, opts) {
   try {
     for (;;) {
       const hasFiles = await streamPrompt(nextText, nextOpts);
+      if (state.stopRequested) break; // user stopped — don't auto-fix or continue
       if (state.pendingSecrets.length) await promptForSecrets();
       if (!hasFiles) break;
       const errors = await bugCheck();
@@ -865,8 +887,9 @@ async function runCycle(text, opts) {
     }
   } finally {
     state.working = false; updateComposer();
-    // Run the next scheduled prompt, if any.
-    if (state.queue.length) {
+    // Run the next scheduled prompt, unless the user stopped this turn (then drop the queue).
+    if (state.stopRequested) { state.queue = []; renderQueue(); }
+    else if (state.queue.length) {
       const next = state.queue.shift();
       renderQueue();
       startUserPrompt(next);
@@ -1237,6 +1260,8 @@ function wireEvents() {
       if (atts.length) toast('Attachments are sent with an immediate build — re-attach when this finishes.');
     } else startUserPrompt(text, label, atts);
   });
+  // Stop the running build.
+  $('#stopBtn')?.addEventListener('click', stopBuild);
   // Attach button -> file picker; chosen files become attachments.
   const attachBtn = $('#attachBtn'), fileInput = $('#fileInput');
   if (attachBtn && fileInput) {

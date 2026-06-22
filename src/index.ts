@@ -66,6 +66,8 @@ export default {
           res = await handleVersions(request, c, id);
         } else if (id && sub === 'stream' && request.method === 'GET') {
           res = await handleBuildStream(c, id);
+        } else if (id && sub === 'stop' && request.method === 'POST') {
+          res = await handleBuildStop(c, id);
         } else {
           res = await handleProjects(request, c, id || undefined, sub || undefined);
         }
@@ -128,6 +130,17 @@ async function handleBuildStream(c: Ctx, id: string): Promise<Response> {
   if (!c.user || project.user_id !== c.user.id) return error(403, 'Not your project');
   const stub = c.env.BUILDER.get(c.env.BUILDER.idFromName(id));
   return stub.fetch('https://build.yield/attach');
+}
+
+// Stop an in-progress build: forward to the build's Durable Object, which aborts the
+// model fetches. The build then saves any partial work and ends cleanly.
+async function handleBuildStop(c: Ctx, id: string): Promise<Response> {
+  if (!c.env.BUILDER) return error(503, 'Builds unavailable');
+  const project = await getProject(c.env, id);
+  if (!project) return error(404, 'Project not found');
+  if (!c.user || project.user_id !== c.user.id) return error(403, 'Not your project');
+  const stub = c.env.BUILDER.get(c.env.BUILDER.idFromName(id));
+  return stub.fetch('https://build.yield/stop', { method: 'POST' });
 }
 
 // Clean URLs -> static files in ./public via the ASSETS binding.

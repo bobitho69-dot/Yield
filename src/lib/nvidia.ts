@@ -23,6 +23,7 @@ export interface ChatOptions {
   max_tokens?: number;
   top_p?: number;
   timeoutMs?: number; // abort if the request takes too long
+  signal?: AbortSignal; // external abort (e.g. the user stopped the build)
   extra?: Record<string, unknown>; // extra body params (e.g. reasoning_effort)
 }
 
@@ -41,10 +42,19 @@ function timeout(ms: number): { signal: AbortSignal; clear: () => void } {
   return { signal: ctrl.signal, clear: () => clearTimeout(t) };
 }
 
+// Combine the internal timeout signal with an optional external one (the user's "stop"),
+// so the request aborts when EITHER fires.
+function combineSignals(a: AbortSignal, b?: AbortSignal): AbortSignal {
+  if (!b) return a;
+  if (typeof (AbortSignal as any).any === 'function') return (AbortSignal as any).any([a, b]);
+  return b.aborted ? b : a; // older runtimes: at least honor an already-aborted stop
+}
+
 // POST the request with the primary key; if it comes back rate-limited / out of quota
 // (429/402) and a backup key is configured, transparently retry once with the backup.
 async function postChat(url: string, body: string, signal: AbortSignal, opts: ChatOptions): Promise<Response> {
-  const send = (key: string) => fetch(url, { method: 'POST', headers: headers(key), signal, body });
+  const sig = combineSignals(signal, opts.signal);
+  const send = (key: string) => fetch(url, { method: 'POST', headers: headers(key), signal: sig, body });
   let res = await send(opts.apiKey);
   if ((res.status === 429 || res.status === 402) && opts.apiKeyBackup && opts.apiKeyBackup !== opts.apiKey) {
     res = await send(opts.apiKeyBackup);

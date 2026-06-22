@@ -68,7 +68,7 @@ function shortReason(e: unknown): string {
 const STABLE_FALLBACKS = ['glm-5.1', 'deepseek-v4-flash', 'nemotron-3-ultra'];
 
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
-export async function routeModel(c: Ctx, prompt: string, exclude: string[] = []): Promise<{ id: string; reason: string }> {
+export async function routeModel(c: Ctx, prompt: string, exclude: string[] = [], signal?: AbortSignal): Promise<{ id: string; reason: string }> {
   // Pool of models Auto may choose from, minus any already-tried (failed) ones.
   const avail = CODER_MODELS.filter((m) => !exclude.includes(m.id));
   const pool = avail.length ? avail : CODER_MODELS;
@@ -88,6 +88,7 @@ export async function routeModel(c: Ctx, prompt: string, exclude: string[] = [])
       temperature: 0,
       max_tokens: 2000,
       timeoutMs: 35000,
+      signal,
       // gpt-oss is a reasoning model — keep it fast so routing doesn't time out.
       extra: { reasoning_effort: 'low' },
     });
@@ -129,7 +130,7 @@ export async function handleRoute(req: Request, c: Ctx): Promise<Response> {
 // flag so it stays snappy — the Auto router (gpt-oss) is a reasoning model and "thinks"
 // far too long for a quick rewrite. Best-effort — returns the original prompt on any
 // failure, a timeout, or a non-sane rewrite.
-async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<void>): Promise<{ prompt: string; changed: boolean }> {
+async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<void>, signal?: AbortSignal): Promise<{ prompt: string; changed: boolean }> {
   try {
     const fast = resolveModel('deepseek-v4-flash');
     const ep = endpointFor(c.env, fast);
@@ -139,7 +140,7 @@ async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<vo
         { role: 'system', content: ENHANCE_SYSTEM },
         { role: 'user', content: prompt.slice(0, 4000) },
       ],
-      temperature: 0.4, max_tokens: 700, timeoutMs: 15000, // short cap + tight timeout = snappy
+      temperature: 0.4, max_tokens: 700, timeoutMs: 15000, signal, // short cap + tight timeout = snappy
     });
     await heartbeat();
     // Strip any reasoning/tool-call artifacts the model may have emitted, so the rewrite
@@ -161,7 +162,7 @@ async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<vo
 // Describe uploaded images with the vision model (a pre-pass): returns a detailed
 // text description the coder can build from (match a mockup, use a logo, read a chart).
 // Best-effort — returns '' on any failure so a build never breaks over an image.
-async function describeImages(c: Ctx, prompt: string, images: Attachment[]): Promise<string> {
+async function describeImages(c: Ctx, prompt: string, images: Attachment[], signal?: AbortSignal): Promise<string> {
   try {
     const content: ContentPart[] = [{
       type: 'text',
@@ -180,7 +181,7 @@ async function describeImages(c: Ctx, prompt: string, images: Attachment[]): Pro
       apiKeyBackup: c.env.NVIDIA_API_KEY_BACKUP || undefined,
       model: visionModelId(c.env),
       messages: [{ role: 'user', content }],
-      temperature: 0.2, max_tokens: 1500, timeoutMs: 60000,
+      temperature: 0.2, max_tokens: 1500, timeoutMs: 60000, signal,
     });
     return (text || '').trim();
   } catch { return ''; }
@@ -191,7 +192,7 @@ async function describeImages(c: Ctx, prompt: string, images: Attachment[]): Pro
 // returned string (if any) is added to the build messages so the coder can use them.
 async function buildAttachmentContext(
   c: Ctx, prompt: string, attachments: Attachment[] | undefined,
-  send: SendFn, heartbeat: () => Promise<void>,
+  send: SendFn, heartbeat: () => Promise<void>, signal?: AbortSignal,
 ): Promise<string> {
   const atts = (attachments || []).slice(0, 6);
   if (!atts.length) return '';
@@ -213,7 +214,7 @@ async function buildAttachmentContext(
     if (c.env.NVIDIA_API_KEY) {
       await send('status', { stage: `👁 Looking at ${imgs.length} image(s)…` });
       await heartbeat();
-      const desc = await describeImages(c, prompt, imgs);
+      const desc = await describeImages(c, prompt, imgs, signal);
       await heartbeat();
       if (desc) {
         parts.push(`What the user's attached image(s) show (interpret and use these — e.g. match the design, use the content):\n${desc}`);
@@ -577,7 +578,7 @@ export type SendFn = (event: string, data: unknown) => Promise<void>;
 
 // Run one helper/research AI (from a "=== research: ===" block). It does NOT write
 // code — it returns findings/analysis (text) that the coder then builds with.
-async function runResearchAgent(env: Env, req: ResearchReq, context: string, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}): Promise<{ name: string; findings: string }> {
+async function runResearchAgent(env: Env, req: ResearchReq, context: string, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}, signal?: AbortSignal): Promise<{ name: string; findings: string }> {
   const messages = [
     { role: 'system' as const, content: RESEARCH_SYSTEM },
     { role: 'user' as const, content: `Context: ${context}\n\nResearch task ("${req.name}"):\n${req.instructions}` },
@@ -594,12 +595,12 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
       try {
         const { text } = await chat({
           baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-          temperature: 0.4, max_tokens: 8000, timeoutMs: 150000,
+          temperature: 0.4, max_tokens: 8000, timeoutMs: 150000, signal,
           ...(eff ? { extra: { reasoning_effort: eff } } : {}),
         });
         await heartbeat();
         if (text && text.trim()) return { name: req.name, findings: text.trim() };
-      } catch { /* try plain, then next model */ }
+      } catch { if (signal?.aborted) throw new Error('stopped'); /* try plain, then next model */ }
     }
   }
   return { name: req.name, findings: '(no findings — proceed with your best judgement)' };
@@ -608,7 +609,7 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
 // Run one parallel build agent (from a "=== task: ===" block). It streams its code
 // live (tagged with the agent's name via `send`) and returns the file(s) it built.
 // Falls back through stable models so one bad model id doesn't waste the agent.
-async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}): Promise<{ name: string; files: FileRow[]; error?: string; model?: string }> {
+async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}, signal?: AbortSignal): Promise<{ name: string; files: FileRow[]; error?: string; model?: string }> {
   const messages = [
     { role: 'system' as const, content: SUBAGENT_SYSTEM },
     { role: 'system' as const, content: sharedContext },
@@ -633,7 +634,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-            temperature: 0.3, max_tokens: 30000, timeoutMs: 300000,
+            temperature: 0.3, max_tokens: 30000, timeoutMs: 300000, signal,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await sub.feed(delta); await heartbeat(); },
@@ -649,6 +650,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
         try { await sub.end(); } catch { /* ignore */ }
         const partial = sub.result().files;
         if (partial.length) return { name: task.name, files: partial, model: model.id };
+        if (signal?.aborted) return { name: task.name, files: [], error: 'stopped', model: usedModel }; // user stopped — don't try more models
         lastErr = String(e?.message || e);
         // effort failed -> loop retries plainly; plain failed -> next model
       }
@@ -665,7 +667,7 @@ async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send:
 // were never built, scripts pointing at missing files, and leftover placeholders.
 async function verifyAndRepair(
   env: Env, model: ModelDef, files: FileRow[], send: SendFn,
-  heartbeat: () => Promise<void>, effort: 'low' | 'medium' | 'high',
+  heartbeat: () => Promise<void>, effort: 'low' | 'medium' | 'high', signal?: AbortSignal,
 ): Promise<FileRow[]> {
   if (!files.length) return files;
   // Up to 2 repair passes: re-verify after each so the app actually converges to a
@@ -705,14 +707,14 @@ async function verifyAndRepair(
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-            temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
+            temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000, signal,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await repair.feed(delta); await heartbeat(); },
           async (rr) => { await send('thinking', rr); await heartbeat(); },
         );
         break;
-      } catch { if (repair.produced) break; /* effort rejected -> retry plain -> give up */ }
+      } catch { if (repair.produced || signal?.aborted) break; /* effort rejected -> retry plain -> give up */ }
     }
     await repair.end();
     const fixed = repair.result().files;
@@ -739,8 +741,12 @@ export async function runBuild(
   body: GenBody,
   send: SendFn,
   heartbeat: () => Promise<void> = async () => {},
+  signal?: AbortSignal,
 ): Promise<void> {
   const prompt = (body.prompt || '').trim();
+  // True once the user hits "stop": all model fetches carry `signal` and abort, and the
+  // pipeline skips any remaining phases instead of starting new model work.
+  const stopped = () => !!signal?.aborted;
   try {
     await send('status', { stage: 'Screening prompt' });
     await heartbeat();
@@ -766,7 +772,7 @@ export async function runBuild(
     if (body.enhance && prompt.length >= 8) {
       await send('status', { stage: '⚡ Prompt Max — improving your prompt…' });
       await heartbeat();
-      const enh = await enhancePrompt(c, prompt, heartbeat);
+      const enh = await enhancePrompt(c, prompt, heartbeat, signal);
       buildPrompt = enh.prompt;
       if (enh.changed) {
         // Show what it became (Thinking panel) so the user can see what was built from.
@@ -780,7 +786,7 @@ export async function runBuild(
     let routeReason: string | undefined;
     if (modelId === 'auto') {
       await send('status', { stage: 'Picking the best model' });
-      const choice = await routeModel(c, buildPrompt);
+      const choice = await routeModel(c, buildPrompt, [], signal);
       modelId = choice.id;
       routeReason = choice.reason;
     }
@@ -844,7 +850,7 @@ export async function runBuild(
     }
     // Images/docs the user attached this turn: docs add their text, images are described
     // by the vision model. Added as context so the coder can build from them.
-    const attachCtx = await buildAttachmentContext(c, prompt, body.attachments, send, heartbeat);
+    const attachCtx = await buildAttachmentContext(c, prompt, body.attachments, send, heartbeat, signal);
     if (attachCtx) messages.push({ role: 'system', content: attachCtx });
     messages.push({ role: 'user', content: buildPrompt });
 
@@ -866,7 +872,7 @@ export async function runBuild(
         await chatStream(
           {
             baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-            temperature: 0.3, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000,
+            temperature: 0.3, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000, signal,
             ...(eff ? { extra: { reasoning_effort: eff } } : {}),
           },
           async (delta) => { await streamer.feed(delta); await heartbeat(); },
@@ -878,6 +884,8 @@ export async function runBuild(
       } catch (e) {
         if (streamer.produced) {
           await send('status', { stage: 'Finalizing what was built…' }); // keep partial output
+        } else if (stopped()) {
+          throw e; // user stopped before any output — don't run the fallback ladder
         } else {
           // The selected/routed model failed (unavailable id, rate limit, etc.). Retry
           // it PLAINLY first (it may have only rejected the reasoning flag). If it still
@@ -892,8 +900,8 @@ export async function runBuild(
           if (!ok && !streamer.produced) {
             const reason = shortReason(selErr);
             const tried = new Set<string>([activeModel.id]);
-            for (let attempt = 0; attempt < 3 && !ok && !streamer.produced; attempt++) {
-              const choice = await routeModel(c, prompt, [...tried]);
+            for (let attempt = 0; attempt < 3 && !ok && !streamer.produced && !stopped(); attempt++) {
+              const choice = await routeModel(c, prompt, [...tried], signal);
               if (tried.has(choice.id)) break; // Auto has nothing new to suggest
               tried.add(choice.id);
               const fb = resolveModel(choice.id);
@@ -909,7 +917,7 @@ export async function runBuild(
             // on the most reliable anchor models so a build still completes. These are the
             // same stable fallbacks the sub-agents/research use.
             for (const sid of STABLE_FALLBACKS) {
-              if (ok || streamer.produced) break;
+              if (ok || streamer.produced || stopped()) break;
               if (tried.has(sid)) continue;
               tried.add(sid);
               const fb = resolveModel(sid);
@@ -934,7 +942,7 @@ export async function runBuild(
     // ("=== research: Name ==="), run those helpers in parallel, surface their
     // findings in the Thinking panel, then build again WITH the findings. Bounded
     // to a single research round so it always converges to code.
-    if (result.research.length) {
+    if (!stopped() && result.research.length) {
       const reqs = result.research;
       await send('status', { stage: `Consulting ${reqs.length} helper AI(s)…` });
       await heartbeat();
@@ -942,7 +950,7 @@ export async function runBuild(
       const findings = await Promise.all(reqs.map(async (r) => {
         await send('status', { stage: `🔬 ${r.name} researching…` });
         await send('research', { name: r.name, status: 'working' });
-        const f = await runResearchAgent(c.env, r, rctx, wantEffort, heartbeat);
+        const f = await runResearchAgent(c.env, r, rctx, wantEffort, heartbeat, signal);
         await send('research', { name: r.name, findings: f.findings });
         await heartbeat();
         return f;
@@ -989,7 +997,7 @@ export async function runBuild(
     // Fan out: if the orchestrator delegated "=== task: ===" blocks, run them as
     // parallel build agents — each streams its own code live (tagged by name).
     let agentNote = '';
-    if (result.tasks.length) {
+    if (!stopped() && result.tasks.length) {
       await send('status', { stage: `Launching ${result.tasks.length} build agents…` });
       await heartbeat();
       const sharedContext =
@@ -1003,7 +1011,7 @@ export async function runBuild(
       for (const t of result.tasks) await send('worker', { name: t.name, kind: 'build', status: 'start', model: labelFor(t.model) });
       const results = await Promise.all(result.tasks.map(async (t) => {
         await send('status', { stage: `Agent ${t.name} working…` });
-        const res = await runSubAgent(c.env, t, sharedContext, send, wantEffort, heartbeat);
+        const res = await runSubAgent(c.env, t, sharedContext, send, wantEffort, heartbeat, signal);
         const n = res.files.length;
         await send('worker', { name: t.name, kind: 'build', status: n ? 'done' : 'fail', detail: n ? `${n} file(s)` : (res.error || 'no output'), model: labelFor(res.model || t.model) });
         await send('status', { stage: n ? `Agent ${t.name}: ${n} file(s) ✓` : `Agent ${t.name}: no output` });
@@ -1026,7 +1034,7 @@ export async function runBuild(
     // files (otherwise "thanks!" would fabricate an app).
     const chitchat = /^(thanks?|thank you|ok(ay)?|cool|nice|great|awesome|hi|hello|hey|yo|yes|no|sure|👍|🙏)[\s!.?]*$/i.test(prompt.trim());
     // Don't force a build when the model deliberately asked a clarifying question.
-    if (!files.length && !chitchat && !result.asked) {
+    if (!stopped() && !files.length && !chitchat && !result.asked) {
       await send('status', { stage: 'No code yet — building it directly…' });
       await heartbeat();
       messages.push({ role: 'assistant', content: (chatBody || 'I planned the app.').slice(0, 1500) });
@@ -1049,14 +1057,16 @@ export async function runBuild(
     }
 
     // Verify the finished app and auto-repair broken links / missing pages /
-    // placeholders once (best-effort — never let it sink a delivered build).
-    if (files.length) {
-      try { files = await verifyAndRepair(c.env, activeModel, files, send, heartbeat, wantEffort); }
+    // placeholders once (best-effort — never let it sink a delivered build). Skip on stop.
+    if (!stopped() && files.length) {
+      try { files = await verifyAndRepair(c.env, activeModel, files, send, heartbeat, wantEffort, signal); }
       catch (e) { console.error('verify step failed:', e); }
     }
 
     const hasFiles = files.length > 0;
-    const chatText = (chatBody || (hasFiles ? 'Updated your app.' : 'Done.')) + agentNote;
+    // If the user stopped, keep + save whatever was already built and label it clearly.
+    if (stopped()) await send('status', { stage: '■ Stopped — saving what was built…' });
+    const chatText = (chatBody || (hasFiles ? 'Updated your app.' : 'Done.')) + agentNote + (stopped() ? '\n\n■ Stopped early — saved what was built so far.' : '');
 
     // 7) Create/update AI-declared agents (project-scoped). Best-effort — a DB
     //    hiccup here must NOT prevent the 'done' event (which carries the files),
@@ -1125,6 +1135,15 @@ export async function runBuild(
       await logUsage(c.env, { user_id: c.user?.id ?? null, kind: hasFiles ? 'generate' : 'chat', model: activeModel.id, high_usage: gate.usage.highUsage });
     } catch (e) { console.error('post-build tail failed:', e); }
   } catch (e: any) {
+    // User stopped before anything was built — that's not an error.
+    if (stopped()) {
+      try {
+        const project = body.projectId ? await getProject(c.env, body.projectId) : null;
+        if (project && c.user) await addMessage(c.env, { project_id: project.id, role: 'assistant', content: '■ Stopped. Nothing was built for this turn.', model: 'system' });
+      } catch { /* ignore */ }
+      await send('stopped', { message: 'Stopped. Nothing was built for this turn.' });
+      return;
+    }
     const reason = shortReason(e);
     console.error('build failed:', e?.stack || e);
     // Record the failure in history (best-effort) so the user's prompt + what went wrong

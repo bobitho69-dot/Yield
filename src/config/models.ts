@@ -209,6 +209,16 @@ export const GUARD_MODEL: ModelDef = {
   internal: true,
 };
 
+// Vision model — interprets user-uploaded images. It runs as a PRE-PASS that turns
+// the image(s) into a detailed text description, which is then fed to the coder model
+// (so any coder, even text-only ones, can "use" an uploaded screenshot/mockup/logo).
+// NVIDIA-hosted (OpenAI-compatible, reuses NVIDIA_API_KEY); the exact id is overridable
+// via the VISION_MODEL env var. Verify the current id at build.nvidia.com.
+const DEFAULT_VISION_MODEL = 'meta/llama-3.2-90b-vision-instruct';
+export function visionModelId(env: Env): string {
+  return (env.VISION_MODEL && env.VISION_MODEL.trim()) || DEFAULT_VISION_MODEL;
+}
+
 const BY_ID: Record<string, ModelDef> = Object.fromEntries(
   [...CODER_MODELS, ROUTER_MODEL, GUARD_MODEL].map((m) => [m.id, m]),
 );

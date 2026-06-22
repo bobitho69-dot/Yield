@@ -59,6 +59,48 @@ export async function generateImage(env: Env, prompt: string, opts: Record<strin
   }
 }
 
+// Generate a 3D model (.glb) from a text prompt via NVIDIA TRELLIS. Returns a GLB
+// data URL (or a provider URL), or null. Reuses NVIDIA_API_KEY + the backup on 429/402.
+// Best-effort: never throws. 3D generation is slow, so callers use a long timeout.
+export async function generate3dModel(env: Env, prompt: string, seed = 0): Promise<string | null> {
+  const url = env.TRELLIS_API_URL;
+  const key = env.NVIDIA_API_KEY;
+  if (!url || !key || !prompt) return null;
+  const body = JSON.stringify({ prompt, seed });
+  const post = (k: string) => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${k}`, 'content-type': 'application/json', accept: 'application/json' }, body });
+  try {
+    let r = await post(key);
+    if ((r.status === 429 || r.status === 402) && env.NVIDIA_API_KEY_BACKUP && env.NVIDIA_API_KEY_BACKUP !== key) {
+      r = await post(env.NVIDIA_API_KEY_BACKUP);
+    }
+    const data: any = await r.json().catch(() => ({}));
+    if (!r.ok) return null;
+    const b64 = data?.artifacts?.[0]?.base64 || data?.artifacts?.[0]?.b64_json || (typeof data?.model === 'string' ? data.model : null);
+    if (typeof b64 === 'string' && b64) return b64.startsWith('data:') ? b64 : `data:model/gltf-binary;base64,${b64}`;
+    return data?.url || data?.artifacts?.[0]?.url || null; // some endpoints return a URL
+  } catch {
+    return null;
+  }
+}
+
+// POST /api/media/model3d  { prompt, seed? } -> { url }  (a .glb the app can render)
+export async function handleModel3d(req: Request, c: Ctx): Promise<Response> {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+  if (req.method !== 'POST') return j({ error: 'POST only' }, 405);
+  if (!c.env.TRELLIS_API_URL || !c.env.NVIDIA_API_KEY) {
+    return j({ error: `3D generation isn't configured yet.`, code: 'not_configured' }, 503);
+  }
+  const gate = await gateGeneration(c);
+  if (!gate.allowed) return j({ error: gate.reason, code: gate.code }, gate.status);
+  const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+  if (!body.prompt) return j({ error: 'prompt required' }, 400);
+  const url = await generate3dModel(c.env, String(body.prompt), Number(body.seed) || 0);
+  if (!url) return j({ error: '3D model API error (check TRELLIS_API_URL / try a simpler prompt)' }, 502);
+  await recordGeneration(c);
+  await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_3d' });
+  return j({ url });
+}
+
 export async function handleMedia(req: Request, c: Ctx): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
   if (req.method !== 'POST') return j({ error: 'POST only' }, 405);

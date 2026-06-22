@@ -29,6 +29,14 @@ export interface Env {
   IMAGE_API_URL?: string;
   IMAGE_API_MODEL?: string;
 
+  // AI 3D-model generation (optional). Apps call window.YIELD.model3d() -> a .glb.
+  // The NVIDIA-hosted Microsoft TRELLIS endpoint; reuses NVIDIA_API_KEY.
+  TRELLIS_API_URL?: string;
+
+  // Vision model id (optional). Interprets user-uploaded images in the builder (a
+  // pre-pass that describes them for the coder). NVIDIA-hosted, reuses NVIDIA_API_KEY.
+  VISION_MODEL?: string;
+
   // Secrets
   NVIDIA_API_KEY: string;         // the single key for the whole NVIDIA catalog (every model)
   NVIDIA_API_KEY_BACKUP?: string; // optional 2nd NVIDIA key; used automatically on a 429/402 (rate-limit/quota)

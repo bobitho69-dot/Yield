@@ -76,6 +76,19 @@ export const CODER_MODELS: ModelDef[] = [
     provider: { apiKeyEnv: 'QWEN_API_KEY' },
   },
   {
+    id: 'qwen3.5-122b',
+    label: 'Qwen3.5 122B',
+    modelId: 'qwen/qwen3.5-122b-a10b',
+    role: 'coder',
+    tier: 'standard',
+    speed: 4,
+    blurb: 'Mid-size 122B MoE (10B active) — fast, capable, with vision.',
+    pros: ['Fast for its quality', 'Multimodal — understands images', 'Great everyday all-rounder'],
+    cons: ['Less depth than the 397B on hard logic', 'Newer / less battle-tested'],
+    // NVIDIA endpoint (default base URL); key falls back to NVIDIA_API_KEY.
+    provider: { apiKeyEnv: 'QWEN_API_KEY' },
+  },
+  {
     id: 'minimax-m3',
     label: 'MiniMax M3',
     modelId: 'minimaxai/minimax-m3',

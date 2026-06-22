@@ -10,6 +10,7 @@ export interface ChatMessage {
 export interface ChatOptions {
   baseUrl: string; // e.g. https://integrate.api.nvidia.com/v1
   apiKey: string;
+  apiKeyBackup?: string; // retried on a 429/402 (rate-limit / quota) from the primary key
   model: string; // provider model id
   messages: ChatMessage[];
   temperature?: number;
@@ -34,24 +35,31 @@ function timeout(ms: number): { signal: AbortSignal; clear: () => void } {
   return { signal: ctrl.signal, clear: () => clearTimeout(t) };
 }
 
+// POST the request with the primary key; if it comes back rate-limited / out of quota
+// (429/402) and a backup key is configured, transparently retry once with the backup.
+async function postChat(url: string, body: string, signal: AbortSignal, opts: ChatOptions): Promise<Response> {
+  const send = (key: string) => fetch(url, { method: 'POST', headers: headers(key), signal, body });
+  let res = await send(opts.apiKey);
+  if ((res.status === 429 || res.status === 402) && opts.apiKeyBackup && opts.apiKeyBackup !== opts.apiKey) {
+    res = await send(opts.apiKeyBackup);
+  }
+  return res;
+}
+
 /** Non-streaming completion. Returns the full assistant text + token usage. */
 export async function chat(opts: ChatOptions): Promise<{ text: string; usage: { in: number; out: number } }> {
   const to = timeout(opts.timeoutMs ?? 30000);
   try {
-    const res = await fetch(`${opts.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: headers(opts.apiKey),
-      signal: to.signal,
-      body: JSON.stringify({
-        model: opts.model,
-        messages: opts.messages,
-        temperature: opts.temperature ?? 0.4,
-        top_p: opts.top_p ?? 0.9,
-        ...(opts.max_tokens ? { max_tokens: opts.max_tokens } : {}), // omit = no cap
-        stream: false,
-        ...(opts.extra || {}),
-      }),
+    const body = JSON.stringify({
+      model: opts.model,
+      messages: opts.messages,
+      temperature: opts.temperature ?? 0.4,
+      top_p: opts.top_p ?? 0.9,
+      ...(opts.max_tokens ? { max_tokens: opts.max_tokens } : {}), // omit = no cap
+      stream: false,
+      ...(opts.extra || {}),
     });
+    const res = await postChat(`${opts.baseUrl}/chat/completions`, body, to.signal, opts);
     if (!res.ok) {
       const body = await res.text();
       throw new NvidiaError(res.status, body);
@@ -79,20 +87,16 @@ export async function chatStream(
   onReasoning?: (r: string) => void | Promise<void>,
 ): Promise<{ text: string }> {
   const to = timeout(opts.timeoutMs ?? 90000);
-  const res = await fetch(`${opts.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: headers(opts.apiKey),
-    signal: to.signal,
-    body: JSON.stringify({
-      model: opts.model,
-      messages: opts.messages,
-      temperature: opts.temperature ?? 0.4,
-      top_p: opts.top_p ?? 0.9,
-      ...(opts.max_tokens ? { max_tokens: opts.max_tokens } : {}), // omit = no cap
-      stream: true,
-      ...(opts.extra || {}),
-    }),
+  const body = JSON.stringify({
+    model: opts.model,
+    messages: opts.messages,
+    temperature: opts.temperature ?? 0.4,
+    top_p: opts.top_p ?? 0.9,
+    ...(opts.max_tokens ? { max_tokens: opts.max_tokens } : {}), // omit = no cap
+    stream: true,
+    ...(opts.extra || {}),
   });
+  const res = await postChat(`${opts.baseUrl}/chat/completions`, body, to.signal, opts);
   if (!res.ok || !res.body) {
     to.clear();
     const body = await res.text().catch(() => '');

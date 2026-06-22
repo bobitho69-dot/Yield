@@ -3,7 +3,7 @@
 // server-side) and returns an image URL / data URL.
 //   POST /api/media/image  { prompt, ...opts } -> { url, raw }
 
-import type { Ctx } from '../types';
+import type { Ctx, Env } from '../types';
 import { json } from '../lib/response';
 import { gateGeneration, recordGeneration } from '../lib/usage';
 import { logUsage } from '../lib/db';
@@ -34,37 +34,48 @@ function extractUrl(d: any): string | null {
   );
 }
 
+// Generate one image from a prompt via the configured provider (FLUX on NVIDIA by
+// default). Returns a URL / data URL, or null if unconfigured or it fails. Used both
+// by the public /api/media/image endpoint and by the builder (to show illustrations
+// in chat). Best-effort: never throws.
+export async function generateImage(env: Env, prompt: string, opts: Record<string, any> = {}): Promise<string | null> {
+  const url = env.IMAGE_API_URL;
+  const key = env.IMAGE_API_KEY || env.NVIDIA_API_KEY; // FLUX on NVIDIA reuses the nvapi key
+  if (!url || !key || !prompt) return null;
+  const defaults = { mode: 'base', cfg_scale: 3.5, width: 1024, height: 1024, seed: 0, steps: 4 };
+  const body = JSON.stringify({ ...defaults, ...(env.IMAGE_API_MODEL ? { model: env.IMAGE_API_MODEL } : {}), prompt, ...opts });
+  const post = (k: string) => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${k}`, 'content-type': 'application/json', accept: 'application/json' }, body });
+  try {
+    let r = await post(key);
+    // On rate-limit / quota, retry once with the backup NVIDIA key if configured.
+    if ((r.status === 429 || r.status === 402) && env.NVIDIA_API_KEY_BACKUP && env.NVIDIA_API_KEY_BACKUP !== key) {
+      r = await post(env.NVIDIA_API_KEY_BACKUP);
+    }
+    const data: any = await r.json().catch(() => ({}));
+    if (!r.ok) return null;
+    return extractUrl(data);
+  } catch {
+    return null;
+  }
+}
+
 export async function handleMedia(req: Request, c: Ctx): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
   if (req.method !== 'POST') return j({ error: 'POST only' }, 405);
 
-  const url = c.env.IMAGE_API_URL;
-  // NVIDIA image gen uses the same nvapi key — fall back to it so no extra setup.
-  const key = c.env.IMAGE_API_KEY || c.env.NVIDIA_API_KEY;
-  const model = c.env.IMAGE_API_MODEL;
-  if (!url || !key) return j({ error: `Image generation isn't configured yet.`, code: 'not_configured' }, 503);
+  if (!c.env.IMAGE_API_URL || !(c.env.IMAGE_API_KEY || c.env.NVIDIA_API_KEY)) {
+    return j({ error: `Image generation isn't configured yet.`, code: 'not_configured' }, 503);
+  }
 
   const gate = await gateGeneration(c);
   if (!gate.allowed) return j({ error: gate.reason, code: gate.code }, gate.status);
 
   const body = (await req.json().catch(() => ({}))) as Record<string, any>;
   if (!body.prompt) return j({ error: 'prompt required' }, 400);
-  // Sensible defaults for NVIDIA FLUX image generation; the app can override any.
-  const defaults = { mode: 'base', cfg_scale: 3.5, width: 1024, height: 1024, seed: 0, steps: 4 };
-  const payload = { ...defaults, ...(model ? { model } : {}), ...body };
-
-  try {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data: any = await r.json().catch(() => ({}));
-    if (!r.ok) return j({ error: 'Media API error', detail: String(JSON.stringify(data)).slice(0, 300) }, 502);
-    await recordGeneration(c);
-    await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_image' });
-    return j({ url: extractUrl(data), raw: data });
-  } catch (e: any) {
-    return j({ error: String(e?.message || e).slice(0, 200) }, 502);
-  }
+  const { prompt, ...opts } = body;
+  const url = await generateImage(c.env, prompt, opts);
+  if (!url) return j({ error: 'Media API error' }, 502);
+  await recordGeneration(c);
+  await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_image' });
+  return j({ url });
 }

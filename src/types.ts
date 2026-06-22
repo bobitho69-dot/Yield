@@ -30,20 +30,12 @@ export interface Env {
   IMAGE_API_MODEL?: string;
 
   // Secrets
-  NVIDIA_API_KEY: string; // shared default + fallback for every AI below
+  NVIDIA_API_KEY: string;         // the single key for the whole NVIDIA catalog (every model)
+  NVIDIA_API_KEY_BACKUP?: string; // optional 2nd NVIDIA key; used automatically on a 429/402 (rate-limit/quota)
 
-  // Per-AI keys (optional). Each AI is its own API; unset -> falls back to NVIDIA_API_KEY.
-  KIMI_API_KEY?: string;          // Kimi K2.6
-  MINIMAX_API_KEY?: string;       // MiniMax M3
-  DEEPSEEK_FLASH_API_KEY?: string;// DeepSeek V4 Flash
-  STEP_API_KEY?: string;          // Step 3.7 Flash
-  DEEPSEEK_PRO_API_KEY?: string;  // DeepSeek V4 Pro
-  GLM_API_KEY?: string;           // GLM 5.1
-  GPTOSS_API_KEY?: string;        // gpt-oss-20b (Auto router)
-  NEMOGUARD_API_KEY?: string;     // NeMoGuard JailbreakDetect
-  OPENROUTER_API_KEY?: string;    // Qwen3 Coder / Laguna (via OpenRouter)
-  GEMMA_API_KEY?: string;         // Gemma 4 31B (via NVIDIA; or name a secret after the model id)
-  NEMOTRON_API_KEY?: string;      // Nemotron 3 Ultra 550B (via NVIDIA; or name a secret after the model id)
+  // The only non-NVIDIA provider: OpenRouter (Qwen3 Coder / Laguna). Optional — those
+  // two models just fall back if unset. The old per-model NVIDIA keys are no longer used.
+  OPENROUTER_API_KEY?: string;
 
   SESSION_SECRET: string;
   GITHUB_CLIENT_ID: string;

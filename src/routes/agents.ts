@@ -109,7 +109,7 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
     for (const eff of ['low', null] as const) {
       try {
         const { text } = await chat({
-          baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.modelId, messages,
+          baseUrl: e.baseUrl, apiKey: e.apiKey, apiKeyBackup: e.apiKeyBackup, model: e.modelId, messages,
           max_tokens: 4000, timeoutMs: 40000,
           ...(eff ? { extra: { reasoning_effort: eff } } : {}),
         });

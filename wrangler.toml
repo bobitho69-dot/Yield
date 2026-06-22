@@ -87,6 +87,19 @@ DONATE_URL = ""
 IMAGE_API_URL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell"
 IMAGE_API_MODEL = ""
 
+# AI 3D-model generation (Microsoft TRELLIS via NVIDIA — reuses NVIDIA_API_KEY, no
+# extra key). Apps call window.YIELD.model3d(prompt) and get back a .glb to render
+# (e.g. with Google's <model-viewer>). 3D gen is slow, so apps should show a loader.
+# Leave empty to disable the feature. VERIFY the exact hosted path at build.nvidia.com
+# (the model is "microsoft/trellis"); the value below is the expected NVIDIA genai URL.
+TRELLIS_API_URL = "https://ai.api.nvidia.com/v1/genai/microsoft/trellis"
+
+# Vision model — lets the builder "see" images you upload in chat (UI mockups,
+# screenshots, logos, photos, diagrams). It runs as a pre-pass that describes the
+# image(s) in detail, then feeds that to the coder. NVIDIA-hosted, reuses
+# NVIDIA_API_KEY. Override the id here if NVIDIA renames it (verify at build.nvidia.com).
+VISION_MODEL = "meta/llama-3.2-90b-vision-instruct"
+
 # OAuth is OPTIONAL — email + password login works without it. These placeholders
 # let the app deploy today; the login UI auto-hides GitHub/Google until they're real.
 # To enable later: put your real Client ID values here, and for each *_SECRET set a

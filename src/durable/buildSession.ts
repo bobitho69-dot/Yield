@@ -37,6 +37,11 @@ export class BuildSession extends DurableObject<Env> {
   private building = false;
   private alarmRunning = false;
   private projectId: string | null = null;
+  // The current job, kept in memory as a fallback for the alarm. The alarm fires
+  // immediately (same live instance), so this avoids depending on storage.put — which
+  // can silently drop an over-size value (e.g. a job carrying big image attachments),
+  // which would otherwise leave the alarm with no job and the build never running.
+  private pendingJob: Job | null = null;
   // Replay buffer: every event broadcast so far, so a late/reconnecting tab can
   // catch up to live. Capped to bound memory on long builds.
   private events: { event: string; data: unknown }[] = [];
@@ -78,6 +83,7 @@ export class BuildSession extends DurableObject<Env> {
     this.building = true;
     this.events = [];
     this.projectId = job.body.projectId || null;
+    this.pendingJob = job; // in-memory fallback for the immediate alarm (see field note)
     await this.ctx.storage.put({ building: true, projectId: this.projectId, job }).catch(() => {});
     if (this.projectId) {
       await this.env.KV.put(`build:${this.projectId}`, String(Date.now()), { expirationTtl: BUILD_FLAG_TTL }).catch(() => {});
@@ -104,7 +110,7 @@ export class BuildSession extends DurableObject<Env> {
     // running in this instance, don't start a second concurrent build (double spend).
     if (this.alarmRunning) return;
     this.alarmRunning = true;
-    const job = await this.ctx.storage.get<Job>('job');
+    const job = this.pendingJob || await this.ctx.storage.get<Job>('job');
     if (!job) { this.building = false; this.alarmRunning = false; return; }
     this.building = true;
     this.projectId = job.body.projectId || null;
@@ -130,6 +136,7 @@ export class BuildSession extends DurableObject<Env> {
     } finally {
       this.building = false;
       this.alarmRunning = false;
+      this.pendingJob = null;
       await this.ctx.storage.delete(['building', 'projectId', 'job']).catch(() => {});
       if (this.projectId) await env.KV.delete(`build:${this.projectId}`).catch(() => {});
       this.broadcast('end', {});

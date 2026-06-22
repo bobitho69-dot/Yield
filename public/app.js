@@ -3,6 +3,7 @@ const $ = (s) => document.querySelector(s);
 const state = { user: null, authEnabled: true, providers: {}, models: [], model: 'auto', recommended: null, projectId: null,
   thinking: 'medium', promptMax: false, files: [], activeFile: 'index.html', previewPage: 'index.html', streaming: false,
   working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
+  attachments: [], // images/docs the user attached to the NEXT message (one-shot)
   buildToken: 0, // bumped whenever the active project changes, to fence stale build streams
   previewEpoch: 0, // bumped on every preview reload, so the bug-check ignores stale-page errors
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
@@ -346,12 +347,14 @@ function addBubble(cls, html) {
 // Low-level: streams one prompt, returns whether files were produced.
 async function streamPrompt(prompt, opts = {}) {
   state.streaming = true;
-  addBubble('user', opts.label ? `<span class="muted">${esc(opts.label)}</span>` : esc(prompt));
+  const atts = Array.isArray(opts.attachments) ? opts.attachments : [];
+  const attHtml = atts.length ? `<div class="chat-atts">${atts.map(attChipHtml).join('')}</div>` : '';
+  addBubble('user', (opts.label ? `<span class="muted">${esc(opts.label)}</span>` : esc(prompt)) + attHtml);
   try {
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId, thinking: state.thinking, enhance: state.promptMax }),
+      body: JSON.stringify({ prompt, model: state.model, projectId: state.projectId, thinking: state.thinking, enhance: state.promptMax, attachments: atts.length ? atts : undefined }),
     });
     if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) {
       const err = await res.json().catch(() => ({}));
@@ -689,9 +692,126 @@ function renderQueue() {
   el.querySelectorAll('button[data-i]').forEach((b) => b.addEventListener('click', () => { state.queue.splice(+b.dataset.i, 1); renderQueue(); }));
 }
 
-async function startUserPrompt(text, label) {
+async function startUserPrompt(text, label, attachments) {
   state.autofixCount = 0;
-  await runCycle(text, label ? { label } : {});
+  await runCycle(text, { ...(label ? { label } : {}), ...(attachments && attachments.length ? { attachments } : {}) });
+}
+
+// ---------- Attachments (images + docs the AI reads) ----------
+const MAX_ATTACHMENTS = 6;
+const TEXT_EXT = /\.(txt|md|markdown|csv|json|html?|css|js|ts|tsx|jsx|svg|log|ya?ml|xml)$/i;
+
+// Tiny transient toast (used for attachment feedback).
+let _toastTimer = null;
+function toast(msg) {
+  let el = $('#toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+// Small chip markup for an attachment shown inside a sent user message.
+function attChipHtml(a) {
+  if (a.kind === 'image' && a.dataUrl) {
+    return `<span class="att-thumb" title="${esc(a.name || 'image')}"><img src="${esc(a.dataUrl)}" alt=""></span>`;
+  }
+  return `<span class="att-thumb att-doc" title="${esc(a.name || 'document')}">📄 ${esc((a.name || 'document').slice(0, 24))}</span>`;
+}
+
+// Render the pending-attachments strip above the input (with remove buttons).
+function renderAttachments() {
+  const el = $('#attachments');
+  if (!el) return;
+  if (!state.attachments.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.classList.remove('hidden');
+  el.innerHTML = state.attachments.map((a, i) => {
+    const inner = a.kind === 'image' && a.dataUrl
+      ? `<img src="${esc(a.dataUrl)}" alt="">`
+      : `<span class="att-ico">📄</span><span class="att-name">${esc((a.name || 'document').slice(0, 24))}</span>`;
+    return `<span class="att-pill ${a.kind === 'image' ? 'is-img' : 'is-doc'}">${inner}<button type="button" class="att-x" data-i="${i}" title="Remove" aria-label="Remove">✕</button></span>`;
+  }).join('');
+  el.querySelectorAll('.att-x').forEach((b) => b.addEventListener('click', () => {
+    state.attachments.splice(+b.dataset.i, 1); renderAttachments();
+  }));
+}
+
+// Downscale an image file to a compact data URL the vision model can read (caps the
+// payload that travels to the build). PNG for transparency (logos), JPEG otherwise.
+function imageFileToDataUrl(file, max = 1024, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > max || h > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+        try {
+          const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+          cv.getContext('2d').drawImage(img, 0, 0, w, h);
+          const isPng = /png|svg/i.test(file.type);
+          resolve(cv.toDataURL(isPng ? 'image/png' : 'image/jpeg', quality));
+        } catch { resolve(fr.result); } // fall back to the raw data URL
+      };
+      img.onerror = () => resolve(fr.result);
+      img.src = fr.result;
+    };
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+// Lazily load pdf.js (only when a PDF is attached) and pull out its text.
+let _pdfjs = null;
+async function ensurePdfjs() {
+  if (_pdfjs) return _pdfjs;
+  await new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = res; s.onerror = rej; document.head.appendChild(s);
+  });
+  _pdfjs = window.pdfjsLib;
+  try { _pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } catch { /* worker optional */ }
+  return _pdfjs;
+}
+async function pdfToText(file) {
+  const pdfjs = await ensurePdfjs();
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  let out = '';
+  const pages = Math.min(doc.numPages, 30);
+  for (let i = 1; i <= pages && out.length < 16000; i++) {
+    const tc = await (await doc.getPage(i)).getTextContent();
+    out += tc.items.map((it) => it.str).join(' ') + '\n';
+  }
+  return out.trim();
+}
+
+// Add chosen files as attachments: images are downscaled; PDFs/text/code become text.
+async function addFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  for (const file of files) {
+    if (state.attachments.length >= MAX_ATTACHMENTS) { toast(`You can attach up to ${MAX_ATTACHMENTS} files.`); break; }
+    try {
+      if ((file.type || '').startsWith('image/')) {
+        const dataUrl = await imageFileToDataUrl(file);
+        if (dataUrl && dataUrl.length <= 6000000) state.attachments.push({ kind: 'image', name: file.name, mime: file.type, dataUrl });
+        else toast(`"${file.name}" is too large even after compression.`);
+      } else if (/pdf/i.test(file.type) || /\.pdf$/i.test(file.name)) {
+        const text = await pdfToText(file).catch(() => '');
+        state.attachments.push({ kind: 'doc', name: file.name, mime: file.type || 'application/pdf', text: text || `(couldn't read text from ${file.name})` });
+      } else if (TEXT_EXT.test(file.name) || (file.type || '').startsWith('text/') || file.size < 262144) {
+        const text = (await file.text().catch(() => '')).slice(0, 16000);
+        if (text.trim()) state.attachments.push({ kind: 'doc', name: file.name, mime: file.type || 'text/plain', text });
+        else toast(`Couldn't read "${file.name}".`);
+      } else {
+        toast(`"${file.name}" isn't supported (images, PDFs, and text/code files).`);
+      }
+    } catch { toast(`Couldn't attach "${file.name}".`); }
+  }
+  renderAttachments();
 }
 
 // ---------- Visual select-to-edit ----------
@@ -1096,17 +1216,35 @@ function wireEvents() {
   $('#composer').addEventListener('submit', (e) => {
     e.preventDefault();
     const typed = $('#prompt').value.trim();
-    if (!typed) return;
+    // Allow sending attachments with no text (e.g. "here's a mockup") — needs at least one.
+    if (!typed && !state.attachments.length) return;
     $('#prompt').value = '';
     $('#autoPick').textContent = '';
-    let text = typed, label = null;
+    let text = typed || 'Build an app based on the attached file(s).', label = null;
     if (state.selected) {
       text = `Edit this specific element in the app and return the updated file(s) in full.\nElement: ${state.selected.label}\nIts current HTML: ${state.selected.html}\nChange requested: ${typed}`;
       label = `🎯 ${state.selected.label}: ${typed}`;
       clearSelection();
     }
-    if (state.working) { state.queue.push(text); renderQueue(); updateComposer(); }  // busy -> schedule it
-    else startUserPrompt(text, label);
+    // Attachments are one-shot: capture them for this message, then clear the strip.
+    const atts = state.attachments.slice();
+    state.attachments = []; renderAttachments();
+    if (state.working) {
+      // Busy -> schedule the text (attachments only ride along with an immediate send).
+      state.queue.push(text); renderQueue(); updateComposer();
+      if (atts.length) toast('Attachments are sent with an immediate build — re-attach when this finishes.');
+    } else startUserPrompt(text, label, atts);
+  });
+  // Attach button -> file picker; chosen files become attachments.
+  const attachBtn = $('#attachBtn'), fileInput = $('#fileInput');
+  if (attachBtn && fileInput) {
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => { await addFiles(fileInput.files); fileInput.value = ''; });
+  }
+  // Paste an image straight into the prompt to attach it.
+  $('#prompt').addEventListener('paste', (e) => {
+    const imgs = Array.from(e.clipboardData?.items || []).filter((it) => it.type.startsWith('image/')).map((it) => it.getAsFile()).filter(Boolean);
+    if (imgs.length) { e.preventDefault(); addFiles(imgs); }
   });
   // Enter sends; Shift+Enter makes a new line.
   $('#prompt').addEventListener('keydown', (e) => {

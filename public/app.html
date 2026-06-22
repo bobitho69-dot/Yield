@@ -62,11 +62,14 @@
             <option value="high">🧠 Max</option>
           </select>
           <button id="promptMaxBtn" type="button" class="pmax-btn" aria-pressed="false" title="Prompt Max — auto-improve your prompt before building">⚡ Prompt Max</button>
+          <button id="attachBtn" type="button" class="attach-btn" title="Attach images or documents — Yield will read them">📎 Attach</button>
+          <input id="fileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.markdown,.csv,.json,.html,.htm,.css,.js,.ts,.tsx,.jsx,.svg,.log,.yml,.yaml,text/*" hidden>
           <span id="autoPick" class="auto-pick"></span>
           <div class="row-spacer"></div>
           <button id="histBtn" type="button" class="btn ghost sm" title="Prompt history (saved to your GitHub)">📜 History</button>
           <button id="newBtn" type="button" class="btn ghost sm" title="New project">＋ New</button>
         </div>
+        <div id="attachments" class="attachments hidden"></div>
         <div class="composer-input">
           <textarea id="prompt" rows="2" placeholder="Describe your app, or ask for a change…"></textarea>
           <button id="sendBtn" type="submit" class="btn primary send">Build ▸</button>

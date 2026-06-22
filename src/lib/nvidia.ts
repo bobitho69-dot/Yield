@@ -2,9 +2,15 @@
 // resolved `baseUrl` + `apiKey` (from endpointFor) so different models can live on
 // different endpoints/providers. Default is NVIDIA's integrate.api.nvidia.com/v1.
 
+// A multimodal content part (OpenAI-compatible). Used for vision: a user message can
+// be an array of text + image_url parts so a VLM can "see" uploaded images.
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | ContentPart[];
 }
 
 export interface ChatOptions {

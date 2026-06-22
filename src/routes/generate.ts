@@ -10,8 +10,8 @@ import type { Ctx, Env } from '../types';
 import { sse, json, error } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
-import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, type ModelDef } from '../config/models';
-import { chat, chatStream } from '../lib/nvidia';
+import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, visionModelId, type ModelDef } from '../config/models';
+import { chat, chatStream, type ContentPart } from '../lib/nvidia';
 import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, ENHANCE_SYSTEM, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import { verifyFiles } from '../lib/verify';
@@ -22,12 +22,26 @@ import {
 import { syncProjectToGithub } from './githubRoutes';
 import { generateImage } from './media';
 
+// A file the user attached to a build request. Images are interpreted by the vision
+// model (a pre-pass that describes them); docs contribute their extracted text. They
+// are one-shot context for THIS turn — not stored in the project's message history.
+// (Future: when auth + GitHub linking is on, store uploaded images in the repo and
+// reference them by URL instead of inlining the data.)
+export interface Attachment {
+  kind: 'image' | 'doc';
+  name?: string;
+  mime?: string;
+  dataUrl?: string; // images: a data: URL the vision model can read
+  text?: string;    // docs: extracted text content
+}
+
 export interface GenBody {
   prompt: string;
   model?: string;
   projectId?: string;
   thinking?: string; // reasoning effort: 'low' | 'medium' | 'high'
   enhance?: boolean; // Prompt Max: rewrite/improve the prompt before building
+  attachments?: Attachment[]; // images/docs the user uploaded with this request
 }
 
 // Validate the user's chosen thinking level; default to medium (balanced — high
@@ -138,6 +152,78 @@ async function enhancePrompt(c: Ctx, prompt: string, heartbeat: () => Promise<vo
     }
   } catch { /* fall back to the original prompt */ }
   return { prompt, changed: false };
+}
+
+// Describe uploaded images with the vision model (a pre-pass): returns a detailed
+// text description the coder can build from (match a mockup, use a logo, read a chart).
+// Best-effort — returns '' on any failure so a build never breaks over an image.
+async function describeImages(c: Ctx, prompt: string, images: Attachment[]): Promise<string> {
+  try {
+    const content: ContentPart[] = [{
+      type: 'text',
+      text:
+        `The user is building a web app and attached ${images.length} image(s). For EACH image, describe — concretely and in detail — everything relevant to building or designing the app:\n` +
+        `- If it's a UI mockup/screenshot/wireframe: the layout, every component, the color palette (with hex if you can), typography, spacing, and all visible text, so it can be recreated faithfully.\n` +
+        `- If it's a logo/icon/photo/illustration: what it depicts, its style, and its colors.\n` +
+        `- If it's a chart/table/diagram/document: the data, labels, and structure (transcribe values/text).\n` +
+        `Number each image. Be specific and complete — this description is the ONLY thing the builder will see.\n\n` +
+        `The user's request: "${prompt.slice(0, 600)}"`,
+    }];
+    for (const im of images) if (im.dataUrl) content.push({ type: 'image_url', image_url: { url: im.dataUrl } });
+    const { text } = await chat({
+      baseUrl: c.env.NVIDIA_CHAT_BASE,
+      apiKey: c.env.NVIDIA_API_KEY,
+      apiKeyBackup: c.env.NVIDIA_API_KEY_BACKUP || undefined,
+      model: visionModelId(c.env),
+      messages: [{ role: 'user', content }],
+      temperature: 0.2, max_tokens: 1500, timeoutMs: 60000,
+    });
+    return (text || '').trim();
+  } catch { return ''; }
+}
+
+// Build the one-shot context block for any images/docs the user attached this turn:
+// docs contribute their extracted text; images are run through the vision model. The
+// returned string (if any) is added to the build messages so the coder can use them.
+async function buildAttachmentContext(
+  c: Ctx, prompt: string, attachments: Attachment[] | undefined,
+  send: SendFn, heartbeat: () => Promise<void>,
+): Promise<string> {
+  const atts = (attachments || []).slice(0, 6);
+  if (!atts.length) return '';
+  const parts: string[] = [];
+
+  // Docs: include their extracted text (capped so a huge file can't blow the context).
+  const docs = atts.filter((a) => a.kind === 'doc' && a.text && a.text.trim());
+  let docBudget = 30000;
+  for (const d of docs) {
+    if (docBudget <= 0) break;
+    const body = d.text!.slice(0, Math.min(12000, docBudget));
+    docBudget -= body.length;
+    parts.push(`Attached document "${d.name || 'document'}":\n${body}`);
+  }
+
+  // Images: describe them with the vision model (best-effort).
+  const imgs = atts.filter((a) => a.kind === 'image' && a.dataUrl);
+  if (imgs.length) {
+    if (c.env.NVIDIA_API_KEY) {
+      await send('status', { stage: `👁 Looking at ${imgs.length} image(s)…` });
+      await heartbeat();
+      const desc = await describeImages(c, prompt, imgs);
+      await heartbeat();
+      if (desc) {
+        parts.push(`What the user's attached image(s) show (interpret and use these — e.g. match the design, use the content):\n${desc}`);
+        await send('thinking', `👁 From your image(s):\n\n${desc}\n\n`);
+      } else {
+        parts.push(`The user attached ${imgs.length} image(s), but they couldn't be read this time — ask them to describe what's in them if it matters.`);
+      }
+    } else {
+      parts.push(`The user attached ${imgs.length} image(s) (image understanding isn't configured).`);
+    }
+  }
+
+  if (!parts.length) return '';
+  return `The user attached files to THIS request. Use them as you build:\n\n${parts.join('\n\n')}`;
 }
 
 // Fallback: pull files out of a model reply that didn't use the === file: ===
@@ -694,6 +780,10 @@ export async function runBuild(
         else if (m.role === 'assistant' && m.content) messages.push({ role: 'assistant', content: m.content });
       }
     }
+    // Images/docs the user attached this turn: docs add their text, images are described
+    // by the vision model. Added as context so the coder can build from them.
+    const attachCtx = await buildAttachmentContext(c, prompt, body.attachments, send, heartbeat);
+    if (attachCtx) messages.push({ role: 'system', content: attachCtx });
     messages.push({ role: 'user', content: buildPrompt });
 
     // 6) Stream: separate chat from multi-file output. Coder models run with MAX
@@ -951,18 +1041,53 @@ export async function runBuild(
   }
 }
 
+// Clamp untrusted attachments to safe bounds: at most 6 items; each image data URL
+// <= ~6MB; each doc text <= 16k chars. Drops anything malformed. Keeps the build (and
+// the Durable Object job it's serialized into) a sane size.
+function sanitizeAttachments(input: unknown): Attachment[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: Attachment[] = [];
+  let total = 0; // running byte budget across all attachments (~10MB)
+  const BUDGET = 10_000_000;
+  for (const a of input) {
+    if (!a || typeof a !== 'object') continue;
+    const kind = (a as any).kind;
+    if (kind === 'image') {
+      const url = (a as any).dataUrl;
+      if (typeof url === 'string' && url.startsWith('data:') && url.length <= 6_000_000 && total + url.length <= BUDGET) {
+        total += url.length;
+        out.push({ kind: 'image', name: String((a as any).name || '').slice(0, 120), mime: String((a as any).mime || '').slice(0, 80), dataUrl: url });
+      }
+    } else if (kind === 'doc') {
+      const text = (a as any).text;
+      if (typeof text === 'string' && text.trim() && total < BUDGET) {
+        const body = text.slice(0, 16000);
+        total += body.length;
+        out.push({ kind: 'doc', name: String((a as any).name || '').slice(0, 120), mime: String((a as any).mime || '').slice(0, 80), text: body });
+      }
+    }
+    if (out.length >= 6) break;
+  }
+  return out.length ? out : undefined;
+}
+
 export async function handleGenerate(req: Request, c: Ctx): Promise<Response> {
   const body = (await req.json().catch(() => ({}))) as GenBody;
   const prompt = (body.prompt || '').trim();
   if (!prompt) return error(400, 'prompt required');
   if (prompt.length > 12000) return error(413, 'prompt too long');
 
+  // Sanitize attachments: cap count + per-item size so an over-size payload can't blow
+  // the build (and so the Durable Object's job stays a sane size). Images keep a data:
+  // URL the vision model reads; docs keep extracted text.
+  const attachments = sanitizeAttachments(body.attachments);
+
   // Pre-create the project (when signed-in/guest) so the build can be keyed to a
   // stable Durable Object and its result persists across a tab close/refresh.
   let project = body.projectId ? await getProject(c.env, body.projectId) : null;
   if (project && c.user && project.user_id !== c.user.id) return error(403, 'Not your project');
   if (!project && c.user) project = await createProject(c.env, c.user.id, prompt.slice(0, 60));
-  const startBody: GenBody = { prompt, model: body.model, projectId: project?.id, thinking: body.thinking, enhance: body.enhance };
+  const startBody: GenBody = { prompt, model: body.model, projectId: project?.id, thinking: body.thinking, enhance: body.enhance, attachments };
 
   // Preferred: run the build inside a Durable Object. The DO's lifetime is
   // independent of this HTTP request, so the build keeps running and SAVES even if

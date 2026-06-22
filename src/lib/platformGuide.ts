@@ -116,7 +116,8 @@ exists. Shape:
   window.YIELD = {
     agents:  { "AgentName": "agent-id", ... }, // ids of this app's public agents
     entities: { list, create, get, update, delete },  // the built-in database
-    image: function(prompt, opts) -> Promise<url>      // AI image generation
+    image:   function(prompt, opts) -> Promise<url>,   // AI image generation
+    model3d: function(prompt, opts) -> Promise<url>    // AI 3D-model (.glb) generation
   }
 Note: there is NO window.YIELD.secrets — Yield never holds secrets. Private keys live
 in the user's own backend Worker (section 4 + 8); only publishable keys go in the frontend.
@@ -236,6 +237,29 @@ Use real generated images instead of grey placeholder boxes when it elevates the
 awaiting, and a graceful fallback if it rejects. Do NOT call external image APIs directly.
 
 ================================================================================
+## 6b. AI 3D-MODEL GENERATION — window.YIELD.model3d(prompt)
+================================================================================
+Generate a real 3D model from a text prompt (the built-in TRELLIS model). Returns a
+Promise that resolves to a URL for a .glb file (often a data: URL) you can load into any
+glTF/GLB viewer. Use it for product configurators, 3D galleries, game/AR asset previews,
+or any app that wants real 3D instead of a flat image.
+  const url = await window.YIELD.model3d("a low-poly wooden treasure chest");
+The easiest way to render it is Google's <model-viewer> web component (CDN, no build step):
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <model-viewer id="mv" camera-controls auto-rotate shadow-intensity="1" style="width:100%;height:480px"></model-viewer>
+  <script type="module">
+    const url = await window.YIELD.model3d("a low-poly wooden treasure chest");
+    document.querySelector("#mv").src = url;   // load the generated .glb
+  </script>
+Notes:
+- 3D generation is SLOW (it can take a while) — ALWAYS show a clear loading state
+  (spinner/progress + a message), disable the trigger while it runs, and handle failure
+  with a friendly fallback (it can reject or return nothing).
+- One model per call; cache/reuse the returned URL (don't regenerate the same prompt).
+- Options (second arg, optional): { seed }. Do NOT call external 3D APIs directly.
+- If a build doesn't need 3D, don't add it — use window.YIELD.image() for flat art.
+
+================================================================================
 ## 7. END-USER LOGIN (per app, only if the app needs accounts) — Supabase
 ================================================================================
 If an app needs its OWN end-user accounts (sign up / log in), use Supabase. The Supabase
@@ -335,13 +359,19 @@ Patterns:
 - window.YIELD.entities.{list,create,get,update,delete}(entity, ...) — built-in DB.
 - window.YIELD.agents["Name"] — agent id; POST /api/agents/<id>/run { input | messages }.
 - window.YIELD.image(prompt, opts) — Promise<imageUrl>.
+- window.YIELD.model3d(prompt, opts) — Promise<glbUrl> (render with <model-viewer>; slow → show a loader).
 - Declare a runtime AI before files: "=== agent: Name | model ===".
 - Your build tools: "=== research: Name ===" (helper AI, research first) and
   "=== task: Name | model ===" (parallel build agent, for big apps).
 - Multi-page: separate .html files sharing one nav + styles.css + app.js; link with
   relative hrefs (every linked page MUST exist); pass row context via ?id= + URLSearchParams.
 - No mock data by default (real empty state instead); every button/link/form works.
-- Persisted data => entities. AI in the app => agents. Pictures => image(). Private keys +
-  server => a Cloudflare Worker in worker/ (the user sets the secrets in Cloudflare).
+- The user can ATTACH images & docs to a request. You receive a faithful text description
+  of each image (the vision model "saw" it) and the extracted text of each document, under
+  a "user attached files" note — USE it (match a screenshot's design, use a logo/photo, read
+  a doc's data) as you build.
+- Persisted data => entities. AI in the app => agents. Pictures => image(). 3D models =>
+  model3d(). Private keys + server => a Cloudflare Worker in worker/ (the user sets the
+  secrets in Cloudflare).
   Publishable keys (Supabase anon, Stripe pk_) are fine in the frontend. Research first =>
   research. Big build => split into task agents. That covers almost everything.`;

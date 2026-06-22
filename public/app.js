@@ -560,6 +560,8 @@ async function consumeStream(res, opts = {}) {
         } else if (ev === 'done') {
           finished = true;
           if (payload.projectId && live() && !state.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
+          // Auto-branding: reflect the generated app name in the title field right away.
+          if (payload.name && live()) { const t = $('#projectTitle'); if (t && document.activeElement !== t) t.value = payload.name; }
           if (payload.chat) chatAcc = payload.chat;
           // Only write files/preview into the UI if this build still owns the screen
           // (the user hasn't switched to a different project mid-build).

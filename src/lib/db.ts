@@ -31,6 +31,7 @@ export interface ProjectRow {
   github_synced_at: number | null;
   slug: string | null;
   logo: string | null;
+  description: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -179,7 +180,7 @@ export function getProjectBySlug(env: Env, slug: string): Promise<ProjectRow | n
 
 export function listProjects(env: Env, userId: string): Promise<{ results: any[] }> {
   return env.DB.prepare(
-    `SELECT id,user_id,title,model,is_public,github_repo,github_url,logo,created_at,updated_at,
+    `SELECT id,user_id,title,model,is_public,github_repo,github_url,logo,description,created_at,updated_at,
             (LENGTH(code) > 0) AS has_code
        FROM projects WHERE user_id=? ORDER BY updated_at DESC LIMIT 100`,
   )
@@ -198,12 +199,13 @@ export async function renameProject(env: Env, id: string, title: string): Promis
   await env.DB.prepare('UPDATE projects SET title=?, slug=?, updated_at=? WHERE id=?').bind(title, slug, now(), id).run();
 }
 
-// Auto-branding from a build: set the generated app name (+ slug) and/or inline-SVG
-// logo. Each is applied only if provided; COALESCE keeps the existing value otherwise.
-export async function setProjectBranding(env: Env, id: string, title: string | null, logo: string | null): Promise<void> {
+// Auto-branding from a build: set the generated app name (+ slug), one-line description,
+// and/or inline-SVG logo. Each is applied only if provided; COALESCE keeps the existing
+// value otherwise.
+export async function setProjectBranding(env: Env, id: string, title: string | null, description: string | null, logo: string | null): Promise<void> {
   const slug = title ? `${slugify(title)}-${id.slice(0, 6)}` : null;
-  await env.DB.prepare('UPDATE projects SET title=COALESCE(?,title), slug=COALESCE(?,slug), logo=COALESCE(?,logo), updated_at=? WHERE id=?')
-    .bind(title, slug, logo, now(), id)
+  await env.DB.prepare('UPDATE projects SET title=COALESCE(?,title), slug=COALESCE(?,slug), description=COALESCE(?,description), logo=COALESCE(?,logo), updated_at=? WHERE id=?')
+    .bind(title, slug, description, logo, now(), id)
     .run();
 }
 

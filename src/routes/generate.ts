@@ -316,9 +316,11 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   // text streams into the chat bubble (a "here's what I built / next steps" message)
   // instead of being appended to the last file.
   const SUMMARY = /^={2,}\s*(?:summary|recap|done|notes)\s*={2,}\s*$/i;
-  // "=== name: My App ===" sets the auto app name; "=== logo ===" starts an inline-SVG
-  // app logo block (captured until the next marker). Both are used to brand a new app.
+  // "=== name: My App ===" sets the auto app name; "=== description: ... ===" a one-line
+  // app description; "=== logo ===" starts an inline-SVG app logo block (captured until the
+  // next marker). All three brand a new app.
   const NAME = /^={2,}\s*name:\s*(.+?)\s*={2,}\s*$/i;
+  const DESC = /^={2,}\s*(?:description|desc|tagline):\s*(.+?)\s*={2,}\s*$/i;
   const LOGO = /^={2,}\s*logo\s*={2,}\s*$/i;
   // "=== ask: Question? | Option A | Option B ===" — a clarifying question with optional
   // clickable choices; surfaced as an 'ask' event (a pop-up) and produces no files.
@@ -331,6 +333,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   let mode: 'chat' | 'file' | 'agent' | 'task' | 'research' | 'logo' = 'chat';
   let inThink = false;
   let appName = '';
+  let appDescription = '';
   const logoLines: string[] = [];
   let fenceOpen = false; // inside a ```-fenced file we inferred from a bare code fence
   let curFile: { path: string; lines: string[] } | null = null;
@@ -405,6 +408,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
       return; // single-line; doesn't change mode
     }
     if ((m = line.match(NAME))) { if (!appName) appName = m[1].trim().slice(0, 60); return; } // single-line
+    if ((m = line.match(DESC))) { if (!appDescription) appDescription = m[1].trim().slice(0, 200); return; } // single-line
     if ((m = line.match(IMAGE))) { const p = m[1].trim(); if (p && imagePrompts.length < 4) imagePrompts.push(p); return; } // single-line
     if ((m = line.match(ASK))) { // single-line clarifying question with optional choices
       const parts = m[1].split('|').map((s) => s.trim()).filter(Boolean);
@@ -463,7 +467,7 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     // entries that survive into the retry's result. Only ever called when nothing
     // worth keeping was produced (see `produced`).
     reset() {
-      buf = ''; mode = 'chat'; inThink = false; fenceOpen = false; lastStatus = ''; appName = ''; asked = false;
+      buf = ''; mode = 'chat'; inThink = false; fenceOpen = false; lastStatus = ''; appName = ''; appDescription = ''; asked = false;
       curFile = curAgent = curTask = curResearch = null;
       files.length = chatLines.length = agents.length = tasks.length = research.length = secrets.length = thinkLines.length = logoLines.length = imagePrompts.length = 0;
     },
@@ -506,9 +510,43 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
         if (!fb.files.length && thinkLines.length) fb = extractFilesFromText(thinkLines.join('\n'));
         if (fb.files.length) { fs = fb.files; chat = chat || fb.chat || 'Here is your app.'; }
       }
-      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc, name: appName, logo: sanitizeLogo(logoLines.join('\n')), asked, images: imagePrompts.slice(0, 4) };
+      // Branding: prefer the === name: === / === description: === markers. Some models
+      // ignore them and emit a JSON blob instead (e.g. {"name":"X","description":"Y"}); fall
+      // back to that and strip it out of the chat so raw JSON never shows to the user.
+      let name = appName, description = appDescription;
+      if (!name || !description) {
+        const bj = extractBrandingJson(chat);
+        if (bj) {
+          if (!name) name = bj.name;
+          if (!description) description = bj.description;
+          chat = chat.replace(bj.raw, '').replace(/\n{3,}/g, '\n\n').trim();
+        }
+      }
+      return { chat, files: fs, hasFiles: fs.length > 0, agents: ags, secrets, tasks: tks, research: rsc, name: name.slice(0, 60), description: description.slice(0, 200), logo: sanitizeLogo(logoLines.join('\n')), asked, images: imagePrompts.slice(0, 4) };
     },
   };
+}
+
+// Some models brand a new app by emitting a JSON object (e.g.
+// {"name":"NexusTask Pro","description":"..."}) instead of the === name: === markers.
+// Find the first such object carrying a "name", parse out name/description, and return it
+// (with the raw match so the caller can strip it from chat). Returns null if none.
+function extractBrandingJson(text: string): { name: string; description: string; raw: string } | null {
+  const m = text.match(/\{[\s\S]*?"name"\s*:\s*"(?:[^"\\]|\\.)*"[\s\S]*?\}/);
+  if (!m) return null;
+  let name = '', description = '';
+  try {
+    const obj = JSON.parse(m[0]) as Record<string, unknown>;
+    if (typeof obj.name === 'string') name = obj.name;
+    if (typeof obj.description === 'string') description = obj.description;
+    else if (typeof (obj as any).desc === 'string') description = (obj as any).desc;
+  } catch {
+    name = (m[0].match(/"name"\s*:\s*"((?:[^"\\]|\\.)*)"/)?.[1] || '').replace(/\\"/g, '"');
+    description = (m[0].match(/"(?:description|desc|tagline)"\s*:\s*"((?:[^"\\]|\\.)*)"/)?.[1] || '').replace(/\\"/g, '"');
+  }
+  name = name.trim(); description = description.trim();
+  if (!name && !description) return null;
+  return { name, description, raw: m[0] };
 }
 
 // Pull a clean, safe inline SVG out of a "=== logo ===" block: keep only the <svg>…</svg>,
@@ -927,6 +965,7 @@ export async function runBuild(
         tasks: pass2.tasks.length ? pass2.tasks : pass1.tasks,
         research: [],
         name: pass2.name || pass1.name,
+        description: pass2.description || pass1.description,
         logo: pass2.logo || pass1.logo,
         asked: pass2.asked || pass1.asked,
         images: [...pass1.images, ...pass2.images].slice(0, 4),
@@ -1034,12 +1073,19 @@ export async function runBuild(
     } catch (e) { console.error('saveFiles failed:', e); }
 
     // Auto-branding: on a NEW app's first successful build, set the generated app name
-    // and inline-SVG logo (only when not already set, so edits don't keep renaming).
+    // name, one-line description, and inline-SVG logo. Only when NOT yet branded (no logo
+    // AND no description) so edits don't keep renaming it.
+    let brandedName: string | null = null;
+    let brandedDescription: string | null = null;
     try {
-      if (project && c.user && hasFiles && !project.logo) {
+      if (project && c.user && hasFiles && !project.logo && !project.description) {
         const name = (result.name || '').trim() || null;
+        const description = (result.description || '').trim() || null;
         const logo = (result.logo || '').trim() || null;
-        if (name || logo) await setProjectBranding(c.env, project.id, name, logo);
+        if (name || description || logo) {
+          await setProjectBranding(c.env, project.id, name, description, logo);
+          brandedName = name; brandedDescription = description;
+        }
       }
     } catch (e) { console.error('branding step failed:', e); }
 
@@ -1054,7 +1100,7 @@ export async function runBuild(
       }
     } catch (e) { console.error('image step failed:', e); }
 
-    await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents });
+    await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents, name: brandedName, description: brandedDescription });
 
     // Tail work — fully best-effort; the build is already delivered + saved.
     try {

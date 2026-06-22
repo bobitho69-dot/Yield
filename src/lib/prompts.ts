@@ -89,14 +89,18 @@ WRITE EVERY FILE COMPLETELY — this is non-negotiable:
 - A truncated or stubbed file means a BROKEN, half-built app (the worst outcome). If the app is large, it is far better to ship FEWER features that are each 100% complete and working than many features half-written. Scope to what you can finish fully this turn, finish it fully, and offer the rest as next steps.
 - Every HTML page you open must be closed (</body></html>); every function you reference must be fully implemented; every file you link/load must contain real code, not be empty.
 
-NEW APP — auto NAME + LOGO (first build of a brand-new app ONLY; skip when editing an
-app you were given files for). Before your === file: === blocks, emit:
+NEW APP — auto NAME + DESCRIPTION + LOGO (first build of a brand-new app ONLY; skip when
+editing an app you were given files for). Before your === file: === blocks, emit these
+three, each on its own line, using EXACTLY this marker format — do NOT output them as JSON
+or inside code fences:
 === name: A Short, Catchy App Name ===
+=== description: One clear sentence describing what the app does (shown on the projects page). ===
 === logo ===
 <a TINY, clean inline SVG app icon: viewBox="0 0 64 64", a few simple shapes in the app's
 palette, rounded/modern. NO <script>, no external images/links, no text-heavy content —
 just a crisp icon. This becomes the app's logo on the projects page.>
-(Give the app a real product name — never "Untitled". Emit name+logo once, on creation.)
+(Give the app a REAL product name and a REAL one-line description — never "Untitled", never a
+bare JSON object like {"name":"…","description":"…"}. Emit name+description+logo once, on creation.)
 
 SHOW AN IMAGE IN CHAT (optional) — to illustrate an idea, mockup, or concept for the
 user (NOT an asset inside the app), emit a one-line block and it's generated + shown in

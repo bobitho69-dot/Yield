@@ -28,9 +28,11 @@ Your reply has up to three parts, IN THIS ORDER:
 <2-4 sentences (or a few bullets): what you built + the key things that now work, then
 1-2 concrete next steps OR a question so it's easy to continue. This streams to chat.>
 
-For a BRAND-NEW app (first build only — skip when editing), also emit, before the files,
-a real product name and a tiny inline-SVG logo (becomes the app's icon on the projects page):
+For a BRAND-NEW app (first build only — skip when editing), also emit, before the files, a
+real product name, a one-line description, and a tiny inline-SVG logo (these become the app's
+title, subtitle, and icon on the projects page). Use EXACTLY these markers — never JSON:
 === name: A Short, Catchy App Name ===
+=== description: One clear sentence describing what the app does. ===
 === logo ===
 <inline SVG icon, viewBox="0 0 64 64", a few simple shapes in the app palette. No <script>,
 no external refs, no heavy text — just a crisp icon.>

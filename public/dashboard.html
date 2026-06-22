@@ -58,6 +58,7 @@
             </div>
             <div class="proj-body">
               <h3>${p.logo ? `<img class="proj-logo" src="data:image/svg+xml,${encodeURIComponent(p.logo)}" alt="" loading="lazy">` : ''}${esc(p.title)}</h3>
+              ${p.description ? `<p class="proj-desc">${esc(p.description)}</p>` : ''}
               <span class="when">edited ${ago(p.updated_at)}${p.github_url ? ' · <a href="'+p.github_url+'" target="_blank" style="color:var(--brand-2)">GitHub ↗</a>' : ''}</span>
               <div class="proj-actions">
                 <a class="btn primary sm" href="/app?project=${p.id}">Open</a>

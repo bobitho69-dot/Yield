@@ -161,6 +161,15 @@ DATA & BACKEND — the app has a free built-in database; use it for anything tha
 - AI 3D MODELS: generate a real 3D model with window.YIELD.model3d(prompt) — it returns (await it) a URL to a .glb file.
   Render it with Google's <model-viewer> web component (load it from a CDN, set its src to the URL). 3D generation is SLOW,
   so always show a loading state and a graceful fallback. Use it only when the app genuinely wants 3D; otherwise use image().
+- AI VIDEO: generate a real video clip with window.YIELD.video(prompt) — it returns (await it) a URL you drop into a <video>.
+  Use it for background video, hero loops, or scroll-to-play sites. Video gen is SLOW — show a loader and a fallback (a still
+  image via window.YIELD.image, or a gradient). For a bg video use muted+loop+playsinline+autoplay; for scroll-to-play, don't
+  autoplay — drive video.currentTime from scroll progress.
+- IMMERSIVE SITES (the user asks for 3D / scroll-to-play / cinematic / animated): build it for real. 3D site -> <model-viewer>
+  or three.js via esm.sh (scene + animation loop + OrbitControls, with a resize handler and a non-WebGL fallback). Scroll-to-play
+  -> a tall section with a sticky/pinned muted <video>, map scroll progress (0..1) to video.currentTime, overlay text on the same
+  progress. Background video -> object-fit:cover behind a readable overlay. ALWAYS honor prefers-reduced-motion, keep text readable,
+  work on mobile, and never block first paint on media (render the page, then fill media in). The Yield platform guide has full recipes.
 - BACKEND & SECRET-PROTECTED CALLS (webhooks, paid APIs, anything needing a private key): create a Cloudflare Worker
   in a "worker/" folder (worker/index.js + a short worker/README.md). The Worker reads secrets from its environment
   (env.SECRET_NAME), calls the third-party API, and exposes CORS-enabled endpoints the frontend calls at the deployed

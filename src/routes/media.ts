@@ -83,6 +83,53 @@ export async function generate3dModel(env: Env, prompt: string, seed = 0): Promi
   }
 }
 
+// Generate a video (.mp4) from a text prompt via NVIDIA (Cosmos). Returns a video
+// data URL (or a provider URL), or null. Reuses NVIDIA_API_KEY + the backup on 429/402.
+// Best-effort: never throws. Video generation is slow, so callers use a long timeout.
+export async function generateVideo(env: Env, prompt: string, opts: Record<string, any> = {}): Promise<string | null> {
+  const url = env.VIDEO_API_URL;
+  const key = env.NVIDIA_API_KEY;
+  if (!url || !key || !prompt) return null;
+  const body = JSON.stringify({ ...(env.VIDEO_API_MODEL ? { model: env.VIDEO_API_MODEL } : {}), prompt, ...opts });
+  const post = (k: string) => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${k}`, 'content-type': 'application/json', accept: 'application/json' }, body });
+  try {
+    let r = await post(key);
+    if ((r.status === 429 || r.status === 402) && env.NVIDIA_API_KEY_BACKUP && env.NVIDIA_API_KEY_BACKUP !== key) {
+      r = await post(env.NVIDIA_API_KEY_BACKUP);
+    }
+    const data: any = await r.json().catch(() => ({}));
+    if (!r.ok) return null;
+    const b64 = data?.artifacts?.[0]?.base64 || data?.artifacts?.[0]?.b64_json || data?.video_base64 || (typeof data?.video === 'string' && !/^https?:|^data:/.test(data.video) ? data.video : null);
+    if (typeof b64 === 'string' && b64) {
+      // WebM magic "GkXf" -> webm; otherwise assume mp4.
+      const mime = b64.startsWith('GkXf') ? 'video/webm' : 'video/mp4';
+      return b64.startsWith('data:') ? b64 : `data:${mime};base64,${b64}`;
+    }
+    return data?.url || data?.video_url || (typeof data?.video === 'string' ? data.video : null) || data?.artifacts?.[0]?.url || null;
+  } catch {
+    return null;
+  }
+}
+
+// POST /api/media/video  { prompt, ...opts } -> { url }  (a video the app can play)
+export async function handleVideo(req: Request, c: Ctx): Promise<Response> {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+  if (req.method !== 'POST') return j({ error: 'POST only' }, 405);
+  if (!c.env.VIDEO_API_URL || !c.env.NVIDIA_API_KEY) {
+    return j({ error: `Video generation isn't configured yet.`, code: 'not_configured' }, 503);
+  }
+  const gate = await gateGeneration(c);
+  if (!gate.allowed) return j({ error: gate.reason, code: gate.code }, gate.status);
+  const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+  if (!body.prompt) return j({ error: 'prompt required' }, 400);
+  const { prompt, ...opts } = body;
+  const url = await generateVideo(c.env, String(prompt), opts);
+  if (!url) return j({ error: 'Video API error (check VIDEO_API_URL / try a simpler prompt)' }, 502);
+  await recordGeneration(c);
+  await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_video' });
+  return j({ url });
+}
+
 // POST /api/media/model3d  { prompt, seed? } -> { url }  (a .glb the app can render)
 export async function handleModel3d(req: Request, c: Ctx): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });

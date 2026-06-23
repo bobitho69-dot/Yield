@@ -98,8 +98,30 @@
   .icard .st.on{background:rgba(62,207,142,.16);color:var(--ok)} .icard .st.off{background:#222a3a;color:var(--muted)}
   .icard input{width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:7px;padding:.45rem .6rem;color:var(--text);font-family:inherit;font-size:.83rem;margin-top:.5rem}
   .icard label.chk{display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--muted);margin-top:.6rem}
-  .empty{text-align:center;color:var(--muted);padding:3rem 1rem}
-  .empty .big{font-size:2.4rem;margin-bottom:.6rem}
+  .empty{text-align:center;color:var(--muted);padding:2.4rem 1rem}
+  .empty .big{font-size:2.8rem;margin-bottom:.6rem}
+  .empty h2{color:var(--text);margin:.2rem 0 .4rem} .empty p{max-width:520px;margin:.2rem auto 1.1rem;line-height:1.55}
+  .welcome{margin-bottom:1.4rem} .welcome h2{font-size:1.4rem;margin:0 0 .3rem} .welcome p{color:var(--muted);max-width:720px;line-height:1.55;margin:0}
+  /* capability cards */
+  .cap-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.9rem}
+  .cap{display:flex;gap:.7rem;background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:.9rem}
+  .cap-ic{font-size:1.5rem;width:42px;height:42px;border-radius:10px;background:var(--panel);display:grid;place-items:center;flex:0 0 auto}
+  .cap h3{margin:0 0 .2rem;font-size:.88rem} .cap p{margin:0;font-size:.78rem;color:var(--muted);line-height:1.45}
+  /* getting started */
+  .gs-list{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+  .gs{display:flex;gap:.7rem;background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:1rem}
+  .gs.done{border-color:#1e4d31;background:rgba(62,207,142,.06)}
+  .gs-n{width:28px;height:28px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;flex:0 0 auto;font-size:.9rem}
+  .gs.done .gs-n{background:var(--ok)}
+  .gs b{font-size:.9rem} .gs p{margin:.25rem 0 .6rem;font-size:.78rem;color:var(--muted);line-height:1.4}
+  /* how it works */
+  .how-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+  .how{background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:1rem}
+  .how-ic{font-size:1.6rem;margin-bottom:.4rem} .how b{font-size:.9rem} .how p{margin:.3rem 0 0;font-size:.8rem;color:var(--muted);line-height:1.45}
+  /* repo list */
+  .repo-list{display:flex;flex-direction:column;gap:.4rem;max-height:340px;overflow:auto}
+  .repo-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.5rem .7rem;background:var(--panel-2);border:1px solid var(--line);border-radius:9px}
+  @media (max-width:820px){ .gs-list,.how-grid{grid-template-columns:1fr} }
   .toast{position:fixed;bottom:18px;left:50%;transform:translate(-50%,14px);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.6rem .9rem;font-size:.85rem;box-shadow:var(--shadow);z-index:200;opacity:0;transition:.2s}
   .toast.show{opacity:1;transform:translate(-50%,0)}
   /* Fix modal */
@@ -193,6 +215,36 @@ function go(view){
   ({dashboard:renderDashboard,scan:renderScan,findings:renderFindings,monitoring:renderMonitoring,integrations:renderIntegrations}[view])();
 }
 
+// ---------------- shared content ----------------
+const SCANNERS = [
+  ['🧪','SAST','Code vulnerabilities — SQL injection, XSS, auth bypass, weak crypto, command injection, path traversal, secrets.'],
+  ['📦','SCA · live OSV feed','Dependency CVEs from OSV.dev (GitHub Advisories, NVD, PyPA…) across npm, PyPI and Go.'],
+  ['🐳','IaC & containers','Dockerfile, docker-compose and GitHub Actions misconfigurations and risky base images.'],
+  ['📄','License compliance','Flags strong/weak copyleft licenses (AGPL/GPL/LGPL…) across your dependencies.'],
+  ['🤖','AI ensemble','Every top AI model audits your code one at a time and findings are merged (Deep / Compliance).'],
+  ['✨','AI auto-fix','Generate the corrected file for any finding and apply it to your repo or project in one click.'],
+];
+function capCards(){ return `<div class="cap-grid">${SCANNERS.map(s=>`<div class="cap"><div class="cap-ic">${s[0]}</div><div><h3>${s[1]}</h3><p>${s[2]}</p></div></div>`).join('')}</div>`; }
+function gettingStarted(){
+  const gh = S.github.connected;
+  const step = (done,n,t,d,btn)=>`<div class="gs ${done?'done':''}"><div class="gs-n">${done?'✓':n}</div><div><b>${t}</b><p>${d}</p>${done?'':btn}</div></div>`;
+  return `<div class="panel"><h2>🚀 Get started</h2><div class="gs-list">
+    ${step(gh,1,'Connect GitHub', gh?`Connected as @${esc(S.github.login||'')}`:'Link GitHub to scan and monitor your repositories.', `<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`)}
+    ${step(false,2,'Run your first scan','Scan a repo or one of your Yield projects — SAST, SCA, IaC and licenses in seconds.', `<button class="btn primary sm" onclick="go('scan')">🔍 New scan</button>`)}
+    ${step(false,3,'Turn on monitoring','Watch a repo so every push & PR is scanned automatically, with a daily re-scan.', `<button class="btn ghost sm" onclick="go('monitoring')">🔁 Set up monitoring</button>`)}
+  </div></div>`;
+}
+function monitoredPanel(monitors){
+  if(!monitors.length) return `<div class="panel"><h2>🔁 Monitored repositories <span class="right"><button class="btn ghost sm" onclick="go('monitoring')">Set up →</button></span></h2><p class="mono">No repositories are being watched yet. Enable monitoring to scan on every push & PR automatically.</p></div>`;
+  return `<div class="panel"><h2>🔁 Monitored repositories <span class="right">${monitors.length} watched · scan on push</span></h2>
+    <table class="tbl"><thead><tr><th>Repository</th><th>Last score</th><th>Last scan</th><th></th></tr></thead><tbody>
+    ${monitors.map(m=>`<tr><td class="src-name">${esc(m.repo)} <span class="mono">@${esc(m.branch||'main')}</span></td>
+      <td>${m.last_score!=null?`<span class="pill2 ${m.last_score>=70?'LOW':m.last_score>=40?'MEDIUM':'CRITICAL'}">${m.last_score}/100</span>`:'<span class="mono">pending</span>'}</td>
+      <td class="mono">${ago(m.last_scan_at)||'—'}</td>
+      <td><button class="btn ghost sm" data-scannow="${esc(m.repo)}" data-branch="${esc(m.branch||'main')}">⚡ Scan now</button></td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
 // ---------------- dashboard ----------------
 async function renderDashboard(){
   const c = $('#content'); c.innerHTML = `<div class="empty"><span class="spin"></span> Loading…</div>`;
@@ -201,15 +253,27 @@ async function renderDashboard(){
   const sum = sources.reduce((a,s)=>({c:a.c+(s.critical||0),h:a.h+(s.high||0),t:a.t+(s.total||0)}),{c:0,h:0,t:0});
   const med = Math.max(0, sum.t-sum.c-sum.h);
   const avg = sources.length? Math.round(sources.reduce((a,s)=>a+(s.score||0),0)/sources.length) : null;
-  $('#vsub').textContent = `${sources.length} source(s) · ${monitors.length} monitored`;
+  $('#vsub').textContent = sources.length? `${sources.length} source(s) · ${monitors.length} monitored` : 'Welcome to Yield Security';
   $('#tact').innerHTML = `<button class="btn primary sm" onclick="go('scan')">＋ New scan</button>`;
-  if (!sources.length){ c.innerHTML = `<div class="empty"><div class="big">🛡</div><h2>No scans yet</h2><p>Scan a GitHub repo or one of your Yield projects to see your security posture.</p><button class="btn primary" onclick="go('scan')">Run your first scan →</button></div>`; return; }
-  const totalC = sum.c, totalH = sum.h;
+
+  // Empty state: a welcoming, full getting-started + capability showcase.
+  if (!sources.length){
+    c.innerHTML = `<div class="welcome">
+        <h2>👋 Welcome${S.github.login?', @'+esc(S.github.login):''}</h2>
+        <p>Yield Security scans your GitHub repos and Yield projects for real, exploitable vulnerabilities — with a live advisory feed and every top AI model. Here's how to get going:</p>
+      </div>
+      ${gettingStarted()}
+      ${monitoredPanel(monitors)}
+      <div class="panel"><h2>🛡 What we scan</h2>${capCards()}</div>`;
+    wireDash();
+    return;
+  }
+
   c.innerHTML = `
     <div class="kpis">
       <div class="kpi ${avg>=70?'ok':avg<40?'crit':''}"><div class="k-label">⌀ Code health</div><div class="k-num">${avg??'—'}</div><div class="k-sub">across ${sources.length} sources</div></div>
       <div class="kpi"><div class="k-label">Open findings</div><div class="k-num">${sum.t}</div><div class="k-sub">latest scans</div></div>
-      <div class="kpi ${totalC?'crit':''}"><div class="k-label"><span class="dot c"></span>Critical</div><div class="k-num">${totalC}</div><div class="k-sub">${totalH} high</div></div>
+      <div class="kpi ${sum.c?'crit':''}"><div class="k-label"><span class="dot c"></span>Critical</div><div class="k-num">${sum.c}</div><div class="k-sub">${sum.h} high</div></div>
       <div class="kpi"><div class="k-label">🔁 Monitored</div><div class="k-num">${monitors.length}</div><div class="k-sub">scan on push</div></div>
     </div>
     <div class="grid2">
@@ -228,18 +292,23 @@ async function renderDashboard(){
         <h2>Severity breakdown</h2>
         <div class="sevbar">${sum.t?`<i class="c" style="width:${sum.c/sum.t*100}%"></i><i class="h" style="width:${sum.h/sum.t*100}%"></i><i class="m" style="width:${med/sum.t*100}%"></i><i class="l" style="width:${(sum.t-sum.c-sum.h-med)/sum.t*100}%"></i>`:'<i class="l" style="width:100%;background:var(--panel-2)"></i>'}</div>
         <div class="sevlegend"><span><span class="dot c"></span>Critical <b>${sum.c}</b></span><span><span class="dot h"></span>High <b>${sum.h}</b></span><span><span class="dot m"></span>Medium <b>${med}</b></span><span><span class="dot l"></span>Low <b>${Math.max(0,sum.t-sum.c-sum.h-med)}</b></span></div>
-        <h2 style="margin-top:1.6rem">Scanners</h2>
-        <div class="sevlegend" style="flex-direction:column;gap:.5rem;align-items:flex-start">
-          <span>🧪 <b>SAST</b> — code vulnerabilities (OWASP/CWE)</span>
-          <span>📦 <b>SCA</b> — dependency CVEs via the live OSV feed</span>
-          <span>🐳 <b>IaC / Container</b> — Dockerfile, compose, Actions</span>
-          <span>📄 <b>License</b> — copyleft / compliance</span>
-          <span>🤖 <b>AI ensemble</b> — every top model (Deep scan)</span>
-        </div>
+        <h2 style="margin-top:1.6rem">Coverage</h2>
+        <div class="sevlegend" style="flex-direction:column;gap:.55rem;align-items:flex-start">${SCANNERS.map(s=>`<span>${s[0]} <b>${s[1]}</b></span>`).join('')}</div>
       </div>
-    </div>`;
+    </div>
+    ${monitoredPanel(monitors)}`;
+  wireDash();
+}
+function wireDash(){
   $$('[data-mon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.mon,true,b));
   $$('[data-unmon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.unmon,false,b));
+  $$('[data-scannow]').forEach(b=>b.onclick=()=>scanNow(b.dataset.scannow,b.dataset.branch));
+}
+// Run a scan of a specific repo from anywhere (monitored repo "Scan now").
+function scanNow(repo, branch){
+  go('scan');
+  const rs=$('#repoSel');
+  doScan({ source:'repo', repo, branch:branch||'main', key:'repo:'+repo });
 }
 
 // ---------------- scan ----------------
@@ -272,10 +341,10 @@ function renderScan(){
   $('#scanBtn').onclick=runScan;
 }
 function picked(){ const rs=$('#repoSel'); if(rs&&rs.value) return {source:'repo',repo:rs.value.slice(5),branch:rs.selectedOptions[0]?.dataset.branch||'main',key:rs.value}; const v=$('#srcSel')?.value||''; if(v.startsWith('project:')) return {source:'project',projectId:v.slice(8),key:v}; return null; }
-async function runScan(){
-  const src=picked(); if(!src){ $('#sstatus').textContent='Pick a project or repo first.'; return; }
+function runScan(){ const src=picked(); if(!src){ $('#sstatus').textContent='Pick a project or repo first.'; return; } doScan(src); }
+async function doScan(src){
   S.src={source:src.source,projectId:src.projectId,repo:src.repo,branch:src.branch}; S.sourceKey=src.key; S.findings=[]; S.result=null;
-  const st=$('#sstatus'); st.innerHTML=`<span class="spin"></span> Scanning <b>${esc(src.repo||'project')}</b> — SAST · SCA · IaC · license${S.level!=='basic'?' · AI ensemble':''}…`;
+  const st=$('#sstatus'); if(!st) return; st.innerHTML=`<span class="spin"></span> Scanning <b>${esc(src.repo||'project')}</b> — SAST · SCA · IaC · license${S.level!=='basic'?' · AI ensemble':''}…`;
   $('#sresult').innerHTML='';
   try{
     const res=await fetch('/api/security/scan',{method:'POST',headers:{'content-type':'application/json',accept:'text/event-stream'},body:JSON.stringify({...src,level:S.level,stream:true})});
@@ -333,7 +402,7 @@ function renderFindings(){
   $('#vsub').textContent = S.sourceKey?`${esc(S.sourceKey)} · ${all.length} findings`:'';
   $('#tact').innerHTML = all.length?`<a href="#" class="btn ghost sm" data-exp="sarif">SARIF</a><a href="#" class="btn ghost sm" data-exp="json">JSON</a><a href="#" class="btn ghost sm" data-exp="html">Report</a>`:'';
   $$('#tact [data-exp]').forEach(a=>a.onclick=e=>{e.preventDefault();exportAs(a.dataset.exp);});
-  if(!all.length){ c.innerHTML=`<div class="empty"><div class="big">⚠️</div><h2>No findings loaded</h2><p>Run a scan to see vulnerabilities here.</p><button class="btn primary" onclick="go('scan')">New scan →</button></div>`; return; }
+  if(!all.length){ c.innerHTML=`<div class="empty"><div class="big">⚠️</div><h2>No findings to show yet</h2><p>Run a scan and your vulnerabilities will appear here as a filterable, expandable list — with one-click AI fixes.</p><button class="btn primary" onclick="go('scan')">🔍 New scan →</button></div><div class="panel"><h2>🛡 What we look for</h2>${capCards()}</div>`; return; }
   const sevs=['all','CRITICAL','HIGH','MEDIUM','LOW'];
   c.innerHTML=`<div class="filters">${sevs.map(s=>`<span class="fchip ${S.filter.sev===s?'on':''}" data-sev="${s}">${s==='all'?'All':s}</span>`).join('')}<input class="search" id="fsearch" placeholder="Filter by type, file, CWE…" value="${esc(S.filter.q)}"></div><div class="panel" id="ftbl"></div>`;
   const paint=()=>{ const q=S.filter.q.toLowerCase(); const list=all.filter(f=>(S.filter.sev==='all'||f.severity===S.filter.sev)&&(!q||(f.type+f.location.file+f.cwe+f.description).toLowerCase().includes(q))); S._tableList=list; $('#ftbl').innerHTML=findingsTable(list); wireFindingRows($('#ftbl')); };
@@ -343,19 +412,45 @@ function renderFindings(){
 }
 
 // ---------------- monitoring ----------------
+const HOWITWORKS = `<div class="panel"><h2>How continuous monitoring works</h2><div class="how-grid">
+  <div class="how"><div class="how-ic">📥</div><b>1 · You push</b><p>A push or pull request to a watched repo triggers Yield Security via a GitHub webhook.</p></div>
+  <div class="how"><div class="how-ic">🛡</div><b>2 · We scan</b><p>The commit is pulled, scanned (SAST · SCA · IaC · license), and the code is discarded — only findings are kept.</p></div>
+  <div class="how"><div class="how-ic">📣</div><b>3 · We report</b><p>Results post back as a commit-status check, a PR comment, and to Slack / Jira. Plus a daily re-scan.</p></div>
+</div></div>`;
 async function renderMonitoring(){
   const c=$('#content'); c.innerHTML=`<div class="empty"><span class="spin"></span> Loading…</div>`;
   const [mon, rep] = await Promise.all([api('/api/security/monitors'), S.github.connected?api('/api/security/repos'):Promise.resolve({repos:[]})]);
   const monitors=mon.monitors||[], repos=rep.repos||[]; const monset=new Set(monitors.map(m=>m.repo));
   $('#vsub').textContent=`${monitors.length} repo(s) watched`;
-  c.innerHTML=`<div class="panel"><h2>🔁 Continuous monitoring <span class="right">scans every push & PR + a daily re-scan</span></h2>
-    ${!S.github.connected?`<p class="mono">Connect GitHub to monitor repos. <a href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security" style="color:var(--brand-2)">Connect →</a></p>`:''}
-    <table class="tbl"><thead><tr><th>Repository</th><th>Status</th><th>Last scan</th><th></th></tr></thead><tbody>
-    ${monitors.map(m=>`<tr><td class="src-name">${esc(m.repo)}</td><td><span class="pill2 ${m.last_score>=70?'LOW':'HIGH'}">${m.last_score!=null?m.last_score+'/100':'pending'}</span></td><td class="mono">${ago(m.last_scan_at)}</td><td><button class="btn ghost sm" data-unmon="${esc(m.repo)}">🔕 Stop</button></td></tr>`).join('')||'<tr><td colspan="4" class="mono">No repos monitored yet.</td></tr>'}
-    </tbody></table></div>
-    ${S.github.connected?`<div class="panel"><h2>Add a repository</h2><div style="display:flex;gap:.5rem;flex-wrap:wrap">${repos.filter(r=>!monset.has(r.full_name)).slice(0,40).map(r=>`<button class="btn ghost sm" data-mon="${esc(r.full_name)}">🔔 ${esc(r.full_name)}</button>`).join('')||'<span class="mono">All your repos are monitored.</span>'}</div></div>`:''}`;
+  $('#tact').innerHTML = S.github.connected?'':`<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`;
+
+  if(!S.github.connected){
+    c.innerHTML = `<div class="empty"><div class="big">🔁</div><h2>Monitor your repositories</h2>
+      <p>Connect GitHub to watch repos — every push & PR gets scanned automatically, with a daily re-scan and results posted back to GitHub, Slack and Jira.</p>
+      <a class="btn primary" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a></div>${HOWITWORKS}`;
+    return;
+  }
+
+  const watched = `<div class="panel"><h2>🔁 Watched repositories <span class="right">${monitors.length} active · scan on push + daily</span></h2>
+    ${monitors.length?`<table class="tbl"><thead><tr><th>Repository</th><th>Scan-on-push</th><th>Last score</th><th>Last scan</th><th></th></tr></thead><tbody>
+      ${monitors.map(m=>`<tr><td class="src-name">${esc(m.repo)} <span class="mono">@${esc(m.branch||'main')}</span></td>
+        <td><span class="pill2 ${m.hook_id?'LOW':'MEDIUM'}">${m.hook_id?'● active':'manual'}</span></td>
+        <td>${m.last_score!=null?`<span class="pill2 ${m.last_score>=70?'LOW':m.last_score>=40?'MEDIUM':'CRITICAL'}">${m.last_score}/100</span>`:'<span class="mono">pending first push</span>'}</td>
+        <td class="mono">${ago(m.last_scan_at)||'—'}</td>
+        <td style="white-space:nowrap"><button class="btn ghost sm" data-scannow="${esc(m.repo)}" data-branch="${esc(m.branch||'main')}">⚡ Scan now</button> <button class="btn ghost sm" data-unmon="${esc(m.repo)}">🔕 Stop</button></td></tr>`).join('')}
+      </tbody></table>`:`<div class="empty" style="padding:1.5rem"><p>No repositories watched yet. Pick one below to start scanning on every push.</p></div>`}
+  </div>`;
+
+  const avail = repos.filter(r=>!monset.has(r.full_name));
+  const add = `<div class="panel"><h2>Add a repository <span class="right">${avail.length} available</span></h2>
+    <input class="search" id="repoFilter" placeholder="Filter repositories…" style="max-width:none;margin-bottom:.8rem">
+    <div class="repo-list" id="repoList">${avail.slice(0,60).map(r=>`<div class="repo-row" data-name="${esc(r.full_name)}"><span class="src-name">${esc(r.full_name)}${r.private?' <span class="mono">🔒 private</span>':''}</span><button class="btn ghost sm" data-mon="${esc(r.full_name)}">🔔 Monitor</button></div>`).join('')||'<p class="mono">All your repositories are monitored. 🎉</p>'}</div></div>`;
+
+  c.innerHTML = watched + add + HOWITWORKS;
   $$('[data-mon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.mon,true,b));
   $$('[data-unmon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.unmon,false,b));
+  $$('[data-scannow]').forEach(b=>b.onclick=()=>scanNow(b.dataset.scannow,b.dataset.branch));
+  const rf=$('#repoFilter'); if(rf) rf.oninput=e=>{ const q=e.target.value.toLowerCase(); $$('#repoList .repo-row').forEach(row=>row.style.display=row.dataset.name.toLowerCase().includes(q)?'':'none'); };
 }
 async function toggleMonitor(repo,on,btn){ btn.disabled=true; const t=btn.textContent; btn.textContent='…';
   const r=await api('/api/security/monitors',{method:on?'POST':'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({repo,branch:'main'})});

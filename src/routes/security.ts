@@ -12,7 +12,7 @@
 import type { Ctx } from '../types';
 import { json, error } from '../lib/response';
 import { PRIVACY_NOTICE, type AuditInput, type AuditLevel } from '../lib/audit';
-import { auditResponse, securityEntitled } from './audit';
+import { auditResponse, securityTier, scanGate, FREE_SCANS_PER_DAY, PRO_SCANS_PER_DAY } from './audit';
 import { createSecurityCheckout } from '../lib/billing';
 import {
   getProject, getProjectFiles, listProjects, getGithubAuth, listAuditRunsBySource,
@@ -39,7 +39,7 @@ export async function handleSecurity(req: Request, c: Ctx, action?: string): Pro
 }
 
 async function status(c: Ctx): Promise<Response> {
-  const active = await securityEntitled(c);
+  const tier = await securityTier(c);
   let projects: { id: string; title: string; github_repo: string | null }[] = [];
   let github = { connected: false, login: null as string | null };
   if (c.user) {
@@ -49,7 +49,10 @@ async function status(c: Ctx): Promise<Response> {
     github = { connected: !!auth, login: auth?.login ?? null };
   }
   return json({
-    active,
+    tier, // 'none' | 'free' | 'pro'
+    active: tier === 'pro', // back-compat
+    dailyCap: tier === 'pro' ? PRO_SCANS_PER_DAY : FREE_SCANS_PER_DAY,
+    unlimited: c.env.AUTH_ENABLED === 'false',
     priceConfigured: !!c.env.SECURITY_PRICE_ID && !c.env.SECURITY_PRICE_ID.includes('PLACEHOLDER'),
     loginRequired: c.env.AUTH_ENABLED !== 'false' && !c.user,
     projects, github, privacyNotice: PRIVACY_NOTICE,
@@ -82,13 +85,14 @@ async function history(c: Ctx): Promise<Response> {
 
 // POST /api/security/scan — fetch a project's or repo's files and audit them.
 async function scan(req: Request, c: Ctx): Promise<Response> {
-  if (!(await securityEntitled(c))) {
-    return error(402, 'Yield Security subscription required.', { code: 'security_required' });
-  }
   const body = (await req.json().catch(() => ({}))) as any;
   const level: AuditLevel = LEVELS.includes(body?.level) ? body.level : 'detailed';
   const wantStream = body.stream !== false; // the product UI always streams
   const sourceKind = body.source === 'repo' ? 'repo' : 'project';
+
+  // Tier gate + fair-use cap (free = basic only; AI = Pro; open testing = unlimited).
+  const gate = await scanGate(c, level !== 'basic');
+  if (!gate.ok) return error(gate.status, gate.error || 'Locked', { code: gate.code });
 
   let files: AuditInput[] = [];
   let sourceId = '';

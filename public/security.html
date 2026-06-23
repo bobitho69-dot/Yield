@@ -25,7 +25,13 @@
   .seg-group { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   .seg { border: none; border-radius: 0; cursor: pointer; } .seg.on { background: var(--brand); color: #fff; }
   .muted { color: var(--muted); } .row-gap { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-  @media (max-width: 720px) { .sec-feats { grid-template-columns: 1fr; } }
+  .tier-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; max-width: 800px; margin: 1.5rem auto 0; }
+  .price-card { margin: 0; text-align: center; }
+  .price-card.featured { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand), var(--shadow); }
+  .tier-name { font-weight: 800; font-size: 1.05rem; margin-bottom: .3rem; display:flex; gap:.4rem; align-items:center; justify-content:center; }
+  .tier-list { list-style: none; padding: 0; margin: .9rem 0 1.1rem; text-align: left; font-size: .85rem; color: var(--muted); display: flex; flex-direction: column; gap: .35rem; }
+  .tier-list b { color: var(--text); }
+  @media (max-width: 720px) { .sec-feats, .tier-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -47,7 +53,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const scoreClass = (s) => s >= 85 ? 'ok' : s >= 60 ? 'warn' : s >= 40 ? 'bad' : 'crit';
 const sevClass = (v) => ({ CRITICAL:'crit', HIGH:'bad', MEDIUM:'warn', LOW:'low' })[v] || 'low';
-let STATE = { active:false, projects:[], github:{connected:false}, level:'detailed', source:null, scanning:false };
+let STATE = { tier:'none', projects:[], github:{connected:false}, level:'detailed', dailyCap:3, scanning:false };
 
 function findingCard(f) {
   const loc = f.location ? `${esc(f.location.file||'')}:${f.location.line||0}` : '';
@@ -65,11 +71,12 @@ async function load() {
   let s;
   try { s = await fetch('/api/security/status').then(r => r.json()); }
   catch { $('#page').innerHTML = '<div class="sec-hero"><p class="muted">Could not load. Try again.</p></div>'; return; }
-  STATE.active = s.active; STATE.projects = s.projects || []; STATE.github = s.github || { connected:false };
-  STATE.priceConfigured = s.priceConfigured; STATE.loginRequired = s.loginRequired;
+  STATE.tier = s.tier || (s.active ? 'pro' : 'none'); STATE.projects = s.projects || []; STATE.github = s.github || { connected:false };
+  STATE.priceConfigured = s.priceConfigured; STATE.loginRequired = s.loginRequired; STATE.dailyCap = s.dailyCap || 3; STATE.unlimited = s.unlimited;
+  STATE.level = STATE.tier === 'pro' ? 'detailed' : 'basic';
   $('#acct').textContent = s.github && s.github.login ? '@'+s.github.login : (s.loginRequired ? 'Sign in' : 'Account');
   $('#acct').href = s.loginRequired ? '/login?redirect=/security' : '/app';
-  STATE.active ? renderDashboard() : renderPitch();
+  STATE.tier === 'none' ? renderPitch() : renderDashboard();
 }
 
 function renderPitch() {
@@ -93,37 +100,60 @@ function renderPitch() {
       <div class="sec-feat"><h3>📈 Track over time</h3><p>Every scan records a code-health score (0–100). Watch it improve as you fix issues — metadata only, never your code.</p></div>
       <div class="sec-feat"><h3>🔒 Privacy first</h3><p>Code is never stored. We keep only the finding type, severity, CWE, file and line — nothing else.</p></div>
     </div>
-    <div class="price-card" style="text-align:center">
-      <div class="amt">$29 <small>/ month</small></div>
-      <p class="muted" style="margin:.4rem 0 1rem">Unlimited scans across your repos & projects. Cancel anytime.</p>
-      ${subscribeBtn}
-      <p class="muted" style="font-size:.74rem;margin-top:.8rem">Sold separately from Priority. Code is analyzed and discarded immediately.</p>
-    </div>`;
-  const sb = $('#subBtn');
-  if (sb) sb.addEventListener('click', async () => {
-    sb.disabled = true; sb.textContent = 'Redirecting…';
-    try { const { url, error } = await fetch('/api/security/checkout', { method:'POST' }).then(r => r.json());
-      if (url) location.href = url; else { sb.disabled = false; sb.textContent = error || 'Try again'; }
-    } catch { sb.disabled = false; sb.textContent = 'Subscribe & start scanning'; }
-  });
+    <div class="tier-grid">
+      <div class="price-card">
+        <div class="tier-name">Free</div>
+        <div class="amt">$0</div>
+        <ul class="tier-list"><li>✓ Basic pattern scans</li><li>✓ ${3} scans / day</li><li>✓ Projects & repos</li><li>✗ AI ensemble</li><li>✗ Compliance mode</li></ul>
+        <a class="btn ghost" href="/login?redirect=/security">Start free</a>
+      </div>
+      <div class="price-card featured">
+        <div class="tier-name">Pro <span class="pill" style="margin:0">popular</span></div>
+        <div class="amt">$19 <small>/ mo</small></div>
+        <ul class="tier-list"><li>✓ Everything in Free</li><li>✓ <b>AI ensemble</b> — every top model</li><li>✓ Compliance (GDPR/PCI)</li><li>✓ Unlimited repos & projects</li><li>✓ Score history & trends</li></ul>
+        ${subscribeBtn}
+      </div>
+      <div class="price-card">
+        <div class="tier-name">Team</div>
+        <div class="amt">$49 <small>/ mo</small></div>
+        <ul class="tier-list"><li>✓ Everything in Pro</li><li>✓ Shared org repos</li><li>✓ Priority scanning</li><li>✓ Email support</li></ul>
+        <a class="btn ghost" href="mailto:bobitho69@gmail.com?subject=Yield%20Security%20Team">Contact us</a>
+      </div>
+    </div>
+    <p class="muted" style="text-align:center;font-size:.76rem;margin-top:1rem">Sold separately from Priority. Code is analyzed and discarded immediately — only findings are kept.</p>`;
+  $('#subBtn')?.addEventListener('click', subscribe);
+}
+
+// Start the Pro subscription checkout (or send to sign-in first).
+async function subscribe() {
+  if (STATE.loginRequired) { location.href = '/login?redirect=/security'; return; }
+  try {
+    const { url, error } = await fetch('/api/security/checkout', { method:'POST' }).then(r => r.json());
+    if (url) location.href = url; else alert(error || 'Subscription isn’t available yet.');
+  } catch { alert('Could not start checkout. Please try again.'); }
 }
 
 function renderDashboard() {
+  const isPro = STATE.tier === 'pro';
   const projOpts = STATE.projects.map(p => `<option value="project:${esc(p.id)}">${esc(p.title)}</option>`).join('');
   const gh = STATE.github.connected
     ? `<button class="btn ghost sm" id="loadRepos">Load GitHub repos</button><select id="repoSel" class="hidden"></select>`
     : `<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`;
+  const lock = isPro ? '' : ' data-locked="1"';
+  const banner = isPro ? '' : `<div class="sec-upsell" style="margin:0 0 1rem">⚡ You're on <b>Free</b> — basic pattern scans, ${STATE.dailyCap}/day. Upgrade to <b>Pro</b> for the AI ensemble, compliance mode and unlimited scans. <button class="btn primary sm" id="upBtn">Upgrade — $19/mo</button></div>`;
   $('#page').innerHTML = `
-    <div class="sec-hero" style="padding-bottom:.5rem"><span class="pill">🛡 Yield Security — active</span>
+    <div class="sec-hero" style="padding-bottom:.5rem"><span class="pill">🛡 Yield Security — ${isPro ? 'Pro' : 'Free'}${STATE.unlimited ? ' · testing (unlimited)' : ''}</span>
       <h1 style="font-size:1.8rem">Scan a repo or project</h1></div>
+    ${banner}
     <div class="scan-bar">
       <select id="srcSel" title="Source to scan">
         <optgroup label="Yield projects">${projOpts || '<option disabled>No projects yet</option>'}</optgroup>
       </select>
       ${gh}
       <span class="seg-group">
-        <button class="seg on" data-lvl="detailed">🔬 Deep</button>
-        <button class="seg" data-lvl="compliance">📋 Compliance</button>
+        <button class="seg ${STATE.level === 'basic' ? 'on' : ''}" data-lvl="basic">⚡ Basic</button>
+        <button class="seg ${STATE.level === 'detailed' ? 'on' : ''}"${lock} data-lvl="detailed">🔬 Deep${isPro ? '' : ' 🔒'}</button>
+        <button class="seg ${STATE.level === 'compliance' ? 'on' : ''}"${lock} data-lvl="compliance">📋 Compliance${isPro ? '' : ' 🔒'}</button>
       </span>
       <button class="btn primary" id="scanBtn">Scan ▸</button>
       <a class="btn ghost sm" href="/app">← Builder</a>
@@ -137,8 +167,10 @@ function renderDashboard() {
     <div id="secFindings" class="sec-findings"></div>
     <div class="sec-privacy">🔒 Code is analyzed and discarded immediately. Only finding metadata (type, severity, CWE, file, line, score) is retained.</div>`;
   document.querySelectorAll('.seg').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.locked) { subscribe(); return; }
     document.querySelectorAll('.seg').forEach(x => x.classList.toggle('on', x === b)); STATE.level = b.dataset.lvl;
   }));
+  $('#upBtn')?.addEventListener('click', subscribe);
   const lr = $('#loadRepos');
   if (lr) lr.addEventListener('click', async () => {
     lr.textContent = 'Loading…';

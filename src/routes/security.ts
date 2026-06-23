@@ -18,11 +18,11 @@ import {
   getProject, getProjectFiles, listProjects, getGithubAuth, listAuditRunsBySource,
   listAuditIgnores, addAuditIgnore, removeAuditIgnore, upsertFile, setProjectCode,
   addMonitor, listMonitors, getMonitor, getMonitorByRepo, removeMonitor, touchMonitor, listAllMonitors,
-  getIntegrations, setIntegrations, overviewStats, recordAuditRun, type MonitorRow,
+  getIntegrations, setIntegrations, overviewStats, recordAuditRun, recentAuditRuns, getUser, type MonitorRow,
 } from '../lib/db';
 import { decryptToken, encryptToken, listRepos, listCommits, getCommitFiles, getRepoFile, putRepoFile, createWebhook, deleteWebhook } from '../lib/github';
 import { notifyScan, type IntegrationConfig } from '../lib/integrations';
-import { computeAudit } from './audit';
+import { computeAudit, scansUsedToday } from './audit';
 import { chat } from '../lib/nvidia';
 import { resolveModel } from '../config/models';
 
@@ -51,11 +51,19 @@ export async function handleSecurity(req: Request, c: Ctx, action?: string): Pro
   return error(404, 'Not found');
 }
 
-// GET /api/security/overview — latest score per scanned source + monitor status.
+// GET /api/security/overview — latest score per source + monitors + score trend + usage.
 async function overview(c: Ctx): Promise<Response> {
-  if (!c.user) return json({ sources: [], monitors: [] });
-  const [{ results: sources }, { results: mons }] = await Promise.all([overviewStats(c.env, c.user.id), listMonitors(c.env, c.user.id)]);
-  return json({ sources, monitors: mons, tier: await securityTier(c) });
+  if (!c.user) return json({ sources: [], monitors: [], trend: [], usage: null });
+  const tier = await securityTier(c);
+  const [{ results: sources }, { results: mons }, { results: trend }, used, u] = await Promise.all([
+    overviewStats(c.env, c.user.id), listMonitors(c.env, c.user.id), recentAuditRuns(c.env, c.user.id, 40), scansUsedToday(c), getUser(c.env, c.user.id),
+  ]);
+  return json({
+    sources, monitors: mons, tier,
+    trend: (trend as any[]).slice().reverse(), // oldest -> newest
+    usage: { usedToday: used, cap: tier === 'pro' ? PRO_SCANS_PER_DAY : FREE_SCANS_PER_DAY, unlimited: c.env.AUTH_ENABLED === 'false' },
+    account: { plan: u?.plan ?? 'free', security_active: !!u?.security_active, hasCustomer: !!u?.stripe_customer_id },
+  });
 }
 
 // GET/POST/DELETE /api/security/monitors — continuous monitoring of a GitHub repo.

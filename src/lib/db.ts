@@ -268,6 +268,11 @@ export function listAuditRuns(env: Env, projectId: string): Promise<{ results: a
   ).bind(projectId).all();
 }
 
+// Recent scans for a user across all sources (time series for the dashboard trend).
+export function recentAuditRuns(env: Env, userId: string, limit = 40): Promise<{ results: any[] }> {
+  return env.DB.prepare('SELECT source,level,score,total,critical,high,created_at FROM audit_runs WHERE user_id=? ORDER BY created_at DESC LIMIT ?').bind(userId, limit).all();
+}
+
 // Audit history for any scan source ("project:<id>" or "repo:<owner/name>").
 export function listAuditRunsBySource(env: Env, source: string): Promise<{ results: any[] }> {
   return env.DB.prepare(

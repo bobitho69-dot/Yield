@@ -81,6 +81,19 @@ CREATE TABLE IF NOT EXISTS audit_findings (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_findings_run ON audit_findings(run_id);
 
+-- Triage: findings a user marked ignored / accepted-risk (filtered from future scans).
+CREATE TABLE IF NOT EXISTS audit_ignores (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT,
+  source      TEXT NOT NULL,                 -- "project:<id>" or "repo:<owner/name>"
+  type        TEXT NOT NULL,
+  file        TEXT NOT NULL,
+  line        INTEGER,                        -- NULL = ignore this type anywhere in the file
+  reason      TEXT,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ignores_source ON audit_ignores(source);
+
 -- ── Files (multi-file projects: one row per file in a project) ───────────────
 CREATE TABLE IF NOT EXISTS files (
   id          TEXT PRIMARY KEY,

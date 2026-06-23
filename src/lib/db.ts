@@ -275,6 +275,20 @@ export function listAuditRunsBySource(env: Env, source: string): Promise<{ resul
   ).bind(source).all();
 }
 
+// Triage: ignored / accepted-risk findings per source (so they're filtered from future
+// scans and the score). A NULL line means "ignore this finding type anywhere in the file".
+export function listAuditIgnores(env: Env, source: string): Promise<{ results: any[] }> {
+  return env.DB.prepare('SELECT type,file,line,reason,created_at FROM audit_ignores WHERE source=? ORDER BY created_at DESC LIMIT 500').bind(source).all();
+}
+export async function addAuditIgnore(env: Env, ig: { user_id?: string | null; source: string; type: string; file: string; line?: number | null; reason?: string | null }): Promise<void> {
+  await env.DB.prepare('INSERT INTO audit_ignores (id,user_id,source,type,file,line,reason,created_at) VALUES (?,?,?,?,?,?,?,?)')
+    .bind(newId(), ig.user_id ?? null, ig.source, ig.type, ig.file, ig.line ?? null, (ig.reason ?? '').slice(0, 300), now()).run();
+}
+export async function removeAuditIgnore(env: Env, source: string, type: string, file: string, line: number | null): Promise<void> {
+  await env.DB.prepare('DELETE FROM audit_ignores WHERE source=? AND type=? AND file=? AND ((line=?) OR (? IS NULL AND line IS NULL))')
+    .bind(source, type, file, line ?? null, line ?? null).run();
+}
+
 // --- Files (multi-file projects) ----------------------------------------------
 export interface FileRow {
   path: string;

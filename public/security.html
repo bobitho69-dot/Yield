@@ -31,6 +31,16 @@
   .tier-name { font-weight: 800; font-size: 1.05rem; margin-bottom: .3rem; display:flex; gap:.4rem; align-items:center; justify-content:center; }
   .tier-list { list-style: none; padding: 0; margin: .9rem 0 1.1rem; text-align: left; font-size: .85rem; color: var(--muted); display: flex; flex-direction: column; gap: .35rem; }
   .tier-list b { color: var(--text); }
+  .fnd-actions { display: flex; gap: .4rem; margin-top: .6rem; }
+  .sec-status a { color: var(--brand-2); text-decoration: underline; }
+  .fix-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 100; padding: 1rem; }
+  .fix-box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; width: min(820px, 96vw); max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow); }
+  .fix-head { display: flex; align-items: center; gap: .6rem; padding: .8rem 1rem; border-bottom: 1px solid var(--line); font-weight: 700; }
+  .fix-head .fnd-loc { margin-left: 0; font-weight: 400; }
+  .fix-head .btn { margin-left: auto; }
+  .fix-pre { margin: 0; padding: 1rem; overflow: auto; font-size: .8rem; white-space: pre; font-family: ui-monospace, monospace; flex: 1; }
+  .fix-foot { display: flex; align-items: center; gap: .6rem; padding: .7rem 1rem; border-top: 1px solid var(--line); }
+  .fix-foot .muted { flex: 1; font-size: .8rem; }
   @media (max-width: 720px) { .sec-feats, .tier-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -55,16 +65,103 @@ const scoreClass = (s) => s >= 85 ? 'ok' : s >= 60 ? 'warn' : s >= 40 ? 'bad' : 
 const sevClass = (v) => ({ CRITICAL:'crit', HIGH:'bad', MEDIUM:'warn', LOW:'low' })[v] || 'low';
 let STATE = { tier:'none', projects:[], github:{connected:false}, level:'detailed', dailyCap:3, scanning:false };
 
-function findingCard(f) {
+function findingCard(f, i) {
   const loc = f.location ? `${esc(f.location.file||'')}:${f.location.line||0}` : '';
   const ex = f.example && (f.example.vulnerable || f.example.safe)
     ? `<div class="fnd-ex"><div class="ex-bad"><span>✗ vulnerable</span><pre>${esc(f.example.vulnerable||'')}</pre></div><div class="ex-ok"><span>✓ safe</span><pre>${esc(f.example.safe||'')}</pre></div></div>` : '';
+  const fixable = f.location && f.location.file && f.location.file.indexOf('.') > -1; // a real file we can rewrite
+  const actions = (i != null) ? `<div class="fnd-actions">
+      ${fixable ? `<button class="btn ghost sm" data-act="fix" data-i="${i}">✨ AI Fix</button>` : ''}
+      <button class="btn ghost sm" data-act="ignore" data-i="${i}">🙈 Ignore</button></div>` : '';
   return `<div class="fnd ${sevClass(f.severity)}"><div class="fnd-head">
       <span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span><b>${esc((f.type||'').replace(/_/g,' '))}</b>
       <span class="fnd-cwe">${esc(f.cwe||'')}</span>${f.source==='ai'?`<span class="fnd-ai">🤖 ${esc(f.model||'AI')}</span>`:'<span class="fnd-pat">pattern</span>'}
       <span class="fnd-loc">${loc}</span></div>
       <div class="fnd-owasp">${esc(f.owasp||'')}</div><div class="fnd-desc">${esc(f.description||'')}</div>
-      ${f.fix?`<div class="fnd-fix"><b>Fix:</b> ${esc(f.fix)}</div>`:''}${ex}</div>`;
+      ${f.fix?`<div class="fnd-fix"><b>Fix:</b> ${esc(f.fix)}</div>`:''}${ex}${actions}</div>`;
+}
+
+// Re-render the findings list with action buttons + wire them.
+function paintFindings() {
+  const list = $('#secFindings'); if (!list) return;
+  const fs = STATE.findings || [];
+  list.innerHTML = fs.length ? fs.map((f, i) => findingCard(f, i)).join('') : (STATE.scanning ? '<div class="muted">Scanning…</div>' : '');
+  list.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
+    const f = STATE.findings[+b.dataset.i]; if (!f) return;
+    if (b.dataset.act === 'ignore') doIgnore(f, b);
+    else doFix(f, b);
+  }));
+}
+
+async function doIgnore(f, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    await fetch('/api/security/ignores', { method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({ source: STATE.sourceKey, type: f.type, file: f.location.file, line: f.location.line }) });
+    STATE.findings = STATE.findings.filter(x => x !== f); paintFindings();
+  } catch { btn.disabled = false; btn.textContent = '🙈 Ignore'; }
+}
+
+async function doFix(f, btn) {
+  if (STATE.tier !== 'pro' && !STATE.unlimited) { subscribe(); return; }
+  btn.disabled = true; btn.textContent = '✨ Generating…';
+  try {
+    const payload = { ...STATE.src, file: f.location.file, line: f.location.line, finding: f };
+    const r = await fetch('/api/security/fix', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) }).then(x => x.json());
+    if (r.fixedContent) showFixModal(f, r.fixedContent, payload);
+    else alert(r.error || 'Could not generate a fix.');
+  } catch { alert('Fix failed — try again.'); }
+  finally { btn.disabled = false; btn.textContent = '✨ AI Fix'; }
+}
+
+function showFixModal(f, fixed, payload) {
+  const m = document.createElement('div'); m.className = 'fix-modal';
+  m.innerHTML = `<div class="fix-box">
+    <div class="fix-head">✨ AI Fix — ${esc((f.type||'').replace(/_/g,' '))} <span class="fnd-loc">${esc(f.location.file)}</span>
+      <button class="btn ghost sm" id="fixClose">✕</button></div>
+    <pre class="fix-pre">${esc(fixed)}</pre>
+    <div class="fix-foot"><span class="muted">Review the rewritten file, then apply it to ${payload.source === 'repo' ? 'your repo' : 'your project'}.</span>
+      <button class="btn ghost sm" id="fixCopy">Copy</button>
+      <button class="btn primary sm" id="fixApply">Apply fix →</button></div></div>`;
+  document.body.appendChild(m);
+  const close = () => m.remove();
+  $('#fixClose', m).onclick = close;
+  m.addEventListener('click', e => { if (e.target === m) close(); });
+  $('#fixCopy', m).onclick = () => { navigator.clipboard?.writeText(fixed); $('#fixCopy', m).textContent = 'Copied'; };
+  $('#fixApply', m).onclick = async () => {
+    const b = $('#fixApply', m); b.disabled = true; b.textContent = 'Applying…';
+    try {
+      const r = await fetch('/api/security/fix', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ ...payload, apply: true }) }).then(x => x.json());
+      if (r.applied) { b.textContent = '✓ Applied'; STATE.findings = STATE.findings.filter(x => x !== f); paintFindings(); setTimeout(close, 900); }
+      else { b.disabled = false; b.textContent = 'Apply fix →'; alert(r.applyError || r.error || 'Could not apply automatically — copy the code instead.'); }
+    } catch { b.disabled = false; b.textContent = 'Apply fix →'; }
+  };
+}
+
+// ---- exports (client-side, from the current scan) ----
+function download(name, text, mime) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: mime })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+function toSarif() {
+  const rules = {}; const results = (STATE.findings||[]).map(f => {
+    rules[f.type] = { id: f.type, name: f.type, shortDescription: { text: f.type }, properties: { cwe: f.cwe, 'security-severity': ({CRITICAL:'9.5',HIGH:'8.0',MEDIUM:'5.0',LOW:'3.0'})[f.severity] } };
+    return { ruleId: f.type, level: ({CRITICAL:'error',HIGH:'error',MEDIUM:'warning',LOW:'note'})[f.severity]||'warning',
+      message: { text: f.description }, locations: [{ physicalLocation: { artifactLocation: { uri: f.location.file }, region: { startLine: f.location.line || 1, startColumn: f.location.column || 1 } } }] };
+  });
+  return JSON.stringify({ $schema: 'https://json.schemastore.org/sarif-2.1.0.json', version: '2.1.0',
+    runs: [{ tool: { driver: { name: 'Yield Security', informationUri: 'https://yield', rules: Object.values(rules) } }, results }] }, null, 2);
+}
+function exportAs(fmt) {
+  const stamp = new Date().toISOString().slice(0,10);
+  if (fmt === 'sarif') return download(`yield-security-${stamp}.sarif`, toSarif(), 'application/json');
+  if (fmt === 'json') return download(`yield-security-${stamp}.json`, JSON.stringify(STATE.result, null, 2), 'application/json');
+  // printable HTML report
+  const fs = STATE.findings || [];
+  const html = `<!doctype html><meta charset=utf-8><title>Yield Security report</title>
+    <style>body{font:14px system-ui;margin:2rem;color:#111}h1{margin:.2rem 0}.s{font-weight:700}.c{color:#b00}.h{color:#c60}.m{color:#a80}.l{color:#888}pre{background:#f5f5f5;padding:.4rem;border-radius:4px;white-space:pre-wrap}</style>
+    <h1>🛡 Yield Security report</h1><p>${esc(STATE.sourceKey||'')} · ${stamp} · code health <b>${STATE.result?.codeHealthScore??'—'}/100</b> · ${fs.length} findings</p>
+    ${fs.map(f=>`<div style="border-left:3px solid #ccc;padding:.3rem .6rem;margin:.5rem 0"><span class="s ${({CRITICAL:'c',HIGH:'h',MEDIUM:'m',LOW:'l'})[f.severity]}">${f.severity}</span> <b>${esc(f.type)}</b> · ${esc(f.cwe)} · ${esc(f.location.file)}:${f.location.line}<br>${esc(f.description||'')}<br><b>Fix:</b> ${esc(f.fix||'')}</div>`).join('')}`;
+  download(`yield-security-${stamp}.html`, html, 'text/html');
 }
 
 async function load() {
@@ -93,12 +190,12 @@ function renderPitch() {
       <div class="cwe-row">${cwes.map(c => `<span class="cwe-chip">${c}</span>`).join('')}</div>
     </div>
     <div class="sec-feats">
-      <div class="sec-feat"><h3>🔗 Scan any source</h3><p>Connect a GitHub repo or pick one of your Yield projects. We pull the code, scan it, and forget it.</p></div>
-      <div class="sec-feat"><h3>🤖 Every top model</h3><p>A deterministic pattern engine plus an AI ensemble — each top model audits the code and findings are merged (agreement raises confidence).</p></div>
-      <div class="sec-feat"><h3>📋 Compliance mode</h3><p>A GDPR/PCI-focused pass flags PII handling, unencrypted card data, and risky logging on top of the standard checks.</p></div>
-      <div class="sec-feat"><h3>🎯 Low false positives</h3><p>Parameterized queries, sanitized HTML, env-var secrets and constant-time compares are recognized as safe — not flagged.</p></div>
-      <div class="sec-feat"><h3>📈 Track over time</h3><p>Every scan records a code-health score (0–100). Watch it improve as you fix issues — metadata only, never your code.</p></div>
-      <div class="sec-feat"><h3>🔒 Privacy first</h3><p>Code is never stored. We keep only the finding type, severity, CWE, file and line — nothing else.</p></div>
+      <div class="sec-feat"><h3>🧪 SAST + SCA + IaC</h3><p>One scan covers code flaws, known-vulnerable dependencies (with CVEs), and infra/config misconfigs — Dockerfiles, GitHub Actions, committed .env.</p></div>
+      <div class="sec-feat"><h3>🤖 AI ensemble</h3><p>Beyond the pattern engine, every top AI model audits the code one at a time and findings are merged — agreement raises confidence.</p></div>
+      <div class="sec-feat"><h3>✨ One-click AI fix</h3><p>For any finding, generate the corrected file and apply it straight to your repo or Yield project — review the diff first.</p></div>
+      <div class="sec-feat"><h3>🙈 Triage & ignore</h3><p>Mark false positives or accepted risks; they're excluded from your score and future scans. Findings have a real lifecycle.</p></div>
+      <div class="sec-feat"><h3>📤 Export anywhere</h3><p>Download SARIF (for GitHub code scanning / CI), JSON, or a shareable report. Plus a 0–100 code-health score and trend.</p></div>
+      <div class="sec-feat"><h3>🔒 Privacy first</h3><p>Code is analyzed and discarded immediately. We keep only the finding type, severity, CWE, file and line — never your source.</p></div>
     </div>
     <div class="tier-grid">
       <div class="price-card">
@@ -196,10 +293,11 @@ async function runScan() {
   if (STATE.scanning) return;
   const src = pickedSource();
   if (!src) { $('#secStatus').textContent = 'Pick a project or repo first.'; return; }
-  STATE.scanning = true;
-  const status = $('#secStatus'), list = $('#secFindings'), summary = $('#secSummary');
-  const found = []; summary.style.display = 'none'; list.innerHTML = '';
-  status.innerHTML = `<span class="spin"></span> Scanning ${esc(src.repo || 'project')} — running every top model, one at a time…`;
+  STATE.scanning = true; STATE.src = { source: src.source, projectId: src.projectId, repo: src.repo, branch: src.branch };
+  STATE.sourceKey = src.key; STATE.findings = []; STATE.result = null;
+  const status = $('#secStatus'), summary = $('#secSummary');
+  summary.style.display = 'none'; paintFindings();
+  status.innerHTML = `<span class="spin"></span> Scanning ${esc(src.repo || 'project')} — static suite (SAST + deps + IaC)${STATE.level !== 'basic' ? ' then every top model…' : '…'}`;
   try {
     const res = await fetch('/api/security/scan', {
       method:'POST', headers:{'content-type':'application/json', accept:'text/event-stream'},
@@ -221,8 +319,8 @@ async function runScan() {
         const ev = /event: (.*)/.exec(frame)?.[1], data = /data: ([\s\S]*)/.exec(frame)?.[1];
         if (!ev || data == null) continue;
         let p; try { p = JSON.parse(data); } catch { continue; }
-        if (ev === 'finding') { found.push(p); list.innerHTML = found.map(findingCard).join(''); }
-        else if (ev === 'progress' && p.stage === 'ai') status.innerHTML = `<span class="spin"></span> ${esc(p.model)} (${p.index}/${p.total}) — ${found.length} finding(s) so far`;
+        if (ev === 'finding') { STATE.findings.push(p); paintFindings(); }
+        else if (ev === 'progress' && p.stage === 'ai') status.innerHTML = `<span class="spin"></span> ${esc(p.model)} (${p.index}/${p.total}) — ${STATE.findings.length} finding(s) so far`;
         else if (ev === 'done') renderResult(p, src.key);
         else if (ev === 'error') status.textContent = p.message || 'Scan error';
       }
@@ -232,12 +330,16 @@ async function runScan() {
 }
 
 function renderResult(r, sourceKey) {
-  $('#secStatus').textContent = `✓ Scan complete — code health ${r.codeHealthScore}/100 (${r.summary.total} findings)`;
+  STATE.result = r; STATE.findings = r.findings; STATE.scanning = false;
+  $('#secStatus').innerHTML = `✓ Scan complete — code health ${r.codeHealthScore}/100 (${r.summary.total} findings) · `
+    + `<a href="#" data-exp="sarif">SARIF</a> · <a href="#" data-exp="json">JSON</a> · <a href="#" data-exp="html">Report</a>`;
+  $('#secStatus').querySelectorAll('[data-exp]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); exportAs(a.dataset.exp); }));
   const sum = r.summary, sc = $('#secScore'); $('#secSummary').style.display = 'flex';
   sc.className = 'sec-score ' + scoreClass(r.codeHealthScore);
   sc.innerHTML = `<div class="ss-num">${r.codeHealthScore}</div><div class="ss-lbl">Code Health</div>`;
   $('#secCounts').innerHTML = `<span class="sev crit">${sum.critical} critical</span> <span class="sev bad">${sum.high} high</span> <span class="sev warn">${sum.medium} medium</span> <span class="sev low">${sum.low} low</span>`;
-  $('#secFindings').innerHTML = r.findings.length ? r.findings.map(findingCard).join('') : '<div class="sec-clean">✓ No vulnerabilities found. Clean.</div>';
+  if (!r.findings.length) $('#secFindings').innerHTML = '<div class="sec-clean">✓ No vulnerabilities found. Clean.</div>';
+  else paintFindings();
   loadTrend(sourceKey);
 }
 

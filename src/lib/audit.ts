@@ -11,6 +11,8 @@
 // known-safe equivalent is present on the line (parameterized queries, env lookups,
 // sanitizers, array-form exec, etc.).
 
+import { auditDependencies, auditConfig } from './sca';
+
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type AuditLevel = 'basic' | 'detailed' | 'compliance';
 export type Language = 'javascript' | 'typescript' | 'python' | 'go' | 'java' | 'html' | 'unknown';
@@ -338,11 +340,11 @@ const RULES: Rule[] = [
   // ---------------- Insecure / outdated dependencies (CWE-1104) ----------------
   {
     type: 'INSECURE_DEPENDENCY', severity: 'MEDIUM', cwe: 'CWE-1104', owasp: A06,
-    description: 'A dependency is pinned to a wildcard / "latest" version, or to a release with a well-known critical CVE — builds may pull in vulnerable code.',
+    description: 'A dependency is pinned to a wildcard / "latest" version (non-reproducible, may pull vulnerable code), or to a release with a well-known critical CVE. (Versioned CVEs are reported separately by the dependency scanner.)',
     fix: 'Pin exact, patched versions and run an SCA/audit (npm audit, pip-audit, govulncheck) in CI.',
     example: { vulnerable: '"lodash": "*"  // or log4j-core 2.14.1 (Log4Shell)', safe: '"lodash": "4.17.21"' },
     languages: '*', confidence: 0.55,
-    pattern: /["']?(?:lodash|axios|express|minimist|node-fetch|moment)["']?\s*:\s*["'](?:\*|latest|\^?0\.|\^?1\.)|log4j-core["'\s:]+2\.(?:[0-9]|1[0-6])\b|event-stream["'\s:@]+3\.3\.6/i,
+    pattern: /["'][\w@/.-]+["']\s*:\s*["'](?:\*|latest)["']|\blog4j-core\b["'\s:]+2\.(?:[0-9]|1[0-6])\b/i,
   },
 ];
 
@@ -427,6 +429,12 @@ export function auditPatterns(files: AuditInput[]): AuditFinding[] {
     out.push(...scanFile(f.path, f.content));
   }
   return out;
+}
+
+// The full deterministic scan: line patterns (SAST) + dependency CVEs (SCA) + IaC/config
+// misconfigurations. Zero model calls, no code stored. This is what every scan runs first.
+export function scanStatic(files: AuditInput[]): AuditFinding[] {
+  return [...auditPatterns(files), ...auditDependencies(files), ...auditConfig(files)];
 }
 
 // Assemble a full AuditResult from a set of findings (pattern + optional AI).

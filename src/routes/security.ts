@@ -16,8 +16,11 @@ import { auditResponse, securityTier, scanGate, FREE_SCANS_PER_DAY, PRO_SCANS_PE
 import { createSecurityCheckout } from '../lib/billing';
 import {
   getProject, getProjectFiles, listProjects, getGithubAuth, listAuditRunsBySource,
+  listAuditIgnores, addAuditIgnore, removeAuditIgnore, upsertFile, setProjectCode,
 } from '../lib/db';
-import { decryptToken, listRepos, listCommits, getCommitFiles } from '../lib/github';
+import { decryptToken, listRepos, listCommits, getCommitFiles, getRepoFile, putRepoFile } from '../lib/github';
+import { chat } from '../lib/nvidia';
+import { resolveModel } from '../config/models';
 
 const LEVELS: AuditLevel[] = ['basic', 'detailed', 'compliance'];
 
@@ -33,6 +36,8 @@ export async function handleSecurity(req: Request, c: Ctx, action?: string): Pro
   if (action === 'status') return status(c);
   if (action === 'repos') return repos(c);
   if (action === 'history') return history(c);
+  if (action === 'ignores') return ignores(req, c);
+  if (action === 'fix' && req.method === 'POST') return fix(req, c);
   if (action === 'checkout' && req.method === 'POST') return checkout(c);
   if (action === 'scan' && req.method === 'POST') return scan(req, c);
   return error(404, 'Not found');
@@ -125,4 +130,106 @@ async function scan(req: Request, c: Ctx): Promise<Response> {
 
   if (!files.length) return error(400, 'No scannable source files were found.');
   return auditResponse(c, files, level, { stream: wantStream, projectId: sourceKind === 'project' ? String(body.projectId) : null, source: sourceId });
+}
+
+// GET/POST/DELETE /api/security/ignores — triage findings as false-positive / accepted.
+async function ignores(req: Request, c: Ctx): Promise<Response> {
+  if ((await securityTier(c)) === 'none') return error(401, 'Sign in to manage findings.', { code: 'login_required' });
+  if (req.method === 'GET') {
+    const source = c.url.searchParams.get('source');
+    if (!source) return error(400, 'source required');
+    const { results } = await listAuditIgnores(c.env, source);
+    return json({ ignores: results });
+  }
+  const body = (await req.json().catch(() => ({}))) as any;
+  if (!body.source || !body.type || !body.file) return error(400, 'source, type and file required');
+  const line = body.line != null ? Number(body.line) : null;
+  if (req.method === 'POST') {
+    await addAuditIgnore(c.env, { user_id: c.user?.id ?? null, source: String(body.source), type: String(body.type), file: String(body.file), line, reason: body.reason ? String(body.reason) : null });
+    return json({ ok: true });
+  }
+  if (req.method === 'DELETE') {
+    await removeAuditIgnore(c.env, String(body.source), String(body.type), String(body.file), line);
+    return json({ ok: true });
+  }
+  return error(405, 'Method not allowed');
+}
+
+// Ask a top model for the COMPLETE corrected file that fixes one finding (best-effort).
+function stripFences(t: string): string {
+  let s = (t || '').trim();
+  const m = s.match(/^```[\w-]*\n([\s\S]*?)\n```$/);
+  if (m) s = m[1];
+  return s.trim();
+}
+async function aiFix(c: Ctx, path: string, content: string, f: any): Promise<{ fixed: string; explanation: string } | null> {
+  const sys = `You are a senior security engineer. The given file "${path}" contains a ${f.type} vulnerability (${f.cwe}) at/near line ${f.line}: ${f.description || ''}. Return the COMPLETE corrected contents of the file that fixes ONLY this vulnerability while preserving all other behavior, structure, and style. Output ONLY the full file content — no markdown fences, no commentary.`;
+  const key = c.env.YIELDNVIDIAAIKEY || c.env.NVIDIA_API_KEY;
+  for (const id of ['nemotron-3-ultra', 'glm-5.1', 'deepseek-v4-flash']) {
+    try {
+      const m = resolveModel(id);
+      const { text } = await chat({
+        baseUrl: c.env.NVIDIA_CHAT_BASE, apiKey: key, apiKeyBackup: c.env.NVIDIA_API_KEY_BACKUP || undefined,
+        model: m.modelId, messages: [{ role: 'system', content: sys }, { role: 'user', content: content.slice(0, 40000) }],
+        temperature: 0.1, max_tokens: 9000, timeoutMs: 120000,
+      });
+      const fixed = stripFences(text);
+      if (fixed && fixed.length > 20 && fixed !== content.trim()) {
+        return { fixed, explanation: `Rewrote ${path} to fix ${f.type} (${f.cwe}) near line ${f.line}.` };
+      }
+    } catch { /* try the next model */ }
+  }
+  return null;
+}
+
+// POST /api/security/fix — AI auto-fix one finding (Pro). Optionally apply it to the source.
+async function fix(req: Request, c: Ctx): Promise<Response> {
+  const gate = await scanGate(c, true); // AI feature -> Pro + fair use
+  if (!gate.ok) return error(gate.status, gate.error || 'Locked', { code: gate.code });
+  const body = (await req.json().catch(() => ({}))) as any;
+  const finding = body.finding || {};
+  const filePath = String(body.file || finding.location?.file || '');
+  if (!filePath) return error(400, 'file required');
+  const apply = body.apply === true;
+
+  // Load the current file content from the source.
+  let content = '';
+  let repoCtx: { token: string; repo: string; branch: string } | null = null;
+  if (body.source === 'repo') {
+    if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
+    const repo = String(body.repo || '');
+    const auth = await getGithubAuth(c.env, c.user.id);
+    if (!auth) return error(400, 'Connect GitHub first.', { code: 'github_not_connected' });
+    const token = await decryptToken(c.env, auth.tokenEnc);
+    const branch = String(body.branch || 'main');
+    const rf = await getRepoFile(token, repo, branch, filePath);
+    if (!rf) return error(404, 'File not found in repo.');
+    content = rf.content; repoCtx = { token, repo, branch };
+  } else {
+    const project = await getProject(c.env, String(body.projectId || ''));
+    if (!project) return error(404, 'Project not found');
+    if (c.user && project.user_id !== c.user.id) return error(403, 'Not your project');
+    const files = await getProjectFiles(c.env, project);
+    const ff = files.find((x) => x.path === filePath);
+    if (!ff) return error(404, 'File not found in project.');
+    content = ff.content;
+  }
+
+  const out = await aiFix(c, filePath, content, { type: finding.type, cwe: finding.cwe, line: finding.location?.line || body.line || 0, description: finding.description });
+  if (!out) return error(502, 'Could not generate a fix — try again or fix it manually.');
+
+  let applied = false;
+  if (apply) {
+    try {
+      if (repoCtx) {
+        await putRepoFile(repoCtx.token, repoCtx.repo, repoCtx.branch, filePath, out.fixed, `Yield Security: fix ${finding.type || 'vulnerability'} in ${filePath}`);
+        applied = true;
+      } else if (body.projectId) {
+        await upsertFile(c.env, String(body.projectId), filePath, out.fixed);
+        if (filePath === 'index.html') await setProjectCode(c.env, String(body.projectId), out.fixed);
+        applied = true;
+      }
+    } catch (e: any) { return json({ file: filePath, fixedContent: out.fixed, explanation: out.explanation, applied: false, applyError: String(e?.message || e).slice(0, 200) }); }
+  }
+  return json({ file: filePath, fixedContent: out.fixed, explanation: out.explanation, applied });
 }

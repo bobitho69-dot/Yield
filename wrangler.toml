@@ -76,6 +76,10 @@ AUTH_ENABLED = "false"
 # Stripe price for the $20/mo "Priority Access" plan (set the real price id).
 STRIPE_PRICE_ID = "price_PLACEHOLDER"
 
+# Stripe price for the standalone "Yield Security" monthly subscription (its own product:
+# scan your GitHub repos + Yield projects for vulnerabilities). Set the real price id.
+SECURITY_PRICE_ID = "price_SECURITY_PLACEHOLDER"
+
 # Optional donations. Paste a one-off donation link and Yield shows "Support Yield"
 # buttons (landing, footer, builder, and the /donate page) pointing to it. Leave
 # empty to hide them. Easiest options: a Stripe Payment Link, Ko-fi, Buy Me a Coffee,

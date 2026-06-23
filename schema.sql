@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS users (
   stripe_customer_id     TEXT,
   stripe_subscription_id TEXT,
   plan_renews_at         INTEGER,            -- unix seconds; subscription period end
+  -- Separate "Yield Security" product subscription (sold apart from Priority).
+  security_active           INTEGER NOT NULL DEFAULT 0,
+  security_subscription_id  TEXT,
   -- GitHub code storage (token is AES-GCM encrypted at rest with SESSION_SECRET).
   github_login           TEXT,
   github_token_enc       TEXT,
@@ -53,6 +56,7 @@ CREATE TABLE IF NOT EXISTS audit_runs (
   id          TEXT PRIMARY KEY,
   project_id  TEXT,
   user_id     TEXT,
+  source      TEXT,                          -- "project:<id>" or "repo:<owner/name>"
   level       TEXT NOT NULL,                 -- 'basic' | 'detailed' | 'compliance'
   score       INTEGER NOT NULL,              -- codeHealthScore 0..100
   critical    INTEGER NOT NULL DEFAULT 0,

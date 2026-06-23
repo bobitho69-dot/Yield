@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yield Security — scan your repos for vulnerabilities</title>
+<meta name="description" content="Yield Security scans your GitHub repos and Yield projects for vulnerabilities with every top AI model. Code is analyzed and discarded — only findings are kept.">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .sec-page { max-width: 980px; margin: 0 auto; padding: 1.5rem 5vw 4rem; }
+  .sec-hero { text-align: center; padding: 2rem 0 1rem; }
+  .sec-hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); letter-spacing: -.03em; margin: .4rem 0; }
+  .sec-hero .pill { margin-bottom: 1rem; }
+  .sec-hero p.lead { color: var(--muted); font-size: 1.1rem; max-width: 620px; margin: .6rem auto 1.4rem; line-height: 1.6; }
+  .sec-feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 2rem 0; }
+  .sec-feat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem; text-align: left; }
+  .sec-feat h3 { margin: .3rem 0 .4rem; font-size: 1rem; }
+  .sec-feat p { color: var(--muted); font-size: .88rem; margin: 0; line-height: 1.5; }
+  .price-card { background: var(--panel); border: 1px solid var(--brand); border-radius: 14px; padding: 1.4rem; max-width: 420px; margin: 1.5rem auto; box-shadow: var(--shadow); }
+  .price-card .amt { font-size: 2.4rem; font-weight: 800; } .price-card .amt small { font-size: 1rem; color: var(--muted); font-weight: 600; }
+  .cwe-row { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; margin: 1.2rem 0; }
+  .cwe-chip { font-size: .72rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: .15rem .55rem; }
+  .scan-bar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: .8rem; margin-bottom: 1rem; }
+  .scan-bar select, .scan-bar .seg { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: .45rem .6rem; font-size: .88rem; font-family: inherit; }
+  .seg-group { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg { border: none; border-radius: 0; cursor: pointer; } .seg.on { background: var(--brand); color: #fff; }
+  .muted { color: var(--muted); } .row-gap { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  @media (max-width: 720px) { .sec-feats { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="nav">
+  <a href="/" class="brand">Yield <span class="logo">🛡 Security</span></a>
+  <nav class="nav-links">
+    <a href="/app">Builder</a>
+    <a href="/pricing">Pricing</a>
+    <a id="acct" href="/login" class="btn ghost sm">Sign in</a>
+  </nav>
+</header>
+
+<main class="sec-page" id="page">
+  <div class="sec-hero"><span class="pill">Loading…</span></div>
+</main>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const scoreClass = (s) => s >= 85 ? 'ok' : s >= 60 ? 'warn' : s >= 40 ? 'bad' : 'crit';
+const sevClass = (v) => ({ CRITICAL:'crit', HIGH:'bad', MEDIUM:'warn', LOW:'low' })[v] || 'low';
+let STATE = { active:false, projects:[], github:{connected:false}, level:'detailed', source:null, scanning:false };
+
+function findingCard(f) {
+  const loc = f.location ? `${esc(f.location.file||'')}:${f.location.line||0}` : '';
+  const ex = f.example && (f.example.vulnerable || f.example.safe)
+    ? `<div class="fnd-ex"><div class="ex-bad"><span>✗ vulnerable</span><pre>${esc(f.example.vulnerable||'')}</pre></div><div class="ex-ok"><span>✓ safe</span><pre>${esc(f.example.safe||'')}</pre></div></div>` : '';
+  return `<div class="fnd ${sevClass(f.severity)}"><div class="fnd-head">
+      <span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span><b>${esc((f.type||'').replace(/_/g,' '))}</b>
+      <span class="fnd-cwe">${esc(f.cwe||'')}</span>${f.source==='ai'?`<span class="fnd-ai">🤖 ${esc(f.model||'AI')}</span>`:'<span class="fnd-pat">pattern</span>'}
+      <span class="fnd-loc">${loc}</span></div>
+      <div class="fnd-owasp">${esc(f.owasp||'')}</div><div class="fnd-desc">${esc(f.description||'')}</div>
+      ${f.fix?`<div class="fnd-fix"><b>Fix:</b> ${esc(f.fix)}</div>`:''}${ex}</div>`;
+}
+
+async function load() {
+  let s;
+  try { s = await fetch('/api/security/status').then(r => r.json()); }
+  catch { $('#page').innerHTML = '<div class="sec-hero"><p class="muted">Could not load. Try again.</p></div>'; return; }
+  STATE.active = s.active; STATE.projects = s.projects || []; STATE.github = s.github || { connected:false };
+  STATE.priceConfigured = s.priceConfigured; STATE.loginRequired = s.loginRequired;
+  $('#acct').textContent = s.github && s.github.login ? '@'+s.github.login : (s.loginRequired ? 'Sign in' : 'Account');
+  $('#acct').href = s.loginRequired ? '/login?redirect=/security' : '/app';
+  STATE.active ? renderDashboard() : renderPitch();
+}
+
+function renderPitch() {
+  const cwes = ['SQL injection','XSS','Auth bypass','Crypto failures','Hardcoded secrets','PII exposure','Command injection','Path traversal','CORS/CSRF','Vulnerable deps'];
+  const subscribeBtn = STATE.loginRequired
+    ? `<a class="btn primary lg" href="/login?redirect=/security">Sign in to start</a>`
+    : (STATE.priceConfigured ? `<button class="btn primary lg" id="subBtn">Subscribe & start scanning</button>`
+      : `<button class="btn primary lg" disabled title="Billing not configured yet">Launching soon</button>`);
+  $('#page').innerHTML = `
+    <div class="sec-hero">
+      <span class="pill">🛡 Yield Security</span>
+      <h1>Find the vulnerabilities before attackers do.</h1>
+      <p class="lead">Scan your GitHub repos and Yield projects for real, exploitable security flaws — checked by a deterministic engine <b>and every top AI model</b>, one at a time. Your code is analyzed and discarded immediately; only the findings are kept.</p>
+      <div class="cwe-row">${cwes.map(c => `<span class="cwe-chip">${c}</span>`).join('')}</div>
+    </div>
+    <div class="sec-feats">
+      <div class="sec-feat"><h3>🔗 Scan any source</h3><p>Connect a GitHub repo or pick one of your Yield projects. We pull the code, scan it, and forget it.</p></div>
+      <div class="sec-feat"><h3>🤖 Every top model</h3><p>A deterministic pattern engine plus an AI ensemble — each top model audits the code and findings are merged (agreement raises confidence).</p></div>
+      <div class="sec-feat"><h3>📋 Compliance mode</h3><p>A GDPR/PCI-focused pass flags PII handling, unencrypted card data, and risky logging on top of the standard checks.</p></div>
+      <div class="sec-feat"><h3>🎯 Low false positives</h3><p>Parameterized queries, sanitized HTML, env-var secrets and constant-time compares are recognized as safe — not flagged.</p></div>
+      <div class="sec-feat"><h3>📈 Track over time</h3><p>Every scan records a code-health score (0–100). Watch it improve as you fix issues — metadata only, never your code.</p></div>
+      <div class="sec-feat"><h3>🔒 Privacy first</h3><p>Code is never stored. We keep only the finding type, severity, CWE, file and line — nothing else.</p></div>
+    </div>
+    <div class="price-card" style="text-align:center">
+      <div class="amt">$29 <small>/ month</small></div>
+      <p class="muted" style="margin:.4rem 0 1rem">Unlimited scans across your repos & projects. Cancel anytime.</p>
+      ${subscribeBtn}
+      <p class="muted" style="font-size:.74rem;margin-top:.8rem">Sold separately from Priority. Code is analyzed and discarded immediately.</p>
+    </div>`;
+  const sb = $('#subBtn');
+  if (sb) sb.addEventListener('click', async () => {
+    sb.disabled = true; sb.textContent = 'Redirecting…';
+    try { const { url, error } = await fetch('/api/security/checkout', { method:'POST' }).then(r => r.json());
+      if (url) location.href = url; else { sb.disabled = false; sb.textContent = error || 'Try again'; }
+    } catch { sb.disabled = false; sb.textContent = 'Subscribe & start scanning'; }
+  });
+}
+
+function renderDashboard() {
+  const projOpts = STATE.projects.map(p => `<option value="project:${esc(p.id)}">${esc(p.title)}</option>`).join('');
+  const gh = STATE.github.connected
+    ? `<button class="btn ghost sm" id="loadRepos">Load GitHub repos</button><select id="repoSel" class="hidden"></select>`
+    : `<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`;
+  $('#page').innerHTML = `
+    <div class="sec-hero" style="padding-bottom:.5rem"><span class="pill">🛡 Yield Security — active</span>
+      <h1 style="font-size:1.8rem">Scan a repo or project</h1></div>
+    <div class="scan-bar">
+      <select id="srcSel" title="Source to scan">
+        <optgroup label="Yield projects">${projOpts || '<option disabled>No projects yet</option>'}</optgroup>
+      </select>
+      ${gh}
+      <span class="seg-group">
+        <button class="seg on" data-lvl="detailed">🔬 Deep</button>
+        <button class="seg" data-lvl="compliance">📋 Compliance</button>
+      </span>
+      <button class="btn primary" id="scanBtn">Scan ▸</button>
+      <a class="btn ghost sm" href="/app">← Builder</a>
+    </div>
+    <div id="secStatus" class="sec-status"></div>
+    <div class="sec-top" id="secSummary" style="display:none">
+      <div class="sec-score" id="secScore"><div class="ss-num">—</div><div class="ss-lbl">Code Health</div></div>
+      <div class="sec-sum" id="secCounts"></div>
+    </div>
+    <div id="secTrend" class="sec-trend"></div>
+    <div id="secFindings" class="sec-findings"></div>
+    <div class="sec-privacy">🔒 Code is analyzed and discarded immediately. Only finding metadata (type, severity, CWE, file, line, score) is retained.</div>`;
+  document.querySelectorAll('.seg').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.seg').forEach(x => x.classList.toggle('on', x === b)); STATE.level = b.dataset.lvl;
+  }));
+  const lr = $('#loadRepos');
+  if (lr) lr.addEventListener('click', async () => {
+    lr.textContent = 'Loading…';
+    try { const { repos } = await fetch('/api/security/repos').then(r => r.json());
+      const sel = $('#repoSel'); sel.innerHTML = (repos||[]).map(r => `<option value="repo:${esc(r.full_name)}" data-branch="${esc(r.default_branch)}">${esc(r.full_name)}${r.private?' 🔒':''}</option>`).join('');
+      sel.classList.remove('hidden'); lr.classList.add('hidden');
+    } catch { lr.textContent = 'Retry'; }
+  });
+  $('#scanBtn').addEventListener('click', runScan);
+}
+
+function pickedSource() {
+  const repoSel = $('#repoSel');
+  if (repoSel && !repoSel.classList.contains('hidden') && repoSel.value) {
+    return { source:'repo', repo: repoSel.value.slice(5), branch: repoSel.selectedOptions[0]?.dataset.branch || 'main', key: repoSel.value };
+  }
+  const v = $('#srcSel')?.value || '';
+  if (v.startsWith('project:')) return { source:'project', projectId: v.slice(8), key: v };
+  return null;
+}
+
+async function runScan() {
+  if (STATE.scanning) return;
+  const src = pickedSource();
+  if (!src) { $('#secStatus').textContent = 'Pick a project or repo first.'; return; }
+  STATE.scanning = true;
+  const status = $('#secStatus'), list = $('#secFindings'), summary = $('#secSummary');
+  const found = []; summary.style.display = 'none'; list.innerHTML = '';
+  status.innerHTML = `<span class="spin"></span> Scanning ${esc(src.repo || 'project')} — running every top model, one at a time…`;
+  try {
+    const res = await fetch('/api/security/scan', {
+      method:'POST', headers:{'content-type':'application/json', accept:'text/event-stream'},
+      body: JSON.stringify({ ...src, level: STATE.level, stream: true }),
+    });
+    if (!res.ok || !res.body || !res.headers.get('content-type')?.includes('text/event-stream')) {
+      const err = await res.json().catch(() => ({}));
+      status.innerHTML = err.code === 'github_not_connected'
+        ? `Connect GitHub first. <a href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security" style="color:var(--brand-2)">Connect →</a>`
+        : esc(err.error || `Scan failed (${res.status})`);
+      return;
+    }
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break; buf += value;
+      let i; while ((i = buf.indexOf('\n\n')) !== -1) {
+        const frame = buf.slice(0, i); buf = buf.slice(i + 2);
+        const ev = /event: (.*)/.exec(frame)?.[1], data = /data: ([\s\S]*)/.exec(frame)?.[1];
+        if (!ev || data == null) continue;
+        let p; try { p = JSON.parse(data); } catch { continue; }
+        if (ev === 'finding') { found.push(p); list.innerHTML = found.map(findingCard).join(''); }
+        else if (ev === 'progress' && p.stage === 'ai') status.innerHTML = `<span class="spin"></span> ${esc(p.model)} (${p.index}/${p.total}) — ${found.length} finding(s) so far`;
+        else if (ev === 'done') renderResult(p, src.key);
+        else if (ev === 'error') status.textContent = p.message || 'Scan error';
+      }
+    }
+  } catch (e) { status.textContent = 'Scan interrupted: ' + e; }
+  finally { STATE.scanning = false; }
+}
+
+function renderResult(r, sourceKey) {
+  $('#secStatus').textContent = `✓ Scan complete — code health ${r.codeHealthScore}/100 (${r.summary.total} findings)`;
+  const sum = r.summary, sc = $('#secScore'); $('#secSummary').style.display = 'flex';
+  sc.className = 'sec-score ' + scoreClass(r.codeHealthScore);
+  sc.innerHTML = `<div class="ss-num">${r.codeHealthScore}</div><div class="ss-lbl">Code Health</div>`;
+  $('#secCounts').innerHTML = `<span class="sev crit">${sum.critical} critical</span> <span class="sev bad">${sum.high} high</span> <span class="sev warn">${sum.medium} medium</span> <span class="sev low">${sum.low} low</span>`;
+  $('#secFindings').innerHTML = r.findings.length ? r.findings.map(findingCard).join('') : '<div class="sec-clean">✓ No vulnerabilities found. Clean.</div>';
+  loadTrend(sourceKey);
+}
+
+async function loadTrend(sourceKey) {
+  try {
+    const { runs } = await fetch('/api/security/history?source=' + encodeURIComponent(sourceKey)).then(r => r.json());
+    const el = $('#secTrend'); if (!el || !runs || runs.length < 2) { if (el) el.innerHTML = ''; return; }
+    const series = runs.slice().reverse(), w = 240, h = 40, n = series.length;
+    const pts = series.map((r, i) => `${(i/(n-1))*w},${h-(r.score/100)*h}`).join(' ');
+    el.innerHTML = `<div class="trend-head">Security trend (${n} scans)</div><svg viewBox="0 0 ${w} ${h}" class="trend-svg" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="trend-now">latest ${series[n-1].score}/100</span>`;
+  } catch { /* optional */ }
+}
+
+load();
+</script>
+</body>
+</html>

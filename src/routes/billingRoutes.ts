@@ -7,7 +7,7 @@
 import type { Ctx } from '../types';
 import { json, error, now } from '../lib/response';
 import { createCheckout, createPortal, verifyWebhook } from '../lib/billing';
-import { getUser, getUserByCustomer, setUserPlan } from '../lib/db';
+import { getUser, getUserByCustomer, getUserBySecuritySub, setUserPlan, setUserSecurity } from '../lib/db';
 
 export async function handleBilling(req: Request, c: Ctx, action?: string): Promise<Response> {
   if (action === 'webhook') return handleWebhook(req, c);
@@ -43,32 +43,38 @@ async function handleWebhook(req: Request, c: Ctx): Promise<Response> {
   const event = JSON.parse(payload) as any;
   const obj = event.data?.object ?? {};
 
+  const isSecurity = obj.metadata?.product === 'security';
+
   switch (event.type) {
     case 'checkout.session.completed': {
       const userId = obj.client_reference_id || obj.metadata?.user_id;
-      if (userId) {
-        await setUserPlan(c.env, userId, 'priority', {
-          stripe_customer_id: obj.customer,
-          stripe_subscription_id: obj.subscription,
-        });
+      if (userId && isSecurity) {
+        await setUserSecurity(c.env, userId, true, { stripe_customer_id: obj.customer, security_subscription_id: obj.subscription });
+      } else if (userId) {
+        await setUserPlan(c.env, userId, 'priority', { stripe_customer_id: obj.customer, stripe_subscription_id: obj.subscription });
       }
       break;
     }
     case 'customer.subscription.updated':
     case 'customer.subscription.created': {
-      const user = await getUserByCustomer(c.env, obj.customer);
-      if (user) {
-        const active = obj.status === 'active' || obj.status === 'trialing';
-        await setUserPlan(c.env, user.id, active ? 'priority' : 'free', {
-          stripe_subscription_id: obj.id,
-          plan_renews_at: obj.current_period_end ?? null,
-        });
+      const active = obj.status === 'active' || obj.status === 'trialing';
+      if (isSecurity) {
+        const user = (await getUserBySecuritySub(c.env, obj.id)) || (await getUserByCustomer(c.env, obj.customer));
+        if (user) await setUserSecurity(c.env, user.id, active, { security_subscription_id: obj.id });
+      } else {
+        const user = await getUserByCustomer(c.env, obj.customer);
+        if (user) await setUserPlan(c.env, user.id, active ? 'priority' : 'free', { stripe_subscription_id: obj.id, plan_renews_at: obj.current_period_end ?? null });
       }
       break;
     }
     case 'customer.subscription.deleted': {
-      const user = await getUserByCustomer(c.env, obj.customer);
-      if (user) await setUserPlan(c.env, user.id, 'free');
+      if (isSecurity) {
+        const user = (await getUserBySecuritySub(c.env, obj.id)) || (await getUserByCustomer(c.env, obj.customer));
+        if (user) await setUserSecurity(c.env, user.id, false);
+      } else {
+        const user = await getUserByCustomer(c.env, obj.customer);
+        if (user) await setUserPlan(c.env, user.id, 'free');
+      }
       break;
     }
   }

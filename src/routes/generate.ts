@@ -1128,7 +1128,7 @@ export async function runBuild(
     try {
       if (hasFiles) {
         audit = buildResult(files, auditPatterns(files), 'basic');
-        if (project && c.user) await recordAuditRun(c.env, { project_id: project.id, user_id: c.user.id, level: 'basic', score: audit.codeHealthScore, summary: audit.summary, findings: audit.findings });
+        if (project && c.user) await recordAuditRun(c.env, { project_id: project.id, source: `project:${project.id}`, user_id: c.user.id, level: 'basic', score: audit.codeHealthScore, summary: audit.summary, findings: audit.findings });
       }
     } catch (e) { console.error('audit step failed:', e); }
 

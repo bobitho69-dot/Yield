@@ -41,6 +41,28 @@ export async function createCheckout(env: Env, userId: string, email: string | n
   return session.url as string;
 }
 
+/** Hosted Checkout for the standalone "Yield Security" subscription. The product tag is
+ *  carried on BOTH the session and the subscription so the webhook can tell it apart from
+ *  the Priority plan. */
+export async function createSecurityCheckout(env: Env, userId: string, email: string | null): Promise<string> {
+  const params: Record<string, string> = {
+    mode: 'subscription',
+    'line_items[0][price]': env.SECURITY_PRICE_ID,
+    'line_items[0][quantity]': '1',
+    success_url: `${env.APP_URL}/security?subscribed=1`,
+    cancel_url: `${env.APP_URL}/security?subscribe=cancelled`,
+    client_reference_id: userId,
+    'metadata[user_id]': userId,
+    'metadata[product]': 'security',
+    'subscription_data[metadata][user_id]': userId,
+    'subscription_data[metadata][product]': 'security',
+    allow_promotion_codes: 'true',
+  };
+  if (email) params.customer_email = email;
+  const session = await stripe(env, '/checkout/sessions', params);
+  return session.url as string;
+}
+
 /** Customer billing portal (manage/cancel). */
 export async function createPortal(env: Env, customerId: string): Promise<string> {
   const session = await stripe(env, '/billing_portal/sessions', {

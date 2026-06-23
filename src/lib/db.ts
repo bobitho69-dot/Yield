@@ -13,6 +13,9 @@ export interface UserRow {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   plan_renews_at: number | null;
+  // Separate "Yield Security" product subscription (sold independently of Priority).
+  security_active: number;
+  security_subscription_id: string | null;
   password_hash: string | null;
   created_at: number;
   updated_at: number;
@@ -126,6 +129,23 @@ export function getUserByCustomer(env: Env, customerId: string): Promise<UserRow
   return env.DB.prepare('SELECT * FROM users WHERE stripe_customer_id = ?').bind(customerId).first<UserRow>();
 }
 
+// Toggle the separate "Yield Security" subscription entitlement (sold apart from Priority).
+export async function setUserSecurity(
+  env: Env, userId: string, active: boolean,
+  fields: { stripe_customer_id?: string | null; security_subscription_id?: string | null } = {},
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE users SET security_active=?,
+       stripe_customer_id=COALESCE(?, stripe_customer_id),
+       security_subscription_id=COALESCE(?, security_subscription_id),
+       updated_at=? WHERE id=?`,
+  ).bind(active ? 1 : 0, fields.stripe_customer_id ?? null, fields.security_subscription_id ?? null, now(), userId).run();
+}
+
+export function getUserBySecuritySub(env: Env, subId: string): Promise<UserRow | null> {
+  return env.DB.prepare('SELECT * FROM users WHERE security_subscription_id = ?').bind(subId).first<UserRow>();
+}
+
 // --- GitHub token storage -----------------------------------------------------
 export async function setGithubAuth(env: Env, userId: string, login: string, tokenEnc: string): Promise<void> {
   await env.DB.prepare('UPDATE users SET github_login=?, github_token_enc=?, updated_at=? WHERE id=?')
@@ -223,15 +243,15 @@ export interface AuditRunRow {
 
 export async function recordAuditRun(
   env: Env,
-  run: { project_id?: string | null; user_id?: string | null; level: string; score: number;
+  run: { project_id?: string | null; user_id?: string | null; source?: string | null; level: string; score: number;
          summary: { critical: number; high: number; medium: number; low: number; total: number };
          findings: { type: string; severity: string; cwe: string; location: { file: string; line: number } }[] },
 ): Promise<string> {
   const id = newId();
   const t = now();
   await env.DB.prepare(
-    'INSERT INTO audit_runs (id,project_id,user_id,level,score,critical,high,medium,low,total,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-  ).bind(id, run.project_id ?? null, run.user_id ?? null, run.level, run.score,
+    'INSERT INTO audit_runs (id,project_id,user_id,source,level,score,critical,high,medium,low,total,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+  ).bind(id, run.project_id ?? null, run.user_id ?? null, run.source ?? null, run.level, run.score,
     run.summary.critical, run.summary.high, run.summary.medium, run.summary.low, run.summary.total, t).run();
   // Store finding METADATA only (capped). batch() keeps it to one round-trip.
   const stmts = run.findings.slice(0, 200).map((f) => env.DB.prepare(
@@ -246,6 +266,13 @@ export function listAuditRuns(env: Env, projectId: string): Promise<{ results: a
   return env.DB.prepare(
     'SELECT id,level,score,critical,high,medium,low,total,created_at FROM audit_runs WHERE project_id=? ORDER BY created_at DESC LIMIT 50',
   ).bind(projectId).all();
+}
+
+// Audit history for any scan source ("project:<id>" or "repo:<owner/name>").
+export function listAuditRunsBySource(env: Env, source: string): Promise<{ results: any[] }> {
+  return env.DB.prepare(
+    'SELECT id,source,level,score,critical,high,medium,low,total,created_at FROM audit_runs WHERE source=? ORDER BY created_at DESC LIMIT 50',
+  ).bind(source).all();
 }
 
 // --- Files (multi-file projects) ----------------------------------------------

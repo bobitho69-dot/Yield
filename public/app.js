@@ -919,8 +919,8 @@ function renderSecurityPane() {
           <span class="sev low">${sum.low} low</span>` : '<span class="muted">No scan yet.</span>'}
         <div class="sec-actions">
           <button class="btn ghost sm" data-scan="basic" ${!hasFiles ? 'disabled' : ''}>⚡ Quick scan</button>
-          <button class="btn ghost sm" data-scan="detailed" ${!hasFiles ? 'disabled' : ''}>🔬 Deep scan (all models)</button>
-          <button class="btn ghost sm" data-scan="compliance" ${!hasFiles ? 'disabled' : ''}>📋 Compliance (GDPR/PCI)</button>
+          <button class="btn ghost sm" data-scan="detailed" ${!hasFiles ? 'disabled' : ''}>🔒 Deep scan (all models)</button>
+          <button class="btn ghost sm" data-scan="compliance" ${!hasFiles ? 'disabled' : ''}>🔒 Compliance (GDPR/PCI)</button>
         </div>
       </div>
     </div>
@@ -930,6 +930,7 @@ function renderSecurityPane() {
         : (hasFiles ? '<div class="muted">Run a scan to audit this app for security vulnerabilities.</div>' : '<div class="muted">Build an app first, then audit it here.</div>')
     }</div>
     <div id="secTrend" class="sec-trend"></div>
+    <div class="sec-upsell">🛡 Want to scan your whole codebase? <a href="/security" target="_blank">Yield Security</a> scans your GitHub repos &amp; Yield projects with every top AI model — <a href="/security" target="_blank">learn more →</a></div>
     <div class="sec-privacy">🔒 ${esc(a ? a.privacyNotice : 'Code is analyzed and discarded immediately. Only vulnerability metadata is retained.')}</div>`;
   pane.querySelectorAll('[data-scan]').forEach((b) => b.addEventListener('click', () => runScan(b.dataset.scan)));
   loadAuditTrend();
@@ -952,7 +953,9 @@ async function runScan(level) {
     });
     if (!res.ok || !res.body || !res.headers.get('content-type')?.includes('text/event-stream')) {
       const err = await res.json().catch(() => ({}));
-      if (status) status.textContent = err.error || `Scan failed (${res.status})`;
+      if (err.code === 'security_required') {
+        if (status) status.innerHTML = `🔒 Deep AI scans &amp; whole-repo scanning are part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`;
+      } else if (status) status.textContent = err.error || `Scan failed (${res.status})`;
       return;
     }
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();

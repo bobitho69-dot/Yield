@@ -16,6 +16,7 @@ import { handleSecrets } from './routes/secrets';
 import { handleAppData } from './routes/appdata';
 import { handleMedia, handleModel3d, handleVideo } from './routes/media';
 import { handleAudit } from './routes/audit';
+import { handleSecurity } from './routes/security';
 
 import { PLATFORM_GUIDE } from './lib/platformGuide';
 
@@ -80,6 +81,8 @@ export default {
         res = await handleVideo(request, c);
       } else if (path === '/api/audit' || path === '/api/audit/history') {
         res = await handleAudit(request, c);
+      } else if (path.startsWith('/api/security/')) {
+        res = await handleSecurity(request, c, path.slice('/api/security/'.length));
       } else if (path.startsWith('/api/apps/')) {
         const p = path.slice('/api/apps/'.length).split('/'); // [id, 'entities', entity, recordId?]
         if (p[1] === 'entities' && p[0] && p[2]) res = await handleAppData(request, c, p[0], p[2], p[3]);

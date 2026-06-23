@@ -9,9 +9,9 @@
 <style>
   :root { --crit:#f0566d; --high:#f59e57; --med:#e8c24a; --low:#6f9bd1; --ok:#3ecf8e; }
   body.sec-app { height:100vh; overflow:hidden; }
-  .app { display:grid; grid-template-columns:248px 1fr; height:100vh; }
+  .app { display:grid; grid-template-columns:248px 1fr; height:100vh; overflow:hidden; }
   /* Sidebar */
-  .sb { background:#0e1119; border-right:1px solid var(--line); display:flex; flex-direction:column; padding:1rem .8rem; gap:.2rem; }
+  .sb { background:#0e1119; border-right:1px solid var(--line); display:flex; flex-direction:column; padding:1rem .8rem; gap:.2rem; overflow-y:auto; min-height:0; }
   .sb-brand { display:flex; align-items:center; gap:.5rem; font-weight:800; font-size:1.05rem; padding:.3rem .5rem 1rem; letter-spacing:-.01em; }
   .sb-brand .sh { width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:grid;place-items:center;font-size:.9rem; }
   .sb-sec { font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:.9rem .6rem .3rem; }
@@ -25,12 +25,14 @@
   .tier-chip.pro { background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff; }
   .tier-chip.free { background:#222a3a; color:var(--muted); }
   /* Main */
-  .main { display:flex; flex-direction:column; min-width:0; }
-  .topbar { display:flex; align-items:center; gap:1rem; padding:1rem 1.6rem; border-bottom:1px solid var(--line); }
+  .main { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .topbar { display:flex; align-items:center; gap:1rem; padding:1rem 1.6rem; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--bg); }
   .topbar h1 { font-size:1.25rem; margin:0; letter-spacing:-.01em; }
   .topbar .sub { color:var(--muted); font-size:.82rem; }
   .top-actions { margin-left:auto; display:flex; gap:.5rem; align-items:center; }
-  .content { flex:1; overflow:auto; padding:1.6rem; }
+  .content { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:1.8rem 2rem 3rem; scroll-behavior:smooth; background:radial-gradient(1100px 500px at 80% -8%, #14122a 0%, transparent 55%); }
+  .content > * { max-width:1320px; margin-left:auto; margin-right:auto; }
+  .content::-webkit-scrollbar{width:11px} .content::-webkit-scrollbar-thumb{background:#2a3242;border-radius:6px;border:3px solid var(--bg)} .content::-webkit-scrollbar-track{background:transparent}
   /* KPI cards */
   .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-bottom:1.4rem; }
   .kpi { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.1rem 1.2rem; }

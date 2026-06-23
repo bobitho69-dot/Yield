@@ -19,7 +19,7 @@ import {
   addMessage, createAgent, createProject, getProject, getProjectFiles, listAgents, listMessages,
   logUsage, recordAuditRun, saveFiles, setProjectBranding, updateAgent, type FileRow,
 } from '../lib/db';
-import { scanStatic, buildResult } from '../lib/audit';
+import { scanOffline, buildResult } from '../lib/audit';
 import { syncProjectToGithub } from './githubRoutes';
 import { generateImage } from './media';
 
@@ -1127,7 +1127,7 @@ export async function runBuild(
     let audit = null;
     try {
       if (hasFiles) {
-        audit = buildResult(files, scanStatic(files), 'basic');
+        audit = buildResult(files, scanOffline(files), 'basic');
         if (project && c.user) await recordAuditRun(c.env, { project_id: project.id, source: `project:${project.id}`, user_id: c.user.id, level: 'basic', score: audit.codeHealthScore, summary: audit.summary, findings: audit.findings });
       }
     } catch (e) { console.error('audit step failed:', e); }

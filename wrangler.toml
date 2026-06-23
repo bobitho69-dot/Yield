@@ -48,6 +48,10 @@ class_name = "BuildSession"
 tag = "v1"
 new_sqlite_classes = ["BuildSession"]
 
+# --- Cron: daily re-scan of monitored repos (Yield Security continuous monitoring) ----
+[triggers]
+crons = ["0 6 * * *"]
+
 # --- Non-secret vars (override per environment) --------------------------------
 [vars]
 APP_NAME = "Yield"
@@ -125,6 +129,7 @@ GOOGLE_CLIENT_SECRET = "PLACEHOLDER_GOOGLE_CLIENT_SECRET"
 #   NVIDIA_API_KEY_BACKUP     nvapi-...  optional 2nd NVIDIA key — used automatically on a 429/402 (rate-limit/quota)
 #   YIELDNVIDIAAIKEY          nvapi-...  optional DEDICATED key for the security-audit feature (so it's metered/keyed separately). Falls back to NVIDIA_API_KEY.
 #   OPENROUTER_API_KEY        optional — only for Qwen3 Coder / Laguna (the two OpenRouter models). Omit and they just fall back.
+#   GITHUB_WEBHOOK_SECRET     optional — enables Yield Security continuous monitoring (scan-on-push). Random 32+ byte string; set on the repo webhook automatically.
 #   SESSION_SECRET            random 32+ byte string (HMAC for session cookies)
 #   # GitHub/Google OAuth are OPTIONAL placeholder vars above (email+password works
 #   # without them); promote the *_SECRET ones to real secrets when you enable OAuth.

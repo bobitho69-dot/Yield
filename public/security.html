@@ -31,6 +31,22 @@
   .tier-name { font-weight: 800; font-size: 1.05rem; margin-bottom: .3rem; display:flex; gap:.4rem; align-items:center; justify-content:center; }
   .tier-list { list-style: none; padding: 0; margin: .9rem 0 1.1rem; text-align: left; font-size: .85rem; color: var(--muted); display: flex; flex-direction: column; gap: .35rem; }
   .tier-list b { color: var(--text); }
+  .sec-overview { margin: 1.5rem 0; }
+  .ov-h { font-size: 1rem; margin: 0 0 .6rem; }
+  .ov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .7rem; }
+  .ov-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: .7rem .8rem; }
+  .ov-src { font-size: .76rem; color: var(--muted); font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-score { font-size: 1.8rem; font-weight: 800; margin: .2rem 0; }
+  .ov-score.ok { color: #86efac; } .ov-score.warn { color: #fde68a; } .ov-score.bad { color: #fdba74; } .ov-score.crit { color: #fca5a5; }
+  .ov-meta { font-size: .74rem; color: var(--muted); margin-bottom: .5rem; }
+  .ov-mon { margin-top: .7rem; font-size: .8rem; }
+  .sec-integrations { margin: 1rem 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); padding: .3rem .8rem; }
+  .sec-integrations summary { cursor: pointer; font-weight: 700; padding: .4rem 0; }
+  .integ-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin: .6rem 0; }
+  .integ-grid label { display: flex; flex-direction: column; gap: .25rem; font-size: .8rem; color: var(--muted); }
+  .integ-grid label.chk { flex-direction: row; align-items: center; gap: .45rem; }
+  .integ-grid input { background: var(--bg-2); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: .4rem .5rem; font-family: inherit; font-size: .84rem; }
+  .integ-body input#iRepo { background: var(--bg-2); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: .4rem .5rem; }
   .fnd-actions { display: flex; gap: .4rem; margin-top: .6rem; }
   .sec-status a { color: var(--brand-2); text-decoration: underline; }
   .fix-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 100; padding: 1rem; }
@@ -190,11 +206,11 @@ function renderPitch() {
       <div class="cwe-row">${cwes.map(c => `<span class="cwe-chip">${c}</span>`).join('')}</div>
     </div>
     <div class="sec-feats">
-      <div class="sec-feat"><h3>🧪 SAST + SCA + IaC</h3><p>One scan covers code flaws, known-vulnerable dependencies (with CVEs), and infra/config misconfigs — Dockerfiles, GitHub Actions, committed .env.</p></div>
-      <div class="sec-feat"><h3>🤖 AI ensemble</h3><p>Beyond the pattern engine, every top AI model audits the code one at a time and findings are merged — agreement raises confidence.</p></div>
-      <div class="sec-feat"><h3>✨ One-click AI fix</h3><p>For any finding, generate the corrected file and apply it straight to your repo or Yield project — review the diff first.</p></div>
-      <div class="sec-feat"><h3>🙈 Triage & ignore</h3><p>Mark false positives or accepted risks; they're excluded from your score and future scans. Findings have a real lifecycle.</p></div>
-      <div class="sec-feat"><h3>📤 Export anywhere</h3><p>Download SARIF (for GitHub code scanning / CI), JSON, or a shareable report. Plus a 0–100 code-health score and trend.</p></div>
+      <div class="sec-feat"><h3>🧪 SAST · SCA · IaC</h3><p>One scan covers code flaws, vulnerable dependencies via the <b>live OSV feed</b> (GitHub Advisories, NVD, PyPA…), and container/IaC misconfigs.</p></div>
+      <div class="sec-feat"><h3>🤖 AI ensemble + ✨ auto-fix</h3><p>Every top AI model audits the code; then generate the corrected file for any finding and apply it straight to your repo or project.</p></div>
+      <div class="sec-feat"><h3>🔁 Continuous monitoring</h3><p>Watch a repo: every push & PR is scanned automatically, with a daily re-scan — results posted as a commit status and PR comment.</p></div>
+      <div class="sec-feat"><h3>🔌 Slack · Jira · GitHub</h3><p>Pipe findings to Slack, open Jira tickets for criticals, and comment on PRs. Triage false positives so they stop counting.</p></div>
+      <div class="sec-feat"><h3>📤 Compliance & export</h3><p>GDPR/PCI mode, license checks, SARIF (for CI / code scanning), JSON and shareable reports — plus a 0–100 code-health trend.</p></div>
       <div class="sec-feat"><h3>🔒 Privacy first</h3><p>Code is analyzed and discarded immediately. We keep only the finding type, severity, CWE, file and line — never your source.</p></div>
     </div>
     <div class="tier-grid">
@@ -262,7 +278,11 @@ function renderDashboard() {
     </div>
     <div id="secTrend" class="sec-trend"></div>
     <div id="secFindings" class="sec-findings"></div>
+    ${isPro ? `<div id="secOverview" class="sec-overview"></div>
+    <details class="sec-integrations"><summary>🔌 Monitoring &amp; integrations</summary>
+      <div class="integ-body" id="integBody"><p class="muted">Loading…</p></div></details>` : ''}
     <div class="sec-privacy">🔒 Code is analyzed and discarded immediately. Only finding metadata (type, severity, CWE, file, line, score) is retained.</div>`;
+  if (isPro) { loadOverview(); $('.sec-integrations summary')?.addEventListener('click', loadIntegrations, { once: true }); }
   document.querySelectorAll('.seg').forEach(b => b.addEventListener('click', () => {
     if (b.dataset.locked) { subscribe(); return; }
     document.querySelectorAll('.seg').forEach(x => x.classList.toggle('on', x === b)); STATE.level = b.dataset.lvl;
@@ -351,6 +371,63 @@ async function loadTrend(sourceKey) {
     const pts = series.map((r, i) => `${(i/(n-1))*w},${h-(r.score/100)*h}`).join(' ');
     el.innerHTML = `<div class="trend-head">Security trend (${n} scans)</div><svg viewBox="0 0 ${w} ${h}" class="trend-svg" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="trend-now">latest ${series[n-1].score}/100</span>`;
   } catch { /* optional */ }
+}
+
+// ---- overview dashboard + monitoring + integrations ----
+async function loadOverview() {
+  try {
+    const d = await fetch('/api/security/overview').then(r => r.json());
+    const el = $('#secOverview'); if (!el) return;
+    const mons = d.monitors || [], monitored = new Set(mons.map(m => m.repo)), sources = d.sources || [];
+    if (!sources.length && !mons.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<h3 class="ov-h">📊 Your security overview</h3>
+      <div class="ov-grid">${sources.map(s => { const repo = s.source.startsWith('repo:') ? s.source.slice(5) : null; return `<div class="ov-card">
+        <div class="ov-src">${esc(s.source)}</div>
+        <div class="ov-score ${scoreClass(s.score||0)}">${s.score ?? '—'}</div>
+        <div class="ov-meta">${s.critical||0} crit · ${s.high||0} high · ${s.total||0} total · ${s.scans} scan(s)</div>
+        ${repo ? (monitored.has(repo) ? `<button class="btn ghost sm" data-unmon="${esc(repo)}">🔕 Stop monitoring</button>` : `<button class="btn ghost sm" data-mon="${esc(repo)}">🔔 Monitor</button>`) : ''}
+      </div>`; }).join('')}</div>
+      ${mons.length ? `<div class="ov-mon muted">🔔 Monitoring on push: ${mons.map(m => esc(m.repo) + (m.last_score!=null?` (${m.last_score})`:'')).join(', ')}</div>` : ''}`;
+    el.querySelectorAll('[data-mon]').forEach(b => b.addEventListener('click', () => toggleMonitor(b.dataset.mon, true, b)));
+    el.querySelectorAll('[data-unmon]').forEach(b => b.addEventListener('click', () => toggleMonitor(b.dataset.unmon, false, b)));
+  } catch { /* optional */ }
+}
+async function toggleMonitor(repo, on, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await fetch('/api/security/monitors', { method: on ? 'POST' : 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repo, branch: 'main' }) }).then(x => x.json());
+    if (r.ok || r.already) loadOverview(); else { btn.disabled = false; alert(r.error || 'Failed — is GitHub connected?'); }
+  } catch { btn.disabled = false; alert('Failed — try again.'); }
+}
+async function loadIntegrations() {
+  try {
+    const d = await fetch('/api/security/integrations').then(r => r.json());
+    const g = d.integrations || {};
+    $('#integBody').innerHTML = `
+      <div class="integ-grid">
+        <label>Slack incoming webhook<input id="iSlack" placeholder="${g.slack ? 'configured ✓ (leave blank to keep)' : 'https://hooks.slack.com/services/...'}"></label>
+        <label>Jira base URL<input id="iJiraBase" placeholder="${g.jira ? 'configured ✓' : 'https://you.atlassian.net'}"></label>
+        <label>Jira email<input id="iJiraEmail" placeholder="you@company.com"></label>
+        <label>Jira API token<input id="iJiraToken" type="password" placeholder="${g.jira ? '••• (leave blank to keep)' : 'token'}"></label>
+        <label>Jira project key<input id="iJiraProj" value="${esc(g.jira_project || '')}" placeholder="SEC"></label>
+        <label class="chk"><input type="checkbox" id="iPr" ${g.post_pr_comments ? 'checked' : ''}> Comment findings on PRs</label>
+        <label class="chk"><input type="checkbox" id="iStatus" ${g.post_commit_status !== 0 ? 'checked' : ''}> Set commit-status checks</label>
+      </div>
+      <div class="row-gap"><button class="btn primary sm" id="iSave">Save integrations</button> <span id="iMsg" class="muted"></span></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:1rem 0">
+      <div class="row-gap"><input id="iRepo" placeholder="owner/repo to monitor on push" style="flex:1"><button class="btn ghost sm" id="iMon">🔔 Monitor repo</button></div>
+      <p class="muted" style="font-size:.76rem;margin:.4rem 0 0">Monitoring adds a GitHub webhook (push + PRs) and re-scans daily, then reports via commit status / PR comment / Slack / Jira. Requires GitHub connected.</p>`;
+    $('#iSave').onclick = saveIntegrations;
+    $('#iMon').onclick = () => { const v = $('#iRepo').value.trim(); if (v) toggleMonitor(v, true, $('#iMon')); };
+  } catch { $('#integBody').innerHTML = '<p class="muted">Could not load.</p>'; }
+}
+async function saveIntegrations() {
+  const v = id => $(id).value.trim();
+  const body = { slack_webhook: v('#iSlack') || undefined, jira_base: v('#iJiraBase') || undefined, jira_email: v('#iJiraEmail') || undefined,
+    jira_token: v('#iJiraToken') || undefined, jira_project: v('#iJiraProj') || undefined, post_pr_comments: $('#iPr').checked, post_commit_status: $('#iStatus').checked };
+  $('#iMsg').textContent = 'Saving…';
+  try { await fetch('/api/security/integrations', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) }); $('#iMsg').textContent = 'Saved ✓'; }
+  catch { $('#iMsg').textContent = 'Failed'; }
 }
 
 load();

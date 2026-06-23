@@ -94,6 +94,34 @@ CREATE TABLE IF NOT EXISTS audit_ignores (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ignores_source ON audit_ignores(source);
 
+-- Continuous monitoring: repos watched for scan-on-push + scheduled re-scans.
+CREATE TABLE IF NOT EXISTS security_monitors (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL,
+  repo         TEXT NOT NULL,                 -- "owner/name"
+  branch       TEXT NOT NULL DEFAULT 'main',
+  hook_id      INTEGER,                        -- GitHub webhook id (for cleanup)
+  enabled      INTEGER NOT NULL DEFAULT 1,
+  last_scan_at INTEGER,
+  last_score   INTEGER,
+  created_at   INTEGER NOT NULL,
+  UNIQUE (user_id, repo)
+);
+CREATE INDEX IF NOT EXISTS idx_monitors_repo ON security_monitors(repo);
+
+-- Outbound integrations (Slack / Jira / GitHub PR comments) per user.
+CREATE TABLE IF NOT EXISTS security_integrations (
+  user_id           TEXT PRIMARY KEY,
+  slack_webhook     TEXT,
+  jira_base         TEXT,
+  jira_email        TEXT,
+  jira_token_enc    TEXT,                       -- AES-GCM encrypted Jira API token
+  jira_project      TEXT,
+  post_pr_comments  INTEGER NOT NULL DEFAULT 1,
+  post_commit_status INTEGER NOT NULL DEFAULT 1,
+  updated_at        INTEGER NOT NULL
+);
+
 -- ── Files (multi-file projects: one row per file in a project) ───────────────
 CREATE TABLE IF NOT EXISTS files (
   id          TEXT PRIMARY KEY,

@@ -174,3 +174,39 @@ export async function pushFiles(
 export function slugify(s: string): string {
   return (s || 'yield-app').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'yield-app';
 }
+
+// --- Continuous monitoring: webhooks, commit status, PR comments ---------------
+// Create a push webhook on a repo pointing at Yield Security. Returns the hook id.
+export async function createWebhook(token: string, fullName: string, url: string, secret: string): Promise<number> {
+  const [owner, repo] = fullName.split('/');
+  const r = await gh(token, `/repos/${owner}/${repo}/hooks`, {
+    method: 'POST',
+    body: JSON.stringify({ name: 'web', active: true, events: ['push', 'pull_request'], config: { url, content_type: 'json', secret, insecure_ssl: '0' } }),
+  });
+  const data: any = await r.json();
+  if (!r.ok) throw new Error(data?.message || 'Failed to create webhook');
+  return data.id as number;
+}
+export async function deleteWebhook(token: string, fullName: string, hookId: number): Promise<void> {
+  const [owner, repo] = fullName.split('/');
+  await gh(token, `/repos/${owner}/${repo}/hooks/${hookId}`, { method: 'DELETE' }).catch(() => {});
+}
+// Post a commit status (the green check / red X) for a scanned commit.
+export async function postCommitStatus(token: string, fullName: string, sha: string, state: 'success' | 'failure' | 'error', description: string, targetUrl: string): Promise<void> {
+  const [owner, repo] = fullName.split('/');
+  await gh(token, `/repos/${owner}/${repo}/statuses/${sha}`, {
+    method: 'POST', body: JSON.stringify({ state, description: description.slice(0, 140), context: 'Yield Security', target_url: targetUrl }),
+  }).catch(() => {});
+}
+export async function postIssueComment(token: string, fullName: string, issueNumber: number, body: string): Promise<void> {
+  const [owner, repo] = fullName.split('/');
+  await gh(token, `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, { method: 'POST', body: JSON.stringify({ body }) }).catch(() => {});
+}
+// PRs that contain a given commit (so we can comment on the PR for push events).
+export async function prsForCommit(token: string, fullName: string, sha: string): Promise<number[]> {
+  const [owner, repo] = fullName.split('/');
+  const r = await gh(token, `/repos/${owner}/${repo}/commits/${sha}/pulls`, { headers: { accept: 'application/vnd.github.groot-preview+json' } });
+  if (!r.ok) return [];
+  const arr = (await r.json().catch(() => [])) as any[];
+  return arr.map((p) => p.number).filter((n) => typeof n === 'number');
+}

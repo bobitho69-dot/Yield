@@ -431,10 +431,17 @@ export function auditPatterns(files: AuditInput[]): AuditFinding[] {
   return out;
 }
 
-// The full deterministic scan: line patterns (SAST) + dependency CVEs (SCA) + IaC/config
-// misconfigurations. Zero model calls, no code stored. This is what every scan runs first.
+// Offline static scan: line patterns (SAST) + IaC/config + container misconfigs. Dependency
+// CVEs come from the live OSV feed in the product path (see scaOnline.onlineScan), so they
+// are NOT included here to avoid duplicates.
 export function scanStatic(files: AuditInput[]): AuditFinding[] {
-  return [...auditPatterns(files), ...auditDependencies(files), ...auditConfig(files)];
+  return [...auditPatterns(files), ...auditConfig(files)];
+}
+
+// Fully offline scan INCLUDING the curated dependency DB — used where there is no async
+// network pass (the builder's instant teaser).
+export function scanOffline(files: AuditInput[]): AuditFinding[] {
+  return [...scanStatic(files), ...auditDependencies(files)];
 }
 
 // Assemble a full AuditResult from a set of findings (pattern + optional AI).

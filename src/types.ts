@@ -55,6 +55,9 @@ export interface Env {
   // two models just fall back if unset. The old per-model NVIDIA keys are no longer used.
   OPENROUTER_API_KEY?: string;
 
+  // Secret used to sign/verify GitHub webhooks for continuous monitoring (scan-on-push).
+  GITHUB_WEBHOOK_SECRET?: string;
+
   SESSION_SECRET: string;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;

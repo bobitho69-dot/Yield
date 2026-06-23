@@ -16,7 +16,7 @@ import { handleSecrets } from './routes/secrets';
 import { handleAppData } from './routes/appdata';
 import { handleMedia, handleModel3d, handleVideo } from './routes/media';
 import { handleAudit } from './routes/audit';
-import { handleSecurity } from './routes/security';
+import { handleSecurity, runScheduledScans } from './routes/security';
 
 import { PLATFORM_GUIDE } from './lib/platformGuide';
 
@@ -122,6 +122,12 @@ export default {
       console.error('unhandled request error:', e?.stack || e);
       return error(500, 'Internal error', { detail: String(e?.message || e).slice(0, 300) });
     }
+  },
+
+  // Cron trigger (see wrangler.toml [triggers]): daily re-scan of monitored repos for
+  // Yield Security continuous monitoring.
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runScheduledScans(env).catch((e) => console.error('scheduled scan failed:', e)));
   },
 } satisfies ExportedHandler<Env>;
 

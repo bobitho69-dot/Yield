@@ -289,6 +289,73 @@ export async function removeAuditIgnore(env: Env, source: string, type: string, 
     .bind(source, type, file, line ?? null, line ?? null).run();
 }
 
+// --- Continuous monitoring (scan-on-push + scheduled re-scans) ------------------
+export interface MonitorRow {
+  id: string; user_id: string; repo: string; branch: string; hook_id: number | null;
+  enabled: number; last_scan_at: number | null; last_score: number | null; created_at: number;
+  github_token_enc?: string | null; github_login?: string | null; // joined from users
+}
+export async function addMonitor(env: Env, m: { user_id: string; repo: string; branch: string; hook_id: number | null }): Promise<string> {
+  const id = newId();
+  await env.DB.prepare('INSERT INTO security_monitors (id,user_id,repo,branch,hook_id,enabled,created_at) VALUES (?,?,?,?,?,1,?)')
+    .bind(id, m.user_id, m.repo, m.branch, m.hook_id ?? null, now()).run();
+  return id;
+}
+export function listMonitors(env: Env, userId: string): Promise<{ results: MonitorRow[] }> {
+  return env.DB.prepare('SELECT id,user_id,repo,branch,hook_id,enabled,last_scan_at,last_score,created_at FROM security_monitors WHERE user_id=? ORDER BY created_at DESC').bind(userId).all<MonitorRow>();
+}
+export function getMonitorByRepo(env: Env, repo: string): Promise<MonitorRow | null> {
+  return env.DB.prepare('SELECT m.*, u.github_token_enc, u.github_login FROM security_monitors m JOIN users u ON u.id=m.user_id WHERE m.repo=? AND m.enabled=1 LIMIT 1').bind(repo).first<MonitorRow>();
+}
+export function listAllMonitors(env: Env): Promise<{ results: MonitorRow[] }> {
+  return env.DB.prepare('SELECT m.*, u.github_token_enc, u.github_login FROM security_monitors m JOIN users u ON u.id=m.user_id WHERE m.enabled=1 LIMIT 500').all<MonitorRow>();
+}
+export function getMonitor(env: Env, userId: string, repo: string): Promise<MonitorRow | null> {
+  return env.DB.prepare('SELECT * FROM security_monitors WHERE user_id=? AND repo=?').bind(userId, repo).first<MonitorRow>();
+}
+export async function removeMonitor(env: Env, userId: string, repo: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM security_monitors WHERE user_id=? AND repo=?').bind(userId, repo).run();
+}
+export async function touchMonitor(env: Env, repo: string, score: number): Promise<void> {
+  await env.DB.prepare('UPDATE security_monitors SET last_scan_at=?, last_score=? WHERE repo=?').bind(now(), score, repo).run();
+}
+
+// --- Integration config (Slack / Jira / GitHub PR comments) ---------------------
+export interface IntegrationRow {
+  user_id: string; slack_webhook: string | null; jira_base: string | null; jira_email: string | null;
+  jira_token_enc: string | null; jira_project: string | null; post_pr_comments: number; post_commit_status: number;
+}
+export function getIntegrations(env: Env, userId: string): Promise<IntegrationRow | null> {
+  return env.DB.prepare('SELECT * FROM security_integrations WHERE user_id=?').bind(userId).first<IntegrationRow>();
+}
+export async function setIntegrations(env: Env, userId: string, f: Partial<IntegrationRow>): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO security_integrations (user_id,slack_webhook,jira_base,jira_email,jira_token_enc,jira_project,post_pr_comments,post_commit_status,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         slack_webhook=COALESCE(excluded.slack_webhook, security_integrations.slack_webhook),
+         jira_base=COALESCE(excluded.jira_base, security_integrations.jira_base),
+         jira_email=COALESCE(excluded.jira_email, security_integrations.jira_email),
+         jira_token_enc=COALESCE(excluded.jira_token_enc, security_integrations.jira_token_enc),
+         jira_project=COALESCE(excluded.jira_project, security_integrations.jira_project),
+         post_pr_comments=excluded.post_pr_comments, post_commit_status=excluded.post_commit_status, updated_at=excluded.updated_at`,
+  ).bind(userId, f.slack_webhook ?? null, f.jira_base ?? null, f.jira_email ?? null, f.jira_token_enc ?? null, f.jira_project ?? null,
+    f.post_pr_comments ?? 1, f.post_commit_status ?? 1, now()).run();
+}
+
+// Aggregate the latest score per scanned source for the overview dashboard.
+export function overviewStats(env: Env, userId: string): Promise<{ results: any[] }> {
+  return env.DB.prepare(
+    `SELECT source, MAX(created_at) AS last_at,
+            (SELECT score FROM audit_runs r2 WHERE r2.source=r.source ORDER BY created_at DESC LIMIT 1) AS score,
+            (SELECT critical FROM audit_runs r2 WHERE r2.source=r.source ORDER BY created_at DESC LIMIT 1) AS critical,
+            (SELECT high FROM audit_runs r2 WHERE r2.source=r.source ORDER BY created_at DESC LIMIT 1) AS high,
+            (SELECT total FROM audit_runs r2 WHERE r2.source=r.source ORDER BY created_at DESC LIMIT 1) AS total,
+            COUNT(*) AS scans
+       FROM audit_runs r WHERE user_id=? AND source IS NOT NULL GROUP BY source ORDER BY last_at DESC LIMIT 100`,
+  ).bind(userId).all();
+}
+
 // --- Files (multi-file projects) ----------------------------------------------
 export interface FileRow {
   path: string;

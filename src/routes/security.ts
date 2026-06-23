@@ -10,15 +10,19 @@
 // analyzed in-memory, and discarded — only finding metadata is stored.
 
 import type { Ctx } from '../types';
-import { json, error } from '../lib/response';
+import { json, error, hmac, safeEqual } from '../lib/response';
 import { PRIVACY_NOTICE, type AuditInput, type AuditLevel } from '../lib/audit';
 import { auditResponse, securityTier, scanGate, FREE_SCANS_PER_DAY, PRO_SCANS_PER_DAY } from './audit';
 import { createSecurityCheckout } from '../lib/billing';
 import {
   getProject, getProjectFiles, listProjects, getGithubAuth, listAuditRunsBySource,
   listAuditIgnores, addAuditIgnore, removeAuditIgnore, upsertFile, setProjectCode,
+  addMonitor, listMonitors, getMonitor, getMonitorByRepo, removeMonitor, touchMonitor, listAllMonitors,
+  getIntegrations, setIntegrations, overviewStats, recordAuditRun, type MonitorRow,
 } from '../lib/db';
-import { decryptToken, listRepos, listCommits, getCommitFiles, getRepoFile, putRepoFile } from '../lib/github';
+import { decryptToken, encryptToken, listRepos, listCommits, getCommitFiles, getRepoFile, putRepoFile, createWebhook, deleteWebhook } from '../lib/github';
+import { notifyScan, type IntegrationConfig } from '../lib/integrations';
+import { computeAudit } from './audit';
 import { chat } from '../lib/nvidia';
 import { resolveModel } from '../config/models';
 
@@ -35,12 +39,80 @@ function codeFilesOnly(files: AuditInput[]): AuditInput[] {
 export async function handleSecurity(req: Request, c: Ctx, action?: string): Promise<Response> {
   if (action === 'status') return status(c);
   if (action === 'repos') return repos(c);
+  if (action === 'webhook') return handleSecurityWebhook(req, c);
   if (action === 'history') return history(c);
+  if (action === 'overview') return overview(c);
+  if (action === 'monitors') return monitors(req, c);
+  if (action === 'integrations') return integrations(req, c);
   if (action === 'ignores') return ignores(req, c);
   if (action === 'fix' && req.method === 'POST') return fix(req, c);
   if (action === 'checkout' && req.method === 'POST') return checkout(c);
   if (action === 'scan' && req.method === 'POST') return scan(req, c);
   return error(404, 'Not found');
+}
+
+// GET /api/security/overview — latest score per scanned source + monitor status.
+async function overview(c: Ctx): Promise<Response> {
+  if (!c.user) return json({ sources: [], monitors: [] });
+  const [{ results: sources }, { results: mons }] = await Promise.all([overviewStats(c.env, c.user.id), listMonitors(c.env, c.user.id)]);
+  return json({ sources, monitors: mons, tier: await securityTier(c) });
+}
+
+// GET/POST/DELETE /api/security/monitors — continuous monitoring of a GitHub repo.
+async function monitors(req: Request, c: Ctx): Promise<Response> {
+  if ((await securityTier(c)) !== 'pro') return error(402, 'Continuous monitoring is a Yield Security (Pro) feature.', { code: 'security_required' });
+  if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
+  if (req.method === 'GET') return json({ monitors: (await listMonitors(c.env, c.user.id)).results });
+
+  const body = (await req.json().catch(() => ({}))) as any;
+  const repo = String(body.repo || '');
+  if (!/^[^/]+\/[^/]+$/.test(repo)) return error(400, 'repo must be "owner/name"');
+  const auth = await getGithubAuth(c.env, c.user.id);
+  if (!auth) return error(400, 'Connect GitHub first.', { code: 'github_not_connected' });
+  const token = await decryptToken(c.env, auth.tokenEnc);
+
+  if (req.method === 'POST') {
+    if (await getMonitor(c.env, c.user.id, repo)) return json({ ok: true, already: true });
+    let hookId: number | null = null;
+    if (c.env.GITHUB_WEBHOOK_SECRET) {
+      try { hookId = await createWebhook(token, repo, `${c.env.APP_URL}/api/security/webhook`, c.env.GITHUB_WEBHOOK_SECRET); }
+      catch (e: any) { return error(502, `Could not add the webhook: ${String(e?.message || e).slice(0, 160)}`); }
+    }
+    await addMonitor(c.env, { user_id: c.user.id, repo, branch: String(body.branch || 'main'), hook_id: hookId });
+    return json({ ok: true, monitoring: repo, scanOnPush: !!hookId });
+  }
+  if (req.method === 'DELETE') {
+    const m = await getMonitor(c.env, c.user.id, repo);
+    if (m?.hook_id) await deleteWebhook(token, repo, m.hook_id);
+    await removeMonitor(c.env, c.user.id, repo);
+    return json({ ok: true });
+  }
+  return error(405, 'Method not allowed');
+}
+
+// GET/POST /api/security/integrations — Slack / Jira / GitHub PR-comment config.
+async function integrations(req: Request, c: Ctx): Promise<Response> {
+  if ((await securityTier(c)) !== 'pro') return error(402, 'Integrations are a Yield Security (Pro) feature.', { code: 'security_required' });
+  if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
+  if (req.method === 'GET') {
+    const g = await getIntegrations(c.env, c.user.id);
+    return json({ integrations: g ? { slack: !!g.slack_webhook, jira: !!g.jira_base, jira_project: g.jira_project, post_pr_comments: g.post_pr_comments, post_commit_status: g.post_commit_status } : null });
+  }
+  if (req.method === 'POST') {
+    const b = (await req.json().catch(() => ({}))) as any;
+    const fields: any = {
+      slack_webhook: typeof b.slack_webhook === 'string' ? b.slack_webhook : undefined,
+      jira_base: typeof b.jira_base === 'string' ? b.jira_base : undefined,
+      jira_email: typeof b.jira_email === 'string' ? b.jira_email : undefined,
+      jira_project: typeof b.jira_project === 'string' ? b.jira_project : undefined,
+      post_pr_comments: b.post_pr_comments ? 1 : 0,
+      post_commit_status: b.post_commit_status === false ? 0 : 1,
+    };
+    if (typeof b.jira_token === 'string' && b.jira_token) fields.jira_token_enc = await encryptToken(c.env, b.jira_token);
+    await setIntegrations(c.env, c.user.id, fields);
+    return json({ ok: true });
+  }
+  return error(405, 'Method not allowed');
 }
 
 async function status(c: Ctx): Promise<Response> {
@@ -232,4 +304,55 @@ async function fix(req: Request, c: Ctx): Promise<Response> {
     } catch (e: any) { return json({ file: filePath, fixedContent: out.fixed, explanation: out.explanation, applied: false, applyError: String(e?.message || e).slice(0, 200) }); }
   }
   return json({ file: filePath, fixedContent: out.fixed, explanation: out.explanation, applied });
+}
+
+// Scan one monitored repo (at `sha`, or latest on its branch), record it, and notify.
+async function scanRepoMonitor(env: Ctx['env'], mon: MonitorRow, appUrl: string, sha?: string): Promise<void> {
+  try {
+    if (!mon.github_token_enc) return;
+    const token = await decryptToken(env, mon.github_token_enc);
+    const branch = mon.branch || 'main';
+    let useSha = sha;
+    if (!useSha) { const cs = await listCommits(token, mon.repo, branch, 1); useSha = cs[0]?.sha; }
+    if (!useSha) return;
+    const files = codeFilesOnly(await getCommitFiles(token, mon.repo, useSha));
+    if (!files.length) return;
+    const result = await computeAudit(env, files, 'basic');
+    await recordAuditRun(env, { source: `repo:${mon.repo}`, user_id: mon.user_id, level: 'basic', score: result.codeHealthScore, summary: result.summary, findings: result.findings });
+    await touchMonitor(env, mon.repo, result.codeHealthScore);
+    const integ = await getIntegrations(env, mon.user_id);
+    await notifyScan(env, (integ as IntegrationConfig | null), { repo: mon.repo, sha: useSha, githubToken: token, appUrl }, result);
+  } catch { /* one repo failing must not break the batch */ }
+}
+
+// POST /api/security/webhook — GitHub push/PR webhook. Verifies the signature, then scans
+// the pushed commit and reports back (commit status / PR comment / Slack / Jira).
+export async function handleSecurityWebhook(req: Request, c: Ctx): Promise<Response> {
+  if (req.method !== 'POST') return error(405, 'POST only');
+  const raw = await req.text();
+  const sig = req.headers.get('x-hub-signature-256') || '';
+  if (!c.env.GITHUB_WEBHOOK_SECRET) return error(503, 'Monitoring not configured');
+  const expected = 'sha256=' + (await hmac(c.env.GITHUB_WEBHOOK_SECRET, raw));
+  if (!sig || !safeEqual(sig, expected)) return error(401, 'Bad signature');
+
+  const event = req.headers.get('x-github-event') || '';
+  let payload: any = {};
+  try { payload = JSON.parse(raw); } catch { return json({ ok: true }); }
+  if (event === 'ping') return json({ ok: true, pong: true });
+
+  const repo = payload.repository?.full_name;
+  const sha = event === 'pull_request' ? payload.pull_request?.head?.sha : payload.after;
+  if (!repo || !sha || /^0+$/.test(String(sha))) return json({ ok: true, skipped: true });
+
+  const mon = await getMonitorByRepo(c.env, repo);
+  if (!mon) return json({ ok: true, unmonitored: true });
+  // Scan in the background so GitHub gets a fast 200.
+  c.ctx.waitUntil(scanRepoMonitor(c.env, mon, c.env.APP_URL, sha));
+  return json({ ok: true, scanning: repo });
+}
+
+// Cron entry: re-scan every monitored repo (daily). Bounded + best-effort.
+export async function runScheduledScans(env: Ctx['env']): Promise<void> {
+  const { results } = await listAllMonitors(env);
+  for (const mon of results.slice(0, 200)) await scanRepoMonitor(env, mon, env.APP_URL);
 }

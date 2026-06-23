@@ -5,6 +5,7 @@ const state = { user: null, authEnabled: true, providers: {}, models: [], model:
   working: false, queue: [], autofixCount: 0, previewErrors: [], pendingSecrets: [], selectMode: false, selected: null,
   attachments: [], // images/docs the user attached to the NEXT message (one-shot)
   stopRequested: false, // user hit Stop — abort the build server-side, skip auto-fix/queue
+  audit: null, auditScanning: false, // latest security-audit result + deep-scan in progress
   buildToken: 0, // bumped whenever the active project changes, to fence stale build streams
   previewEpoch: 0, // bumped on every preview reload, so the bug-check ignores stale-page errors
   github: { connected: false, login: null }, githubRepo: null, githubUrl: null };
@@ -563,6 +564,8 @@ async function consumeStream(res, opts = {}) {
           if (payload.projectId && live() && !state.projectId) { state.projectId = payload.projectId; setProjectUrl(); }
           // Auto-branding: reflect the generated app name in the title field right away.
           if (payload.name && live()) { const t = $('#projectTitle'); if (t && document.activeElement !== t) t.value = payload.name; }
+          // Security audit from the build (deterministic "basic" scan).
+          if (payload.audit && live()) { state.audit = payload.audit; renderSecurityBadge(); if (!$('#securityTab').classList.contains('hidden')) renderSecurityPane(); }
           if (payload.chat) chatAcc = payload.chat;
           // Only write files/preview into the UI if this build still owns the screen
           // (the user hasn't switched to a different project mid-build).
@@ -859,9 +862,143 @@ function renderSelChip() {
 function clearSelection() { state.selected = null; renderSelChip(); }
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.tab === name));
-  ['preview', 'code', 'agents', 'settings'].forEach((n) => $('#' + n + 'Tab').classList.toggle('hidden', name !== n));
+  ['preview', 'code', 'security', 'agents', 'settings'].forEach((n) => $('#' + n + 'Tab').classList.toggle('hidden', name !== n));
   if (name === 'agents') renderAgentsPane();
   if (name === 'settings') renderSettingsPane();
+  if (name === 'security') renderSecurityPane();
+}
+
+// ---------- Security audit (🛡 tab) ----------
+function scoreClass(s) { return s >= 85 ? 'ok' : s >= 60 ? 'warn' : s >= 40 ? 'bad' : 'crit'; }
+function sevClass(sev) { return ({ CRITICAL: 'crit', HIGH: 'bad', MEDIUM: 'warn', LOW: 'low' })[sev] || 'low'; }
+
+// Small score chip on the tab itself.
+function renderSecurityBadge() {
+  const b = $('#secBadge'); if (!b) return;
+  const a = state.audit;
+  if (!a) { b.classList.add('hidden'); b.textContent = ''; return; }
+  b.classList.remove('hidden');
+  b.className = `sec-badge ${scoreClass(a.codeHealthScore)}`;
+  b.textContent = a.codeHealthScore;
+}
+
+function findingCard(f) {
+  const loc = f.location ? `${esc(f.location.file || '')}:${f.location.line || 0}` : '';
+  const ex = f.example && (f.example.vulnerable || f.example.safe)
+    ? `<div class="fnd-ex"><div class="ex-bad"><span>✗ vulnerable</span><pre>${esc(f.example.vulnerable || '')}</pre></div><div class="ex-ok"><span>✓ safe</span><pre>${esc(f.example.safe || '')}</pre></div></div>`
+    : '';
+  return `<div class="fnd ${sevClass(f.severity)}">
+    <div class="fnd-head"><span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span>
+      <b>${esc((f.type || '').replace(/_/g, ' '))}</b>
+      <span class="fnd-cwe">${esc(f.cwe || '')}</span>
+      ${f.source === 'ai' ? `<span class="fnd-ai" title="Found by ${esc(f.model || 'AI')}">🤖 ${esc(f.model || 'AI')}</span>` : '<span class="fnd-pat">pattern</span>'}
+      <span class="fnd-loc">${loc}</span></div>
+    <div class="fnd-owasp">${esc(f.owasp || '')}</div>
+    <div class="fnd-desc">${esc(f.description || '')}</div>
+    ${f.fix ? `<div class="fnd-fix"><b>Fix:</b> ${esc(f.fix)}</div>` : ''}
+    ${ex}
+  </div>`;
+}
+
+function renderSecurityPane() {
+  const pane = $('#securityPane'); if (!pane) return;
+  const a = state.audit;
+  const hasFiles = state.files && state.files.length;
+  const sum = a ? a.summary : null;
+  const score = a ? a.codeHealthScore : null;
+  pane.innerHTML = `
+    <div class="sec-top">
+      <div class="sec-score ${a ? scoreClass(score) : ''}">
+        <div class="ss-num">${a ? score : '—'}</div><div class="ss-lbl">Code Health</div>
+      </div>
+      <div class="sec-sum">
+        ${sum ? `
+          <span class="sev crit">${sum.critical} critical</span>
+          <span class="sev bad">${sum.high} high</span>
+          <span class="sev warn">${sum.medium} medium</span>
+          <span class="sev low">${sum.low} low</span>` : '<span class="muted">No scan yet.</span>'}
+        <div class="sec-actions">
+          <button class="btn ghost sm" data-scan="basic" ${!hasFiles ? 'disabled' : ''}>⚡ Quick scan</button>
+          <button class="btn ghost sm" data-scan="detailed" ${!hasFiles ? 'disabled' : ''}>🔬 Deep scan (all models)</button>
+          <button class="btn ghost sm" data-scan="compliance" ${!hasFiles ? 'disabled' : ''}>📋 Compliance (GDPR/PCI)</button>
+        </div>
+      </div>
+    </div>
+    <div id="secStatus" class="sec-status"></div>
+    <div id="secFindings" class="sec-findings">${
+      a ? (a.findings.length ? a.findings.map(findingCard).join('') : '<div class="sec-clean">✓ No vulnerabilities found. Nice and clean.</div>')
+        : (hasFiles ? '<div class="muted">Run a scan to audit this app for security vulnerabilities.</div>' : '<div class="muted">Build an app first, then audit it here.</div>')
+    }</div>
+    <div id="secTrend" class="sec-trend"></div>
+    <div class="sec-privacy">🔒 ${esc(a ? a.privacyNotice : 'Code is analyzed and discarded immediately. Only vulnerability metadata is retained.')}</div>`;
+  pane.querySelectorAll('[data-scan]').forEach((b) => b.addEventListener('click', () => runScan(b.dataset.scan)));
+  loadAuditTrend();
+}
+
+// Run a scan over the current files. "basic" is instant + local; deep/compliance stream
+// findings live as each top model finishes.
+async function runScan(level) {
+  if (state.auditScanning || !state.files || !state.files.length) return;
+  state.auditScanning = true;
+  const status = $('#secStatus'); const list = $('#secFindings');
+  const found = [];
+  const render = () => { if (list) list.innerHTML = found.length ? found.map(findingCard).join('') : '<div class="muted">Scanning…</div>'; };
+  if (status) status.innerHTML = `<span class="spin"></span> ${level === 'basic' ? 'Scanning…' : 'Running through all top models, one at a time…'}`;
+  render();
+  try {
+    const res = await fetch('/api/audit', {
+      method: 'POST', headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+      body: JSON.stringify({ files: state.files, level, projectId: state.projectId, stream: true }),
+    });
+    if (!res.ok || !res.body || !res.headers.get('content-type')?.includes('text/event-stream')) {
+      const err = await res.json().catch(() => ({}));
+      if (status) status.textContent = err.error || `Scan failed (${res.status})`;
+      return;
+    }
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let i;
+      while ((i = buf.indexOf('\n\n')) !== -1) {
+        const frame = buf.slice(0, i); buf = buf.slice(i + 2);
+        const ev = /event: (.*)/.exec(frame)?.[1];
+        const data = /data: ([\s\S]*)/.exec(frame)?.[1];
+        if (!ev || data == null) continue;
+        let p; try { p = JSON.parse(data); } catch { continue; }
+        if (ev === 'finding') { found.push(p); render(); }
+        else if (ev === 'progress' && status) status.innerHTML = p.stage === 'ai'
+          ? `<span class="spin"></span> ${esc(p.model)} (${p.index}/${p.total}) — ${found.length} finding(s) so far`
+          : `<span class="spin"></span> pattern scan: ${p.found} found`;
+        else if (ev === 'done') {
+          state.audit = p; renderSecurityBadge();
+          if (status) status.textContent = `✓ Scan complete — health ${p.codeHealthScore}/100`;
+          renderSecurityPane();
+        } else if (ev === 'error' && status) status.textContent = p.message || 'Scan error';
+      }
+    }
+  } catch (e) {
+    if (status) status.textContent = 'Scan interrupted: ' + String(e);
+  } finally {
+    state.auditScanning = false;
+  }
+}
+
+// Score trend over time (metadata only) — a tiny sparkline of past runs.
+async function loadAuditTrend() {
+  if (!state.projectId) return;
+  try {
+    const { runs } = await fetch(`/api/audit/history?project=${state.projectId}`).then((r) => r.json());
+    const el = $('#secTrend'); if (!el || !runs || runs.length < 2) return;
+    const series = runs.slice().reverse(); // oldest -> newest
+    const max = 100, w = 220, h = 40, n = series.length;
+    const pts = series.map((r, i) => `${(i / (n - 1)) * w},${h - (r.score / max) * h}`).join(' ');
+    el.innerHTML = `<div class="trend-head">Security trend (${n} scans)</div>
+      <svg viewBox="0 0 ${w} ${h}" class="trend-svg" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      <span class="trend-now">latest ${series[n - 1].score}/100</span>`;
+  } catch { /* trend is optional */ }
 }
 
 // Iterative (not recursive) so `working`/queue handling has a single owner and a

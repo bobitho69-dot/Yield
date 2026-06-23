@@ -46,6 +46,37 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);
 
+-- ── Security audit metadata (NEVER stores source code) ───────────────────────
+-- Only the run summary (score + severity counts) and per-finding metadata are kept;
+-- the analyzed code is discarded immediately after the scan.
+CREATE TABLE IF NOT EXISTS audit_runs (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT,
+  user_id     TEXT,
+  level       TEXT NOT NULL,                 -- 'basic' | 'detailed' | 'compliance'
+  score       INTEGER NOT NULL,              -- codeHealthScore 0..100
+  critical    INTEGER NOT NULL DEFAULT 0,
+  high        INTEGER NOT NULL DEFAULT 0,
+  medium      INTEGER NOT NULL DEFAULT 0,
+  low         INTEGER NOT NULL DEFAULT 0,
+  total       INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_runs_project ON audit_runs(project_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS audit_findings (
+  id          TEXT PRIMARY KEY,
+  run_id      TEXT NOT NULL,
+  project_id  TEXT,
+  type        TEXT NOT NULL,                 -- e.g. "SQL_INJECTION"
+  severity    TEXT NOT NULL,                 -- CRITICAL | HIGH | MEDIUM | LOW
+  cwe         TEXT,
+  file        TEXT,                          -- filename only (no code)
+  line        INTEGER,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_findings_run ON audit_findings(run_id);
+
 -- ── Files (multi-file projects: one row per file in a project) ───────────────
 CREATE TABLE IF NOT EXISTS files (
   id          TEXT PRIMARY KEY,

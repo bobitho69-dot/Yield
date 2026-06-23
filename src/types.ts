@@ -45,6 +45,9 @@ export interface Env {
   // Secrets
   NVIDIA_API_KEY: string;         // the single key for the whole NVIDIA catalog (every model)
   NVIDIA_API_KEY_BACKUP?: string; // optional 2nd NVIDIA key; used automatically on a 429/402 (rate-limit/quota)
+  // Dedicated key for the security-audit feature (so it can be metered/keyed separately).
+  // Optional — falls back to NVIDIA_API_KEY when unset.
+  YIELDNVIDIAAIKEY?: string;
 
   // The only non-NVIDIA provider: OpenRouter (Qwen3 Coder / Laguna). Optional — those
   // two models just fall back if unset. The old per-model NVIDIA keys are no longer used.

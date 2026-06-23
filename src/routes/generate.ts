@@ -17,8 +17,9 @@ import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import { verifyFiles } from '../lib/verify';
 import {
   addMessage, createAgent, createProject, getProject, getProjectFiles, listAgents, listMessages,
-  logUsage, saveFiles, setProjectBranding, updateAgent, type FileRow,
+  logUsage, recordAuditRun, saveFiles, setProjectBranding, updateAgent, type FileRow,
 } from '../lib/db';
+import { auditPatterns, buildResult } from '../lib/audit';
 import { syncProjectToGithub } from './githubRoutes';
 import { generateImage } from './media';
 
@@ -1120,7 +1121,18 @@ export async function runBuild(
       }
     } catch (e) { console.error('image step failed:', e); }
 
-    await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents, name: brandedName, description: brandedDescription });
+    // Security audit (deterministic "basic" level — instant, zero model calls): every
+    // generated app gets a code health score + findings attached to the result. No code
+    // is stored — only finding metadata. Best-effort; never blocks delivery.
+    let audit = null;
+    try {
+      if (hasFiles) {
+        audit = buildResult(files, auditPatterns(files), 'basic');
+        if (project && c.user) await recordAuditRun(c.env, { project_id: project.id, user_id: c.user.id, level: 'basic', score: audit.codeHealthScore, summary: audit.summary, findings: audit.findings });
+      }
+    } catch (e) { console.error('audit step failed:', e); }
+
+    await send('done', { chat: chatText, files, hasCode: hasFiles, projectId: project?.id ?? null, secretsNeeded, agents: createdAgents, name: brandedName, description: brandedDescription, audit });
 
     // Tail work — fully best-effort; the build is already delivered + saved.
     try {

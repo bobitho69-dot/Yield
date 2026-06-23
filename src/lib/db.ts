@@ -213,6 +213,41 @@ export async function deleteProject(env: Env, id: string): Promise<void> {
   await env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(id).run();
 }
 
+// --- Security audit metadata (NEVER stores source code) ------------------------
+// We persist only the run summary (score + severity counts) and per-finding metadata
+// (type, severity, CWE, file, line). No code, descriptions, or examples are stored.
+export interface AuditRunRow {
+  id: string; project_id: string | null; user_id: string | null; level: string; score: number;
+  critical: number; high: number; medium: number; low: number; total: number; created_at: number;
+}
+
+export async function recordAuditRun(
+  env: Env,
+  run: { project_id?: string | null; user_id?: string | null; level: string; score: number;
+         summary: { critical: number; high: number; medium: number; low: number; total: number };
+         findings: { type: string; severity: string; cwe: string; location: { file: string; line: number } }[] },
+): Promise<string> {
+  const id = newId();
+  const t = now();
+  await env.DB.prepare(
+    'INSERT INTO audit_runs (id,project_id,user_id,level,score,critical,high,medium,low,total,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+  ).bind(id, run.project_id ?? null, run.user_id ?? null, run.level, run.score,
+    run.summary.critical, run.summary.high, run.summary.medium, run.summary.low, run.summary.total, t).run();
+  // Store finding METADATA only (capped). batch() keeps it to one round-trip.
+  const stmts = run.findings.slice(0, 200).map((f) => env.DB.prepare(
+    'INSERT INTO audit_findings (id,run_id,project_id,type,severity,cwe,file,line,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+  ).bind(newId(), id, run.project_id ?? null, f.type, f.severity, f.cwe, f.location.file, f.location.line, t));
+  if (stmts.length) await env.DB.batch(stmts).catch(() => {});
+  return id;
+}
+
+// Audit history for a project's trend dashboard (score over time, newest first).
+export function listAuditRuns(env: Env, projectId: string): Promise<{ results: any[] }> {
+  return env.DB.prepare(
+    'SELECT id,level,score,critical,high,medium,low,total,created_at FROM audit_runs WHERE project_id=? ORDER BY created_at DESC LIMIT 50',
+  ).bind(projectId).all();
+}
+
 // --- Files (multi-file projects) ----------------------------------------------
 export interface FileRow {
   path: string;

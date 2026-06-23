@@ -3,431 +3,437 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Yield Security — scan your repos for vulnerabilities</title>
-<meta name="description" content="Yield Security scans your GitHub repos and Yield projects for vulnerabilities with every top AI model. Code is analyzed and discarded — only findings are kept.">
+<title>Yield Security</title>
+<meta name="description" content="Yield Security — scan your GitHub repos and projects for vulnerabilities with a live advisory feed and every top AI model. SAST, SCA, IaC, secrets, AI auto-fix, continuous monitoring.">
 <link rel="stylesheet" href="/styles.css">
 <style>
-  .sec-page { max-width: 980px; margin: 0 auto; padding: 1.5rem 5vw 4rem; }
-  .sec-hero { text-align: center; padding: 2rem 0 1rem; }
-  .sec-hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); letter-spacing: -.03em; margin: .4rem 0; }
-  .sec-hero .pill { margin-bottom: 1rem; }
-  .sec-hero p.lead { color: var(--muted); font-size: 1.1rem; max-width: 620px; margin: .6rem auto 1.4rem; line-height: 1.6; }
-  .sec-feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 2rem 0; }
-  .sec-feat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem; text-align: left; }
-  .sec-feat h3 { margin: .3rem 0 .4rem; font-size: 1rem; }
-  .sec-feat p { color: var(--muted); font-size: .88rem; margin: 0; line-height: 1.5; }
-  .price-card { background: var(--panel); border: 1px solid var(--brand); border-radius: 14px; padding: 1.4rem; max-width: 420px; margin: 1.5rem auto; box-shadow: var(--shadow); }
-  .price-card .amt { font-size: 2.4rem; font-weight: 800; } .price-card .amt small { font-size: 1rem; color: var(--muted); font-weight: 600; }
-  .cwe-row { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; margin: 1.2rem 0; }
-  .cwe-chip { font-size: .72rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: .15rem .55rem; }
-  .scan-bar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: .8rem; margin-bottom: 1rem; }
-  .scan-bar select, .scan-bar .seg { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: .45rem .6rem; font-size: .88rem; font-family: inherit; }
-  .seg-group { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  .seg { border: none; border-radius: 0; cursor: pointer; } .seg.on { background: var(--brand); color: #fff; }
-  .muted { color: var(--muted); } .row-gap { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-  .tier-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; max-width: 800px; margin: 1.5rem auto 0; }
-  .price-card { margin: 0; text-align: center; }
-  .price-card.featured { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand), var(--shadow); }
-  .tier-name { font-weight: 800; font-size: 1.05rem; margin-bottom: .3rem; display:flex; gap:.4rem; align-items:center; justify-content:center; }
-  .tier-list { list-style: none; padding: 0; margin: .9rem 0 1.1rem; text-align: left; font-size: .85rem; color: var(--muted); display: flex; flex-direction: column; gap: .35rem; }
-  .tier-list b { color: var(--text); }
-  .sec-overview { margin: 1.5rem 0; }
-  .ov-h { font-size: 1rem; margin: 0 0 .6rem; }
-  .ov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .7rem; }
-  .ov-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: .7rem .8rem; }
-  .ov-src { font-size: .76rem; color: var(--muted); font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ov-score { font-size: 1.8rem; font-weight: 800; margin: .2rem 0; }
-  .ov-score.ok { color: #86efac; } .ov-score.warn { color: #fde68a; } .ov-score.bad { color: #fdba74; } .ov-score.crit { color: #fca5a5; }
-  .ov-meta { font-size: .74rem; color: var(--muted); margin-bottom: .5rem; }
-  .ov-mon { margin-top: .7rem; font-size: .8rem; }
-  .sec-integrations { margin: 1rem 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); padding: .3rem .8rem; }
-  .sec-integrations summary { cursor: pointer; font-weight: 700; padding: .4rem 0; }
-  .integ-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin: .6rem 0; }
-  .integ-grid label { display: flex; flex-direction: column; gap: .25rem; font-size: .8rem; color: var(--muted); }
-  .integ-grid label.chk { flex-direction: row; align-items: center; gap: .45rem; }
-  .integ-grid input { background: var(--bg-2); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: .4rem .5rem; font-family: inherit; font-size: .84rem; }
-  .integ-body input#iRepo { background: var(--bg-2); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: .4rem .5rem; }
-  .fnd-actions { display: flex; gap: .4rem; margin-top: .6rem; }
-  .sec-status a { color: var(--brand-2); text-decoration: underline; }
-  .fix-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 100; padding: 1rem; }
-  .fix-box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; width: min(820px, 96vw); max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow); }
-  .fix-head { display: flex; align-items: center; gap: .6rem; padding: .8rem 1rem; border-bottom: 1px solid var(--line); font-weight: 700; }
-  .fix-head .fnd-loc { margin-left: 0; font-weight: 400; }
-  .fix-head .btn { margin-left: auto; }
-  .fix-pre { margin: 0; padding: 1rem; overflow: auto; font-size: .8rem; white-space: pre; font-family: ui-monospace, monospace; flex: 1; }
-  .fix-foot { display: flex; align-items: center; gap: .6rem; padding: .7rem 1rem; border-top: 1px solid var(--line); }
-  .fix-foot .muted { flex: 1; font-size: .8rem; }
-  @media (max-width: 720px) { .sec-feats, .tier-grid { grid-template-columns: 1fr; } }
+  :root { --crit:#f0566d; --high:#f59e57; --med:#e8c24a; --low:#6f9bd1; --ok:#3ecf8e; }
+  body.sec-app { height:100vh; overflow:hidden; }
+  .app { display:grid; grid-template-columns:248px 1fr; height:100vh; }
+  /* Sidebar */
+  .sb { background:#0e1119; border-right:1px solid var(--line); display:flex; flex-direction:column; padding:1rem .8rem; gap:.2rem; }
+  .sb-brand { display:flex; align-items:center; gap:.5rem; font-weight:800; font-size:1.05rem; padding:.3rem .5rem 1rem; letter-spacing:-.01em; }
+  .sb-brand .sh { width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:grid;place-items:center;font-size:.9rem; }
+  .sb-sec { font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:.9rem .6rem .3rem; }
+  .sb-item { display:flex; align-items:center; gap:.6rem; padding:.5rem .6rem; border-radius:9px; color:var(--muted); font-size:.9rem; font-weight:500; cursor:pointer; transition:.12s; }
+  .sb-item:hover { background:var(--panel-2); color:var(--text); }
+  .sb-item.active { background:#1b1740; color:#fff; box-shadow:inset 2px 0 0 var(--brand); }
+  .sb-item .ic { width:18px; text-align:center; }
+  .sb-item .lock { margin-left:auto; font-size:.7rem; opacity:.7; }
+  .sb-foot { margin-top:auto; display:flex; flex-direction:column; gap:.2rem; padding-top:.8rem; border-top:1px solid var(--line); }
+  .tier-chip { font-size:.7rem; font-weight:800; padding:.2rem .55rem; border-radius:999px; align-self:flex-start; margin:.2rem .5rem .4rem; }
+  .tier-chip.pro { background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff; }
+  .tier-chip.free { background:#222a3a; color:var(--muted); }
+  /* Main */
+  .main { display:flex; flex-direction:column; min-width:0; }
+  .topbar { display:flex; align-items:center; gap:1rem; padding:1rem 1.6rem; border-bottom:1px solid var(--line); }
+  .topbar h1 { font-size:1.25rem; margin:0; letter-spacing:-.01em; }
+  .topbar .sub { color:var(--muted); font-size:.82rem; }
+  .top-actions { margin-left:auto; display:flex; gap:.5rem; align-items:center; }
+  .content { flex:1; overflow:auto; padding:1.6rem; }
+  /* KPI cards */
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-bottom:1.4rem; }
+  .kpi { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.1rem 1.2rem; }
+  .kpi .k-label { color:var(--muted); font-size:.78rem; display:flex; align-items:center; gap:.4rem; }
+  .kpi .k-num { font-size:2.1rem; font-weight:800; letter-spacing:-.02em; margin-top:.3rem; line-height:1; }
+  .kpi .k-sub { font-size:.74rem; color:var(--muted); margin-top:.35rem; }
+  .kpi.crit .k-num { color:var(--crit); } .kpi.ok .k-num { color:var(--ok); }
+  /* Panels */
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.2rem; margin-bottom:1.4rem; }
+  .panel h2 { font-size:.95rem; margin:0 0 1rem; display:flex; align-items:center; gap:.5rem; }
+  .panel h2 .right { margin-left:auto; font-size:.78rem; color:var(--muted); font-weight:400; }
+  .grid2 { display:grid; grid-template-columns:1.4fr 1fr; gap:1.4rem; }
+  @media (max-width:900px){ .grid2{ grid-template-columns:1fr; } }
+  /* Severity distribution bar */
+  .sevbar { display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--panel-2); }
+  .sevbar i { display:block; }
+  .sevbar i.c{background:var(--crit)} .sevbar i.h{background:var(--high)} .sevbar i.m{background:var(--med)} .sevbar i.l{background:var(--low)}
+  .sevlegend { display:flex; flex-wrap:wrap; gap:.8rem; margin-top:.8rem; font-size:.8rem; color:var(--muted); }
+  .sevlegend b { color:var(--text); }
+  .dot { width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:.35rem; }
+  .dot.c{background:var(--crit)} .dot.h{background:var(--high)} .dot.m{background:var(--med)} .dot.l{background:var(--low)}
+  /* Score ring */
+  .ring { --p:0; width:64px;height:64px; }
+  .ring svg{transform:rotate(-90deg)} .ring .bg{stroke:var(--panel-2)} .ring text{fill:var(--text);font-size:15px;font-weight:800;transform:rotate(90deg);transform-origin:center}
+  /* Tables */
+  table.tbl { width:100%; border-collapse:collapse; }
+  table.tbl th { text-align:left; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:.5rem .6rem; border-bottom:1px solid var(--line); font-weight:600; }
+  table.tbl td { padding:.6rem; border-bottom:1px solid var(--line); font-size:.86rem; vertical-align:middle; }
+  table.tbl tr:last-child td { border-bottom:none; }
+  table.tbl tr.clickable { cursor:pointer; } table.tbl tr.clickable:hover td { background:var(--panel-2); }
+  .src-name { font-family:ui-monospace,monospace; font-size:.8rem; }
+  .mono { font-family:ui-monospace,monospace; font-size:.78rem; color:var(--muted); }
+  /* Severity pill */
+  .pill2 { font-size:.68rem; font-weight:800; padding:.12rem .5rem; border-radius:6px; letter-spacing:.02em; }
+  .pill2.CRITICAL{background:rgba(240,86,109,.16);color:var(--crit)} .pill2.HIGH{background:rgba(245,158,87,.16);color:var(--high)}
+  .pill2.MEDIUM{background:rgba(232,194,74,.16);color:var(--med)} .pill2.LOW{background:rgba(111,155,209,.16);color:var(--low)}
+  .src-tag{font-size:.66rem;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:.05rem .35rem}
+  .src-tag.ai{color:var(--brand-2);border-color:#18443c}
+  /* Finding detail row */
+  .fdetail td { background:#0d1017; padding:1rem 1.2rem; }
+  .fdetail .fd-grid { display:grid; gap:.8rem; }
+  .fd-desc{font-size:.88rem;line-height:1.5} .fd-fix{font-size:.86rem;color:var(--text);background:rgba(62,207,142,.08);border-left:3px solid var(--ok);padding:.5rem .7rem;border-radius:0 6px 6px 0}
+  .fd-ex{display:grid;grid-template-columns:1fr 1fr;gap:.6rem} .fd-ex pre{margin:.2rem 0 0;padding:.5rem .6rem;border-radius:6px;font-size:.76rem;white-space:pre-wrap;overflow:auto}
+  .ex-bad pre{background:#2a1416;border:1px solid #5a2530;color:#fca5a5} .ex-ok pre{background:#102a1a;border:1px solid #1e4d31;color:#86efac}
+  .fd-actions{display:flex;gap:.5rem;margin-top:.3rem}
+  /* Filters */
+  .filters{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}
+  .fchip{font-size:.78rem;padding:.3rem .65rem;border:1px solid var(--line);border-radius:999px;cursor:pointer;color:var(--muted);background:var(--panel)}
+  .fchip.on{background:var(--brand);color:#fff;border-color:transparent}
+  .search{flex:1;min-width:160px;max-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem;color:var(--text);font-family:inherit}
+  /* Scan view */
+  .scanwrap{max-width:760px}
+  .field{display:flex;flex-direction:column;gap:.4rem;margin-bottom:1rem}
+  .field label{font-size:.82rem;color:var(--muted);font-weight:600}
+  .field select,.field input{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:.6rem .7rem;color:var(--text);font-family:inherit;font-size:.9rem}
+  .seg-group{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg{padding:.5rem .9rem;border:none;background:var(--panel);color:var(--muted);cursor:pointer;font-family:inherit;font-size:.85rem}
+  .seg.on{background:var(--brand);color:#fff}
+  .scan-status{display:flex;align-items:center;gap:.5rem;color:var(--brand-2);font-size:.86rem;min-height:1.3rem;margin:1rem 0}
+  /* Integrations */
+  .integ-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+  .icard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1.1rem}
+  .icard h3{margin:.2rem 0 .3rem;font-size:.95rem;display:flex;align-items:center;gap:.5rem}
+  .icard .st{font-size:.72rem;padding:.1rem .45rem;border-radius:999px;margin-left:auto}
+  .icard .st.on{background:rgba(62,207,142,.16);color:var(--ok)} .icard .st.off{background:#222a3a;color:var(--muted)}
+  .icard input{width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:7px;padding:.45rem .6rem;color:var(--text);font-family:inherit;font-size:.83rem;margin-top:.5rem}
+  .icard label.chk{display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--muted);margin-top:.6rem}
+  .empty{text-align:center;color:var(--muted);padding:3rem 1rem}
+  .empty .big{font-size:2.4rem;margin-bottom:.6rem}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translate(-50%,14px);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.6rem .9rem;font-size:.85rem;box-shadow:var(--shadow);z-index:200;opacity:0;transition:.2s}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  /* Fix modal */
+  .fix-modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:grid;place-items:center;z-index:100;padding:1rem}
+  .fix-box{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:min(860px,96vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+  .fix-head{display:flex;align-items:center;gap:.6rem;padding:.9rem 1.1rem;border-bottom:1px solid var(--line);font-weight:700}
+  .fix-pre{margin:0;padding:1rem;overflow:auto;font-size:.8rem;white-space:pre;font-family:ui-monospace,monospace;flex:1}
+  .fix-foot{display:flex;align-items:center;gap:.6rem;padding:.8rem 1.1rem;border-top:1px solid var(--line)}
+  /* Marketing (logged out) */
+  .mkt{max-width:1000px;margin:0 auto;padding:2rem 5vw 4rem}
+  .mkt-hero{text-align:center;padding:2rem 0}
+  .mkt-hero h1{font-size:clamp(2rem,5vw,3.4rem);letter-spacing:-.03em;margin:.5rem 0}
+  .mkt-hero p{color:var(--muted);font-size:1.1rem;max-width:640px;margin:.6rem auto 1.4rem;line-height:1.6}
+  .mkt-feats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:2rem 0}
+  .mkt-feat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1.1rem;text-align:left}
+  .mkt-feat h3{margin:.2rem 0 .4rem;font-size:1rem} .mkt-feat p{margin:0;font-size:.88rem;color:var(--muted);line-height:1.5}
+  .tier-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;max-width:820px;margin:1.5rem auto 0}
+  .tcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1.3rem;text-align:center}
+  .tcard.feat{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+  .tcard .amt{font-size:2.2rem;font-weight:800} .tcard .amt small{font-size:1rem;color:var(--muted)}
+  .tcard ul{list-style:none;padding:0;margin:1rem 0;text-align:left;font-size:.85rem;color:var(--muted);display:flex;flex-direction:column;gap:.35rem}
+  @media (max-width:820px){ .mkt-feats,.tier-grid{grid-template-columns:1fr} .grid2{grid-template-columns:1fr}
+    .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    .sb{flex-direction:row;align-items:center;height:auto;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line);padding:.5rem .8rem;gap:.3rem}
+    .sb-brand,.sb-sec,.sb-foot,.tier-chip{display:none} .sb-item{white-space:nowrap} }
 </style>
 </head>
-<body>
-<header class="nav">
-  <a href="/" class="brand">Yield <span class="logo">🛡 Security</span></a>
-  <nav class="nav-links">
-    <a href="/app">Builder</a>
-    <a href="/pricing">Pricing</a>
-    <a id="acct" href="/login" class="btn ghost sm">Sign in</a>
-  </nav>
-</header>
-
-<main class="sec-page" id="page">
-  <div class="sec-hero"><span class="pill">Loading…</span></div>
-</main>
+<body class="sec-app">
+<div id="root"></div>
 
 <script>
-const $ = (s, r = document) => r.querySelector(s);
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-const scoreClass = (s) => s >= 85 ? 'ok' : s >= 60 ? 'warn' : s >= 40 ? 'bad' : 'crit';
-const sevClass = (v) => ({ CRITICAL:'crit', HIGH:'bad', MEDIUM:'warn', LOW:'low' })[v] || 'low';
-let STATE = { tier:'none', projects:[], github:{connected:false}, level:'detailed', dailyCap:3, scanning:false };
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sc = s => s>=85?'ok':s>=60?'warn':s>=40?'bad':'crit';
+const ago = t => { if(!t) return ''; const d=Math.floor(Date.now()/1000-t); if(d<60)return 'just now'; if(d<3600)return Math.floor(d/60)+'m ago'; if(d<86400)return Math.floor(d/3600)+'h ago'; return Math.floor(d/86400)+'d ago'; };
+let S = { tier:'none', projects:[], github:{}, level:'detailed', view:'dashboard', findings:[], result:null, src:null, sourceKey:null, overview:null, filter:{sev:'all',q:''} };
 
-function findingCard(f, i) {
-  const loc = f.location ? `${esc(f.location.file||'')}:${f.location.line||0}` : '';
-  const ex = f.example && (f.example.vulnerable || f.example.safe)
-    ? `<div class="fnd-ex"><div class="ex-bad"><span>✗ vulnerable</span><pre>${esc(f.example.vulnerable||'')}</pre></div><div class="ex-ok"><span>✓ safe</span><pre>${esc(f.example.safe||'')}</pre></div></div>` : '';
-  const fixable = f.location && f.location.file && f.location.file.indexOf('.') > -1; // a real file we can rewrite
-  const actions = (i != null) ? `<div class="fnd-actions">
-      ${fixable ? `<button class="btn ghost sm" data-act="fix" data-i="${i}">✨ AI Fix</button>` : ''}
-      <button class="btn ghost sm" data-act="ignore" data-i="${i}">🙈 Ignore</button></div>` : '';
-  return `<div class="fnd ${sevClass(f.severity)}"><div class="fnd-head">
-      <span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span><b>${esc((f.type||'').replace(/_/g,' '))}</b>
-      <span class="fnd-cwe">${esc(f.cwe||'')}</span>${f.source==='ai'?`<span class="fnd-ai">🤖 ${esc(f.model||'AI')}</span>`:'<span class="fnd-pat">pattern</span>'}
-      <span class="fnd-loc">${loc}</span></div>
-      <div class="fnd-owasp">${esc(f.owasp||'')}</div><div class="fnd-desc">${esc(f.description||'')}</div>
-      ${f.fix?`<div class="fnd-fix"><b>Fix:</b> ${esc(f.fix)}</div>`:''}${ex}${actions}</div>`;
+function toast(m){ let e=$('#toast'); if(!e){e=document.createElement('div');e.id='toast';e.className='toast';document.body.appendChild(e);} e.textContent=m; e.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>e.classList.remove('show'),3000); }
+
+// score ring svg
+function ring(score, size=64){ const r=(size-8)/2, c=2*Math.PI*r, off=c*(1-(score||0)/100), col=({ok:'var(--ok)',warn:'var(--med)',bad:'var(--high)',crit:'var(--crit)'})[sc(score||0)];
+  return `<span class="ring" style="width:${size}px;height:${size}px;display:inline-block"><svg width="${size}" height="${size}"><circle class="bg" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke-width="6"/><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${col}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${off}"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle">${score??'—'}</text></svg></span>`; }
+
+async function api(path, opts){ const r = await fetch(path, opts); const ct=r.headers.get('content-type')||''; const d = ct.includes('json')? await r.json().catch(()=>({})) : {}; return { ok:r.ok, status:r.status, ...d }; }
+
+// ---------------- boot ----------------
+async function load(){
+  const s = await api('/api/security/status');
+  S.tier = s.tier || 'none'; S.projects = s.projects||[]; S.github = s.github||{}; S.priceConfigured=s.priceConfigured; S.loginRequired=s.loginRequired; S.dailyCap=s.dailyCap; S.unlimited=s.unlimited;
+  S.level = S.tier==='pro' ? 'detailed' : 'basic';
+  if (S.tier==='none') return renderMarketing(s);
+  renderApp();
 }
 
-// Re-render the findings list with action buttons + wire them.
-function paintFindings() {
-  const list = $('#secFindings'); if (!list) return;
-  const fs = STATE.findings || [];
-  list.innerHTML = fs.length ? fs.map((f, i) => findingCard(f, i)).join('') : (STATE.scanning ? '<div class="muted">Scanning…</div>' : '');
-  list.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
-    const f = STATE.findings[+b.dataset.i]; if (!f) return;
-    if (b.dataset.act === 'ignore') doIgnore(f, b);
-    else doFix(f, b);
-  }));
+// ---------------- app shell ----------------
+const NAV = [
+  { id:'dashboard', ic:'📊', label:'Dashboard' },
+  { id:'scan', ic:'🔍', label:'New scan' },
+  { id:'findings', ic:'⚠️', label:'Findings' },
+  { id:'monitoring', ic:'🔁', label:'Monitoring', pro:true },
+  { id:'integrations', ic:'🔌', label:'Integrations', pro:true },
+];
+function renderApp(){
+  const pro = S.tier==='pro';
+  document.body.innerHTML = `<div id="root"><div class="app">
+    <aside class="sb">
+      <div class="sb-brand"><span class="sh">🛡</span> Yield Security</div>
+      <div class="tier-chip ${pro?'pro':'free'}">${pro?'PRO':'FREE'}${S.unlimited?' · testing':''}</div>
+      <div class="sb-sec">Workspace</div>
+      <nav id="nav">${NAV.map(n=>`<a class="sb-item" data-view="${n.id}"><span class="ic">${n.ic}</span>${n.label}${n.pro&&!pro?'<span class="lock">🔒</span>':''}</a>`).join('')}</nav>
+      <div class="sb-foot">
+        <a class="sb-item" href="/app"><span class="ic">←</span> Builder</a>
+        <a class="sb-item" id="acct" href="${S.loginRequired?'/login':'/app'}"><span class="ic">👤</span> ${S.github.login?'@'+esc(S.github.login):'Account'}</a>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div><h1 id="vtitle">Dashboard</h1><div class="sub" id="vsub"></div></div><div class="top-actions" id="tact"></div></header>
+      <div class="content" id="content"></div>
+    </main>
+  </div></div>`;
+  $$('#nav .sb-item').forEach(a=>a.addEventListener('click',()=>go(a.dataset.view)));
+  go('dashboard');
+}
+function go(view){
+  if ((view==='monitoring'||view==='integrations') && S.tier!=='pro'){ renderUpsell(view); return; }
+  S.view = view;
+  $$('#nav .sb-item').forEach(a=>a.classList.toggle('active', a.dataset.view===view));
+  const map={dashboard:'Dashboard',scan:'New scan',findings:'Findings',monitoring:'Continuous monitoring',integrations:'Integrations'};
+  $('#vtitle').textContent = map[view]||view; $('#vsub').textContent=''; $('#tact').innerHTML='';
+  ({dashboard:renderDashboard,scan:renderScan,findings:renderFindings,monitoring:renderMonitoring,integrations:renderIntegrations}[view])();
 }
 
-async function doIgnore(f, btn) {
-  btn.disabled = true; btn.textContent = '…';
-  try {
-    await fetch('/api/security/ignores', { method:'POST', headers:{'content-type':'application/json'},
-      body: JSON.stringify({ source: STATE.sourceKey, type: f.type, file: f.location.file, line: f.location.line }) });
-    STATE.findings = STATE.findings.filter(x => x !== f); paintFindings();
-  } catch { btn.disabled = false; btn.textContent = '🙈 Ignore'; }
+// ---------------- dashboard ----------------
+async function renderDashboard(){
+  const c = $('#content'); c.innerHTML = `<div class="empty"><span class="spin"></span> Loading…</div>`;
+  const d = await api('/api/security/overview'); S.overview = d;
+  const sources = d.sources||[], monitors = d.monitors||[];
+  const sum = sources.reduce((a,s)=>({c:a.c+(s.critical||0),h:a.h+(s.high||0),t:a.t+(s.total||0)}),{c:0,h:0,t:0});
+  const med = Math.max(0, sum.t-sum.c-sum.h);
+  const avg = sources.length? Math.round(sources.reduce((a,s)=>a+(s.score||0),0)/sources.length) : null;
+  $('#vsub').textContent = `${sources.length} source(s) · ${monitors.length} monitored`;
+  $('#tact').innerHTML = `<button class="btn primary sm" onclick="go('scan')">＋ New scan</button>`;
+  if (!sources.length){ c.innerHTML = `<div class="empty"><div class="big">🛡</div><h2>No scans yet</h2><p>Scan a GitHub repo or one of your Yield projects to see your security posture.</p><button class="btn primary" onclick="go('scan')">Run your first scan →</button></div>`; return; }
+  const totalC = sum.c, totalH = sum.h;
+  c.innerHTML = `
+    <div class="kpis">
+      <div class="kpi ${avg>=70?'ok':avg<40?'crit':''}"><div class="k-label">⌀ Code health</div><div class="k-num">${avg??'—'}</div><div class="k-sub">across ${sources.length} sources</div></div>
+      <div class="kpi"><div class="k-label">Open findings</div><div class="k-num">${sum.t}</div><div class="k-sub">latest scans</div></div>
+      <div class="kpi ${totalC?'crit':''}"><div class="k-label"><span class="dot c"></span>Critical</div><div class="k-num">${totalC}</div><div class="k-sub">${totalH} high</div></div>
+      <div class="kpi"><div class="k-label">🔁 Monitored</div><div class="k-num">${monitors.length}</div><div class="k-sub">scan on push</div></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h2>Sources <span class="right">latest scan</span></h2>
+        <table class="tbl"><thead><tr><th>Source</th><th>Health</th><th>Findings</th><th>Last</th><th></th></tr></thead><tbody>
+        ${sources.map(s=>{ const repo=s.source.startsWith('repo:')?s.source.slice(5):null; const mon=monitors.some(m=>m.repo===repo);
+          return `<tr><td class="src-name">${esc(s.source.replace(/^(repo|project):/,''))}<div class="src-tag" style="display:inline-block;margin-left:.4rem">${s.source.startsWith('repo:')?'repo':'project'}</div></td>
+          <td><b style="color:${({ok:'var(--ok)',warn:'var(--med)',bad:'var(--high)',crit:'var(--crit)'})[sc(s.score||0)]}">${s.score??'—'}</b></td>
+          <td><span class="pill2 CRITICAL">${s.critical||0}C</span> <span class="pill2 HIGH">${s.high||0}H</span> <span class="mono">${s.total||0} total</span></td>
+          <td class="mono">${ago(s.last_at)}</td>
+          <td>${repo?(mon?`<button class="btn ghost sm" data-unmon="${esc(repo)}">🔕</button>`:`<button class="btn ghost sm" data-mon="${esc(repo)}">🔔 Monitor</button>`):''}</td></tr>`; }).join('')}
+        </tbody></table>
+      </div>
+      <div class="panel">
+        <h2>Severity breakdown</h2>
+        <div class="sevbar">${sum.t?`<i class="c" style="width:${sum.c/sum.t*100}%"></i><i class="h" style="width:${sum.h/sum.t*100}%"></i><i class="m" style="width:${med/sum.t*100}%"></i><i class="l" style="width:${(sum.t-sum.c-sum.h-med)/sum.t*100}%"></i>`:'<i class="l" style="width:100%;background:var(--panel-2)"></i>'}</div>
+        <div class="sevlegend"><span><span class="dot c"></span>Critical <b>${sum.c}</b></span><span><span class="dot h"></span>High <b>${sum.h}</b></span><span><span class="dot m"></span>Medium <b>${med}</b></span><span><span class="dot l"></span>Low <b>${Math.max(0,sum.t-sum.c-sum.h-med)}</b></span></div>
+        <h2 style="margin-top:1.6rem">Scanners</h2>
+        <div class="sevlegend" style="flex-direction:column;gap:.5rem;align-items:flex-start">
+          <span>🧪 <b>SAST</b> — code vulnerabilities (OWASP/CWE)</span>
+          <span>📦 <b>SCA</b> — dependency CVEs via the live OSV feed</span>
+          <span>🐳 <b>IaC / Container</b> — Dockerfile, compose, Actions</span>
+          <span>📄 <b>License</b> — copyleft / compliance</span>
+          <span>🤖 <b>AI ensemble</b> — every top model (Deep scan)</span>
+        </div>
+      </div>
+    </div>`;
+  $$('[data-mon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.mon,true,b));
+  $$('[data-unmon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.unmon,false,b));
 }
 
-async function doFix(f, btn) {
-  if (STATE.tier !== 'pro' && !STATE.unlimited) { subscribe(); return; }
-  btn.disabled = true; btn.textContent = '✨ Generating…';
-  try {
-    const payload = { ...STATE.src, file: f.location.file, line: f.location.line, finding: f };
-    const r = await fetch('/api/security/fix', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) }).then(x => x.json());
-    if (r.fixedContent) showFixModal(f, r.fixedContent, payload);
-    else alert(r.error || 'Could not generate a fix.');
-  } catch { alert('Fix failed — try again.'); }
-  finally { btn.disabled = false; btn.textContent = '✨ AI Fix'; }
+// ---------------- scan ----------------
+function renderScan(){
+  const pro = S.tier==='pro';
+  const projOpts = S.projects.map(p=>`<option value="project:${esc(p.id)}">${esc(p.title)}</option>`).join('');
+  const c = $('#content');
+  c.innerHTML = `<div class="scanwrap">
+    <div class="panel">
+      <h2>Choose what to scan</h2>
+      <div class="field"><label>Yield project</label><select id="srcSel">${projOpts||'<option disabled>No projects yet</option>'}</select></div>
+      <div class="field"><label>…or a GitHub repository</label>
+        ${S.github.connected?`<div style="display:flex;gap:.5rem"><select id="repoSel" style="flex:1"><option value="">— load repos —</option></select><button class="btn ghost sm" id="loadRepos">Load</button></div>`
+          :`<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`}</div>
+      <div class="field"><label>Scan depth</label>
+        <span class="seg-group">
+          <button class="seg ${S.level==='basic'?'on':''}" data-lvl="basic">⚡ Basic</button>
+          <button class="seg ${S.level==='detailed'?'on':''}" data-lvl="detailed" ${pro?'':'data-lock=1'}>🔬 Deep${pro?'':' 🔒'}</button>
+          <button class="seg ${S.level==='compliance'?'on':''}" data-lvl="compliance" ${pro?'':'data-lock=1'}>📋 Compliance${pro?'':' 🔒'}</button>
+        </span>
+        <div class="mono" style="margin-top:.5rem">Basic = SAST + SCA + IaC + license (instant). Deep / Compliance add the AI ensemble (every top model).</div>
+      </div>
+      <button class="btn primary" id="scanBtn">Run scan ▸</button>
+    </div>
+    <div class="scan-status" id="sstatus"></div>
+    <div id="sresult"></div>
+  </div>`;
+  $$('.seg').forEach(b=>b.onclick=()=>{ if(b.dataset.lock){ subscribe(); return; } $$('.seg').forEach(x=>x.classList.toggle('on',x===b)); S.level=b.dataset.lvl; });
+  const lr=$('#loadRepos'); if(lr) lr.onclick=async()=>{ lr.textContent='…'; const {repos}=await api('/api/security/repos'); const sel=$('#repoSel'); sel.innerHTML='<option value="">— pick a repo —</option>'+(repos||[]).map(r=>`<option value="repo:${esc(r.full_name)}" data-branch="${esc(r.default_branch)}">${esc(r.full_name)}${r.private?' 🔒':''}</option>`).join(''); lr.textContent='Load'; };
+  $('#scanBtn').onclick=runScan;
+}
+function picked(){ const rs=$('#repoSel'); if(rs&&rs.value) return {source:'repo',repo:rs.value.slice(5),branch:rs.selectedOptions[0]?.dataset.branch||'main',key:rs.value}; const v=$('#srcSel')?.value||''; if(v.startsWith('project:')) return {source:'project',projectId:v.slice(8),key:v}; return null; }
+async function runScan(){
+  const src=picked(); if(!src){ $('#sstatus').textContent='Pick a project or repo first.'; return; }
+  S.src={source:src.source,projectId:src.projectId,repo:src.repo,branch:src.branch}; S.sourceKey=src.key; S.findings=[]; S.result=null;
+  const st=$('#sstatus'); st.innerHTML=`<span class="spin"></span> Scanning <b>${esc(src.repo||'project')}</b> — SAST · SCA · IaC · license${S.level!=='basic'?' · AI ensemble':''}…`;
+  $('#sresult').innerHTML='';
+  try{
+    const res=await fetch('/api/security/scan',{method:'POST',headers:{'content-type':'application/json',accept:'text/event-stream'},body:JSON.stringify({...src,level:S.level,stream:true})});
+    if(!res.ok||!res.body||!res.headers.get('content-type')?.includes('text/event-stream')){ const e=await res.json().catch(()=>({})); st.innerHTML = e.code==='github_not_connected'?`Connect GitHub first. <a href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security" style="color:var(--brand-2)">Connect →</a>`:(e.code==='security_required'?`🔒 ${esc(e.error)} <a href="#" onclick="subscribe();return false" style="color:var(--brand-2)">Upgrade →</a>`:esc(e.error||`Scan failed (${res.status})`)); return; }
+    const rd=res.body.pipeThrough(new TextDecoderStream()).getReader(); let buf='';
+    for(;;){ const {value,done}=await rd.read(); if(done)break; buf+=value; let i; while((i=buf.indexOf('\n\n'))!==-1){ const fr=buf.slice(0,i); buf=buf.slice(i+2); const ev=/event: (.*)/.exec(fr)?.[1], dt=/data: ([\s\S]*)/.exec(fr)?.[1]; if(!ev||dt==null)continue; let p; try{p=JSON.parse(dt)}catch{continue}
+      if(ev==='finding'){ S.findings.push(p); st.querySelector('b')&&(st.innerHTML=`<span class="spin"></span> ${S.findings.length} finding(s)…`); }
+      else if(ev==='progress'&&p.stage==='ai') st.innerHTML=`<span class="spin"></span> 🤖 ${esc(p.model)} (${p.index}/${p.total}) — ${S.findings.length} so far`;
+      else if(ev==='done'){ S.result=p; S.findings=p.findings; scanDone(p); }
+      else if(ev==='error') st.textContent=p.message||'Scan error';
+    }}
+  }catch(e){ st.textContent='Scan interrupted: '+e; }
+}
+function scanDone(r){
+  $('#sstatus').innerHTML=`✓ Complete — health ${r.codeHealthScore}/100 · ${r.summary.total} findings · <a href="#" data-exp="sarif">SARIF</a> · <a href="#" data-exp="json">JSON</a> · <a href="#" data-exp="html">Report</a>`;
+  $$('#sstatus [data-exp]').forEach(a=>a.onclick=e=>{e.preventDefault();exportAs(a.dataset.exp);});
+  $('#sresult').innerHTML = `<div class="panel" style="margin-top:1rem"><h2>Result <span class="right">${esc(S.sourceKey)}</span></h2>
+    <div style="display:flex;align-items:center;gap:1.4rem;margin-bottom:1rem">${ring(r.codeHealthScore,72)}
+      <div><span class="pill2 CRITICAL">${r.summary.critical} critical</span> <span class="pill2 HIGH">${r.summary.high} high</span> <span class="pill2 MEDIUM">${r.summary.medium} med</span> <span class="pill2 LOW">${r.summary.low} low</span>
+      <div class="mono" style="margin-top:.4rem">View all in the Findings tab →</div></div></div>
+    ${findingsTable((S._tableList=r.findings.slice(0,30)))}</div>`;
+  wireFindingRows($('#sresult'));
 }
 
-function showFixModal(f, fixed, payload) {
-  const m = document.createElement('div'); m.className = 'fix-modal';
-  m.innerHTML = `<div class="fix-box">
-    <div class="fix-head">✨ AI Fix — ${esc((f.type||'').replace(/_/g,' '))} <span class="fnd-loc">${esc(f.location.file)}</span>
-      <button class="btn ghost sm" id="fixClose">✕</button></div>
+// ---------------- findings (table + filters + detail) ----------------
+function findingsTable(list){
+  if(!list.length) return `<div class="empty"><div class="big">✓</div><h2>No findings</h2><p>Nothing flagged. Nice and clean.</p></div>`;
+  return `<table class="tbl"><thead><tr><th>Sev</th><th>Type</th><th>Location</th><th>Source</th><th></th></tr></thead><tbody>
+    ${list.map((f,i)=>`<tr class="clickable" data-row="${i}"><td><span class="pill2 ${f.severity}">${f.severity}</span></td>
+      <td><b>${esc((f.type||'').replace(/_/g,' '))}</b> <span class="mono">${esc(f.cwe||'')}</span></td>
+      <td class="mono">${esc(f.location?.file||'')}:${f.location?.line||0}</td>
+      <td>${f.source==='ai'?`<span class="src-tag ai">🤖 ${esc(f.model||'AI')}</span>`:'<span class="src-tag">pattern</span>'}</td>
+      <td class="mono">▾</td></tr>
+      <tr class="fdetail" data-detail="${i}" style="display:none"><td colspan="5"></td></tr>`).join('')}
+  </tbody></table>`;
+}
+function wireFindingRows(root){
+  $$('tr[data-row]',root).forEach(tr=>tr.onclick=()=>{
+    const i=+tr.dataset.row, det=$(`tr[data-detail="${i}"]`,root); const f=(S._tableList&&S._tableList[i])||S.findings[i];
+    if(det.style.display==='none'){ det.style.display=''; det.querySelector('td').innerHTML=detailHtml(f,i); tr.querySelector('td:last-child').textContent='▴'; wireDetail(det,f); }
+    else { det.style.display='none'; tr.querySelector('td:last-child').textContent='▾'; }
+  });
+}
+function detailHtml(f,i){
+  const ex=f.example&&(f.example.vulnerable||f.example.safe)?`<div class="fd-ex"><div class="ex-bad"><span class="mono">✗ vulnerable</span><pre>${esc(f.example.vulnerable||'')}</pre></div><div class="ex-ok"><span class="mono">✓ safe</span><pre>${esc(f.example.safe||'')}</pre></div></div>`:'';
+  const fixable=f.location?.file&&f.location.file.indexOf('.')>-1;
+  return `<div class="fd-grid"><div class="fd-desc">${esc(f.description||'')}</div>
+    <div class="mono">${esc(f.owasp||'')}</div>
+    ${f.fix?`<div class="fd-fix"><b>Fix:</b> ${esc(f.fix)}</div>`:''}${ex}
+    <div class="fd-actions">${fixable?`<button class="btn primary sm" data-fix="${i}">✨ AI Fix</button>`:''}<button class="btn ghost sm" data-ignore="${i}">🙈 Ignore</button></div></div>`;
+}
+function wireDetail(det,f){ const fx=$('[data-fix]',det); if(fx)fx.onclick=()=>doFix(f,fx); const ig=$('[data-ignore]',det); if(ig)ig.onclick=()=>doIgnore(f,ig); }
+function renderFindings(){
+  const c=$('#content'); const all=S.findings||[];
+  $('#vsub').textContent = S.sourceKey?`${esc(S.sourceKey)} · ${all.length} findings`:'';
+  $('#tact').innerHTML = all.length?`<a href="#" class="btn ghost sm" data-exp="sarif">SARIF</a><a href="#" class="btn ghost sm" data-exp="json">JSON</a><a href="#" class="btn ghost sm" data-exp="html">Report</a>`:'';
+  $$('#tact [data-exp]').forEach(a=>a.onclick=e=>{e.preventDefault();exportAs(a.dataset.exp);});
+  if(!all.length){ c.innerHTML=`<div class="empty"><div class="big">⚠️</div><h2>No findings loaded</h2><p>Run a scan to see vulnerabilities here.</p><button class="btn primary" onclick="go('scan')">New scan →</button></div>`; return; }
+  const sevs=['all','CRITICAL','HIGH','MEDIUM','LOW'];
+  c.innerHTML=`<div class="filters">${sevs.map(s=>`<span class="fchip ${S.filter.sev===s?'on':''}" data-sev="${s}">${s==='all'?'All':s}</span>`).join('')}<input class="search" id="fsearch" placeholder="Filter by type, file, CWE…" value="${esc(S.filter.q)}"></div><div class="panel" id="ftbl"></div>`;
+  const paint=()=>{ const q=S.filter.q.toLowerCase(); const list=all.filter(f=>(S.filter.sev==='all'||f.severity===S.filter.sev)&&(!q||(f.type+f.location.file+f.cwe+f.description).toLowerCase().includes(q))); S._tableList=list; $('#ftbl').innerHTML=findingsTable(list); wireFindingRows($('#ftbl')); };
+  $$('.fchip').forEach(ch=>ch.onclick=()=>{ S.filter.sev=ch.dataset.sev; $$('.fchip').forEach(x=>x.classList.toggle('on',x===ch)); paint(); });
+  $('#fsearch').oninput=e=>{ S.filter.q=e.target.value; paint(); };
+  paint();
+}
+
+// ---------------- monitoring ----------------
+async function renderMonitoring(){
+  const c=$('#content'); c.innerHTML=`<div class="empty"><span class="spin"></span> Loading…</div>`;
+  const [mon, rep] = await Promise.all([api('/api/security/monitors'), S.github.connected?api('/api/security/repos'):Promise.resolve({repos:[]})]);
+  const monitors=mon.monitors||[], repos=rep.repos||[]; const monset=new Set(monitors.map(m=>m.repo));
+  $('#vsub').textContent=`${monitors.length} repo(s) watched`;
+  c.innerHTML=`<div class="panel"><h2>🔁 Continuous monitoring <span class="right">scans every push & PR + a daily re-scan</span></h2>
+    ${!S.github.connected?`<p class="mono">Connect GitHub to monitor repos. <a href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security" style="color:var(--brand-2)">Connect →</a></p>`:''}
+    <table class="tbl"><thead><tr><th>Repository</th><th>Status</th><th>Last scan</th><th></th></tr></thead><tbody>
+    ${monitors.map(m=>`<tr><td class="src-name">${esc(m.repo)}</td><td><span class="pill2 ${m.last_score>=70?'LOW':'HIGH'}">${m.last_score!=null?m.last_score+'/100':'pending'}</span></td><td class="mono">${ago(m.last_scan_at)}</td><td><button class="btn ghost sm" data-unmon="${esc(m.repo)}">🔕 Stop</button></td></tr>`).join('')||'<tr><td colspan="4" class="mono">No repos monitored yet.</td></tr>'}
+    </tbody></table></div>
+    ${S.github.connected?`<div class="panel"><h2>Add a repository</h2><div style="display:flex;gap:.5rem;flex-wrap:wrap">${repos.filter(r=>!monset.has(r.full_name)).slice(0,40).map(r=>`<button class="btn ghost sm" data-mon="${esc(r.full_name)}">🔔 ${esc(r.full_name)}</button>`).join('')||'<span class="mono">All your repos are monitored.</span>'}</div></div>`:''}`;
+  $$('[data-mon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.mon,true,b));
+  $$('[data-unmon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.unmon,false,b));
+}
+async function toggleMonitor(repo,on,btn){ btn.disabled=true; const t=btn.textContent; btn.textContent='…';
+  const r=await api('/api/security/monitors',{method:on?'POST':'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({repo,branch:'main'})});
+  if(r.ok||r.already){ toast(on?'Monitoring '+repo:'Stopped monitoring'); (S.view==='monitoring'?renderMonitoring:renderDashboard)(); } else { btn.disabled=false; btn.textContent=t; alert(r.error||'Failed — is GitHub connected?'); } }
+
+// ---------------- integrations ----------------
+async function renderIntegrations(){
+  const c=$('#content'); const d=await api('/api/security/integrations'); const g=d.integrations||{};
+  c.innerHTML=`<div class="integ-cards">
+    <div class="icard"><h3>💬 Slack <span class="st ${g.slack?'on':'off'}">${g.slack?'connected':'off'}</span></h3><p class="mono">Post a summary to a channel after each scan.</p><input id="iSlack" placeholder="${g.slack?'configured ✓ (blank = keep)':'https://hooks.slack.com/services/…'}"></div>
+    <div class="icard"><h3>🧩 Jira <span class="st ${g.jira?'on':'off'}">${g.jira?'connected':'off'}</span></h3><p class="mono">Open a ticket for each critical finding.</p>
+      <input id="iJiraBase" placeholder="${g.jira?'configured ✓':'https://you.atlassian.net'}"><input id="iJiraEmail" placeholder="you@company.com"><input id="iJiraToken" type="password" placeholder="${g.jira?'••• (blank = keep)':'API token'}"><input id="iJiraProj" value="${esc(g.jira_project||'')}" placeholder="Project key (e.g. SEC)"></div>
+    <div class="icard"><h3>🐙 GitHub <span class="st ${S.github.connected?'on':'off'}">${S.github.connected?'connected':'off'}</span></h3><p class="mono">On monitored repos, report results inline.</p>
+      <label class="chk"><input type="checkbox" id="iStatus" ${g.post_commit_status!==0?'checked':''}> Set commit-status checks</label>
+      <label class="chk"><input type="checkbox" id="iPr" ${g.post_pr_comments?'checked':''}> Comment findings on PRs</label></div>
+  </div>
+  <div style="margin-top:1.2rem;display:flex;gap:.6rem;align-items:center"><button class="btn primary" id="iSave">Save integrations</button><span class="mono" id="iMsg"></span></div>`;
+  $('#iSave').onclick=async()=>{ const v=s=>$(s).value.trim();
+    const body={slack_webhook:v('#iSlack')||undefined,jira_base:v('#iJiraBase')||undefined,jira_email:v('#iJiraEmail')||undefined,jira_token:v('#iJiraToken')||undefined,jira_project:v('#iJiraProj')||undefined,post_pr_comments:$('#iPr').checked,post_commit_status:$('#iStatus').checked};
+    $('#iMsg').textContent='Saving…'; const r=await api('/api/security/integrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); $('#iMsg').textContent=r.ok?'Saved ✓':'Failed'; toast(r.ok?'Integrations saved':'Save failed'); };
+}
+
+// ---------------- upsell / marketing ----------------
+function renderUpsell(view){
+  $$('#nav .sb-item').forEach(a=>a.classList.toggle('active', a.dataset.view===view));
+  $('#vtitle').textContent = view==='monitoring'?'Continuous monitoring':'Integrations'; $('#vsub').textContent=''; $('#tact').innerHTML='';
+  $('#content').innerHTML=`<div class="empty"><div class="big">🔒</div><h2>${view==='monitoring'?'Continuous monitoring is a Pro feature':'Integrations are a Pro feature'}</h2>
+    <p>Upgrade to Yield Security Pro to ${view==='monitoring'?'scan every push & PR automatically and re-scan daily':'pipe findings to Slack, Jira and GitHub'}.</p>
+    <button class="btn primary" onclick="subscribe()">Upgrade — $19/mo</button></div>`;
+}
+function renderMarketing(s){
+  document.body.classList.remove('sec-app'); // the marketing page scrolls; the app shell doesn't
+  const cta = s.loginRequired?`<a class="btn primary lg" href="/login?redirect=/security">Sign in to start</a>`:(s.priceConfigured?`<button class="btn primary lg" onclick="subscribe()">Get Security Pro</button>`:`<button class="btn primary lg" disabled>Launching soon</button>`);
+  document.body.innerHTML=`<div id="root"><header class="nav"><a class="brand" href="/"><span class="logo">🛡</span> Yield Security</a><nav class="nav-links"><a href="/app">Builder</a><a href="/pricing">Pricing</a><a class="btn ghost sm" href="/login?redirect=/security">Sign in</a></nav></header>
+  <main class="mkt"><div class="mkt-hero"><span class="pill">🛡 Yield Security</span><h1>Find vulnerabilities before attackers do.</h1>
+    <p>Scan your GitHub repos and Yield projects with a live advisory feed (OSV / GitHub Advisories) and every top AI model. SAST · SCA · IaC · secrets · licenses — with AI auto-fix and continuous monitoring.</p>${cta}</div>
+  <div class="mkt-feats">
+    <div class="mkt-feat"><h3>🧪 SAST · SCA · IaC</h3><p>Code flaws, dependency CVEs from the live OSV feed, and container/IaC misconfigs in one scan.</p></div>
+    <div class="mkt-feat"><h3>🤖 AI ensemble + ✨ auto-fix</h3><p>Every top model audits your code; generate and apply the corrected file in one click.</p></div>
+    <div class="mkt-feat"><h3>🔁 Continuous monitoring</h3><p>Scan every push & PR; results posted as a commit status, PR comment, Slack message or Jira ticket.</p></div>
+    <div class="mkt-feat"><h3>📋 Compliance & licenses</h3><p>GDPR/PCI mode plus copyleft license checks across your dependencies.</p></div>
+    <div class="mkt-feat"><h3>📤 Export anywhere</h3><p>SARIF for CI / GitHub code scanning, JSON, and shareable reports.</p></div>
+    <div class="mkt-feat"><h3>🔒 Privacy first</h3><p>Code is analyzed and discarded immediately — only finding metadata is kept.</p></div>
+  </div>
+  <div class="tier-grid">
+    <div class="tcard"><h3>Free</h3><div class="amt">$0</div><ul><li>✓ Basic pattern scans</li><li>✓ 3 scans / day</li><li>✓ Projects & repos</li><li style="opacity:.5">✗ AI ensemble</li></ul><a class="btn ghost" href="/login?redirect=/security">Start free</a></div>
+    <div class="tcard feat"><span class="pill">Most popular</span><h3>Pro</h3><div class="amt">$19<small>/mo</small></div><ul><li>✓ AI ensemble — every top model</li><li>✓ Live OSV + license + IaC</li><li>✓ Continuous monitoring</li><li>✓ Slack · Jira · PR comments</li><li>✓ AI auto-fix</li></ul>${cta}</div>
+    <div class="tcard"><h3>Team</h3><div class="amt">$49<small>/mo</small></div><ul><li>✓ Everything in Pro</li><li>✓ Shared org repos</li><li>✓ Priority scanning</li><li>✓ Support</li></ul><a class="btn ghost" href="mailto:bobitho69@gmail.com?subject=Yield Security Team">Contact us</a></div>
+  </div></main></div>`;
+}
+async function subscribe(){ if(S.loginRequired){ location.href='/login?redirect=/security'; return; } const r=await api('/api/security/checkout',{method:'POST'}); if(r.url) location.href=r.url; else alert(r.error||'Subscription isn’t available yet.'); }
+
+// ---------------- AI fix / ignore / export ----------------
+async function doIgnore(f,btn){ btn.disabled=true; btn.textContent='…';
+  await api('/api/security/ignores',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:S.sourceKey,type:f.type,file:f.location.file,line:f.location.line})});
+  S.findings=S.findings.filter(x=>x!==f); toast('Ignored — excluded from your score'); (S.view==='findings'?renderFindings:()=>scanDone(S.result))(); }
+async function doFix(f,btn){ if(S.tier!=='pro'&&!S.unlimited){ subscribe(); return; } btn.disabled=true; btn.textContent='✨ Generating…';
+  const r=await api('/api/security/fix',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...S.src,file:f.location.file,line:f.location.line,finding:f})});
+  btn.disabled=false; btn.textContent='✨ AI Fix';
+  if(r.fixedContent) fixModal(f,r.fixedContent,{...S.src,file:f.location.file,line:f.location.line,finding:f}); else alert(r.error||'Could not generate a fix.'); }
+function fixModal(f,fixed,payload){
+  const m=document.createElement('div'); m.className='fix-modal';
+  m.innerHTML=`<div class="fix-box"><div class="fix-head">✨ AI Fix — ${esc((f.type||'').replace(/_/g,' '))} <span class="mono">${esc(f.location.file)}</span><button class="btn ghost sm" id="fxX" style="margin-left:auto">✕</button></div>
     <pre class="fix-pre">${esc(fixed)}</pre>
-    <div class="fix-foot"><span class="muted">Review the rewritten file, then apply it to ${payload.source === 'repo' ? 'your repo' : 'your project'}.</span>
-      <button class="btn ghost sm" id="fixCopy">Copy</button>
-      <button class="btn primary sm" id="fixApply">Apply fix →</button></div></div>`;
-  document.body.appendChild(m);
-  const close = () => m.remove();
-  $('#fixClose', m).onclick = close;
-  m.addEventListener('click', e => { if (e.target === m) close(); });
-  $('#fixCopy', m).onclick = () => { navigator.clipboard?.writeText(fixed); $('#fixCopy', m).textContent = 'Copied'; };
-  $('#fixApply', m).onclick = async () => {
-    const b = $('#fixApply', m); b.disabled = true; b.textContent = 'Applying…';
-    try {
-      const r = await fetch('/api/security/fix', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ ...payload, apply: true }) }).then(x => x.json());
-      if (r.applied) { b.textContent = '✓ Applied'; STATE.findings = STATE.findings.filter(x => x !== f); paintFindings(); setTimeout(close, 900); }
-      else { b.disabled = false; b.textContent = 'Apply fix →'; alert(r.applyError || r.error || 'Could not apply automatically — copy the code instead.'); }
-    } catch { b.disabled = false; b.textContent = 'Apply fix →'; }
-  };
+    <div class="fix-foot"><span class="mono" style="flex:1">Review the rewritten file, then apply it to your ${payload.source==='repo'?'repo (a commit)':'project'}.</span><button class="btn ghost sm" id="fxCopy">Copy</button><button class="btn primary sm" id="fxApply">Apply fix →</button></div></div>`;
+  document.body.appendChild(m); const close=()=>m.remove();
+  $('#fxX',m).onclick=close; m.onclick=e=>{if(e.target===m)close()};
+  $('#fxCopy',m).onclick=()=>{navigator.clipboard?.writeText(fixed); $('#fxCopy',m).textContent='Copied';};
+  $('#fxApply',m).onclick=async()=>{ const b=$('#fxApply',m); b.disabled=true; b.textContent='Applying…'; const r=await api('/api/security/fix',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...payload,apply:true})});
+    if(r.applied){ b.textContent='✓ Applied'; S.findings=S.findings.filter(x=>x!==f); toast('Fix applied'); setTimeout(close,800); } else { b.disabled=false; b.textContent='Apply fix →'; alert(r.applyError||r.error||'Could not apply — copy the code instead.'); } };
 }
-
-// ---- exports (client-side, from the current scan) ----
-function download(name, text, mime) {
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: mime })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
-}
-function toSarif() {
-  const rules = {}; const results = (STATE.findings||[]).map(f => {
-    rules[f.type] = { id: f.type, name: f.type, shortDescription: { text: f.type }, properties: { cwe: f.cwe, 'security-severity': ({CRITICAL:'9.5',HIGH:'8.0',MEDIUM:'5.0',LOW:'3.0'})[f.severity] } };
-    return { ruleId: f.type, level: ({CRITICAL:'error',HIGH:'error',MEDIUM:'warning',LOW:'note'})[f.severity]||'warning',
-      message: { text: f.description }, locations: [{ physicalLocation: { artifactLocation: { uri: f.location.file }, region: { startLine: f.location.line || 1, startColumn: f.location.column || 1 } } }] };
-  });
-  return JSON.stringify({ $schema: 'https://json.schemastore.org/sarif-2.1.0.json', version: '2.1.0',
-    runs: [{ tool: { driver: { name: 'Yield Security', informationUri: 'https://yield', rules: Object.values(rules) } }, results }] }, null, 2);
-}
-function exportAs(fmt) {
-  const stamp = new Date().toISOString().slice(0,10);
-  if (fmt === 'sarif') return download(`yield-security-${stamp}.sarif`, toSarif(), 'application/json');
-  if (fmt === 'json') return download(`yield-security-${stamp}.json`, JSON.stringify(STATE.result, null, 2), 'application/json');
-  // printable HTML report
-  const fs = STATE.findings || [];
-  const html = `<!doctype html><meta charset=utf-8><title>Yield Security report</title>
-    <style>body{font:14px system-ui;margin:2rem;color:#111}h1{margin:.2rem 0}.s{font-weight:700}.c{color:#b00}.h{color:#c60}.m{color:#a80}.l{color:#888}pre{background:#f5f5f5;padding:.4rem;border-radius:4px;white-space:pre-wrap}</style>
-    <h1>🛡 Yield Security report</h1><p>${esc(STATE.sourceKey||'')} · ${stamp} · code health <b>${STATE.result?.codeHealthScore??'—'}/100</b> · ${fs.length} findings</p>
-    ${fs.map(f=>`<div style="border-left:3px solid #ccc;padding:.3rem .6rem;margin:.5rem 0"><span class="s ${({CRITICAL:'c',HIGH:'h',MEDIUM:'m',LOW:'l'})[f.severity]}">${f.severity}</span> <b>${esc(f.type)}</b> · ${esc(f.cwe)} · ${esc(f.location.file)}:${f.location.line}<br>${esc(f.description||'')}<br><b>Fix:</b> ${esc(f.fix||'')}</div>`).join('')}`;
-  download(`yield-security-${stamp}.html`, html, 'text/html');
-}
-
-async function load() {
-  let s;
-  try { s = await fetch('/api/security/status').then(r => r.json()); }
-  catch { $('#page').innerHTML = '<div class="sec-hero"><p class="muted">Could not load. Try again.</p></div>'; return; }
-  STATE.tier = s.tier || (s.active ? 'pro' : 'none'); STATE.projects = s.projects || []; STATE.github = s.github || { connected:false };
-  STATE.priceConfigured = s.priceConfigured; STATE.loginRequired = s.loginRequired; STATE.dailyCap = s.dailyCap || 3; STATE.unlimited = s.unlimited;
-  STATE.level = STATE.tier === 'pro' ? 'detailed' : 'basic';
-  $('#acct').textContent = s.github && s.github.login ? '@'+s.github.login : (s.loginRequired ? 'Sign in' : 'Account');
-  $('#acct').href = s.loginRequired ? '/login?redirect=/security' : '/app';
-  STATE.tier === 'none' ? renderPitch() : renderDashboard();
-}
-
-function renderPitch() {
-  const cwes = ['SQL injection','XSS','Auth bypass','Crypto failures','Hardcoded secrets','PII exposure','Command injection','Path traversal','CORS/CSRF','Vulnerable deps'];
-  const subscribeBtn = STATE.loginRequired
-    ? `<a class="btn primary lg" href="/login?redirect=/security">Sign in to start</a>`
-    : (STATE.priceConfigured ? `<button class="btn primary lg" id="subBtn">Subscribe & start scanning</button>`
-      : `<button class="btn primary lg" disabled title="Billing not configured yet">Launching soon</button>`);
-  $('#page').innerHTML = `
-    <div class="sec-hero">
-      <span class="pill">🛡 Yield Security</span>
-      <h1>Find the vulnerabilities before attackers do.</h1>
-      <p class="lead">Scan your GitHub repos and Yield projects for real, exploitable security flaws — checked by a deterministic engine <b>and every top AI model</b>, one at a time. Your code is analyzed and discarded immediately; only the findings are kept.</p>
-      <div class="cwe-row">${cwes.map(c => `<span class="cwe-chip">${c}</span>`).join('')}</div>
-    </div>
-    <div class="sec-feats">
-      <div class="sec-feat"><h3>🧪 SAST · SCA · IaC</h3><p>One scan covers code flaws, vulnerable dependencies via the <b>live OSV feed</b> (GitHub Advisories, NVD, PyPA…), and container/IaC misconfigs.</p></div>
-      <div class="sec-feat"><h3>🤖 AI ensemble + ✨ auto-fix</h3><p>Every top AI model audits the code; then generate the corrected file for any finding and apply it straight to your repo or project.</p></div>
-      <div class="sec-feat"><h3>🔁 Continuous monitoring</h3><p>Watch a repo: every push & PR is scanned automatically, with a daily re-scan — results posted as a commit status and PR comment.</p></div>
-      <div class="sec-feat"><h3>🔌 Slack · Jira · GitHub</h3><p>Pipe findings to Slack, open Jira tickets for criticals, and comment on PRs. Triage false positives so they stop counting.</p></div>
-      <div class="sec-feat"><h3>📤 Compliance & export</h3><p>GDPR/PCI mode, license checks, SARIF (for CI / code scanning), JSON and shareable reports — plus a 0–100 code-health trend.</p></div>
-      <div class="sec-feat"><h3>🔒 Privacy first</h3><p>Code is analyzed and discarded immediately. We keep only the finding type, severity, CWE, file and line — never your source.</p></div>
-    </div>
-    <div class="tier-grid">
-      <div class="price-card">
-        <div class="tier-name">Free</div>
-        <div class="amt">$0</div>
-        <ul class="tier-list"><li>✓ Basic pattern scans</li><li>✓ ${3} scans / day</li><li>✓ Projects & repos</li><li>✗ AI ensemble</li><li>✗ Compliance mode</li></ul>
-        <a class="btn ghost" href="/login?redirect=/security">Start free</a>
-      </div>
-      <div class="price-card featured">
-        <div class="tier-name">Pro <span class="pill" style="margin:0">popular</span></div>
-        <div class="amt">$19 <small>/ mo</small></div>
-        <ul class="tier-list"><li>✓ Everything in Free</li><li>✓ <b>AI ensemble</b> — every top model</li><li>✓ Compliance (GDPR/PCI)</li><li>✓ Unlimited repos & projects</li><li>✓ Score history & trends</li></ul>
-        ${subscribeBtn}
-      </div>
-      <div class="price-card">
-        <div class="tier-name">Team</div>
-        <div class="amt">$49 <small>/ mo</small></div>
-        <ul class="tier-list"><li>✓ Everything in Pro</li><li>✓ Shared org repos</li><li>✓ Priority scanning</li><li>✓ Email support</li></ul>
-        <a class="btn ghost" href="mailto:bobitho69@gmail.com?subject=Yield%20Security%20Team">Contact us</a>
-      </div>
-    </div>
-    <p class="muted" style="text-align:center;font-size:.76rem;margin-top:1rem">Sold separately from Priority. Code is analyzed and discarded immediately — only findings are kept.</p>`;
-  $('#subBtn')?.addEventListener('click', subscribe);
-}
-
-// Start the Pro subscription checkout (or send to sign-in first).
-async function subscribe() {
-  if (STATE.loginRequired) { location.href = '/login?redirect=/security'; return; }
-  try {
-    const { url, error } = await fetch('/api/security/checkout', { method:'POST' }).then(r => r.json());
-    if (url) location.href = url; else alert(error || 'Subscription isn’t available yet.');
-  } catch { alert('Could not start checkout. Please try again.'); }
-}
-
-function renderDashboard() {
-  const isPro = STATE.tier === 'pro';
-  const projOpts = STATE.projects.map(p => `<option value="project:${esc(p.id)}">${esc(p.title)}</option>`).join('');
-  const gh = STATE.github.connected
-    ? `<button class="btn ghost sm" id="loadRepos">Load GitHub repos</button><select id="repoSel" class="hidden"></select>`
-    : `<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`;
-  const lock = isPro ? '' : ' data-locked="1"';
-  const banner = isPro ? '' : `<div class="sec-upsell" style="margin:0 0 1rem">⚡ You're on <b>Free</b> — basic pattern scans, ${STATE.dailyCap}/day. Upgrade to <b>Pro</b> for the AI ensemble, compliance mode and unlimited scans. <button class="btn primary sm" id="upBtn">Upgrade — $19/mo</button></div>`;
-  $('#page').innerHTML = `
-    <div class="sec-hero" style="padding-bottom:.5rem"><span class="pill">🛡 Yield Security — ${isPro ? 'Pro' : 'Free'}${STATE.unlimited ? ' · testing (unlimited)' : ''}</span>
-      <h1 style="font-size:1.8rem">Scan a repo or project</h1></div>
-    ${banner}
-    <div class="scan-bar">
-      <select id="srcSel" title="Source to scan">
-        <optgroup label="Yield projects">${projOpts || '<option disabled>No projects yet</option>'}</optgroup>
-      </select>
-      ${gh}
-      <span class="seg-group">
-        <button class="seg ${STATE.level === 'basic' ? 'on' : ''}" data-lvl="basic">⚡ Basic</button>
-        <button class="seg ${STATE.level === 'detailed' ? 'on' : ''}"${lock} data-lvl="detailed">🔬 Deep${isPro ? '' : ' 🔒'}</button>
-        <button class="seg ${STATE.level === 'compliance' ? 'on' : ''}"${lock} data-lvl="compliance">📋 Compliance${isPro ? '' : ' 🔒'}</button>
-      </span>
-      <button class="btn primary" id="scanBtn">Scan ▸</button>
-      <a class="btn ghost sm" href="/app">← Builder</a>
-    </div>
-    <div id="secStatus" class="sec-status"></div>
-    <div class="sec-top" id="secSummary" style="display:none">
-      <div class="sec-score" id="secScore"><div class="ss-num">—</div><div class="ss-lbl">Code Health</div></div>
-      <div class="sec-sum" id="secCounts"></div>
-    </div>
-    <div id="secTrend" class="sec-trend"></div>
-    <div id="secFindings" class="sec-findings"></div>
-    ${isPro ? `<div id="secOverview" class="sec-overview"></div>
-    <details class="sec-integrations"><summary>🔌 Monitoring &amp; integrations</summary>
-      <div class="integ-body" id="integBody"><p class="muted">Loading…</p></div></details>` : ''}
-    <div class="sec-privacy">🔒 Code is analyzed and discarded immediately. Only finding metadata (type, severity, CWE, file, line, score) is retained.</div>`;
-  if (isPro) { loadOverview(); $('.sec-integrations summary')?.addEventListener('click', loadIntegrations, { once: true }); }
-  document.querySelectorAll('.seg').forEach(b => b.addEventListener('click', () => {
-    if (b.dataset.locked) { subscribe(); return; }
-    document.querySelectorAll('.seg').forEach(x => x.classList.toggle('on', x === b)); STATE.level = b.dataset.lvl;
-  }));
-  $('#upBtn')?.addEventListener('click', subscribe);
-  const lr = $('#loadRepos');
-  if (lr) lr.addEventListener('click', async () => {
-    lr.textContent = 'Loading…';
-    try { const { repos } = await fetch('/api/security/repos').then(r => r.json());
-      const sel = $('#repoSel'); sel.innerHTML = (repos||[]).map(r => `<option value="repo:${esc(r.full_name)}" data-branch="${esc(r.default_branch)}">${esc(r.full_name)}${r.private?' 🔒':''}</option>`).join('');
-      sel.classList.remove('hidden'); lr.classList.add('hidden');
-    } catch { lr.textContent = 'Retry'; }
-  });
-  $('#scanBtn').addEventListener('click', runScan);
-}
-
-function pickedSource() {
-  const repoSel = $('#repoSel');
-  if (repoSel && !repoSel.classList.contains('hidden') && repoSel.value) {
-    return { source:'repo', repo: repoSel.value.slice(5), branch: repoSel.selectedOptions[0]?.dataset.branch || 'main', key: repoSel.value };
-  }
-  const v = $('#srcSel')?.value || '';
-  if (v.startsWith('project:')) return { source:'project', projectId: v.slice(8), key: v };
-  return null;
-}
-
-async function runScan() {
-  if (STATE.scanning) return;
-  const src = pickedSource();
-  if (!src) { $('#secStatus').textContent = 'Pick a project or repo first.'; return; }
-  STATE.scanning = true; STATE.src = { source: src.source, projectId: src.projectId, repo: src.repo, branch: src.branch };
-  STATE.sourceKey = src.key; STATE.findings = []; STATE.result = null;
-  const status = $('#secStatus'), summary = $('#secSummary');
-  summary.style.display = 'none'; paintFindings();
-  status.innerHTML = `<span class="spin"></span> Scanning ${esc(src.repo || 'project')} — static suite (SAST + deps + IaC)${STATE.level !== 'basic' ? ' then every top model…' : '…'}`;
-  try {
-    const res = await fetch('/api/security/scan', {
-      method:'POST', headers:{'content-type':'application/json', accept:'text/event-stream'},
-      body: JSON.stringify({ ...src, level: STATE.level, stream: true }),
-    });
-    if (!res.ok || !res.body || !res.headers.get('content-type')?.includes('text/event-stream')) {
-      const err = await res.json().catch(() => ({}));
-      status.innerHTML = err.code === 'github_not_connected'
-        ? `Connect GitHub first. <a href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security" style="color:var(--brand-2)">Connect →</a>`
-        : esc(err.error || `Scan failed (${res.status})`);
-      return;
-    }
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buf = '';
-    for (;;) {
-      const { value, done } = await reader.read(); if (done) break; buf += value;
-      let i; while ((i = buf.indexOf('\n\n')) !== -1) {
-        const frame = buf.slice(0, i); buf = buf.slice(i + 2);
-        const ev = /event: (.*)/.exec(frame)?.[1], data = /data: ([\s\S]*)/.exec(frame)?.[1];
-        if (!ev || data == null) continue;
-        let p; try { p = JSON.parse(data); } catch { continue; }
-        if (ev === 'finding') { STATE.findings.push(p); paintFindings(); }
-        else if (ev === 'progress' && p.stage === 'ai') status.innerHTML = `<span class="spin"></span> ${esc(p.model)} (${p.index}/${p.total}) — ${STATE.findings.length} finding(s) so far`;
-        else if (ev === 'done') renderResult(p, src.key);
-        else if (ev === 'error') status.textContent = p.message || 'Scan error';
-      }
-    }
-  } catch (e) { status.textContent = 'Scan interrupted: ' + e; }
-  finally { STATE.scanning = false; }
-}
-
-function renderResult(r, sourceKey) {
-  STATE.result = r; STATE.findings = r.findings; STATE.scanning = false;
-  $('#secStatus').innerHTML = `✓ Scan complete — code health ${r.codeHealthScore}/100 (${r.summary.total} findings) · `
-    + `<a href="#" data-exp="sarif">SARIF</a> · <a href="#" data-exp="json">JSON</a> · <a href="#" data-exp="html">Report</a>`;
-  $('#secStatus').querySelectorAll('[data-exp]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); exportAs(a.dataset.exp); }));
-  const sum = r.summary, sc = $('#secScore'); $('#secSummary').style.display = 'flex';
-  sc.className = 'sec-score ' + scoreClass(r.codeHealthScore);
-  sc.innerHTML = `<div class="ss-num">${r.codeHealthScore}</div><div class="ss-lbl">Code Health</div>`;
-  $('#secCounts').innerHTML = `<span class="sev crit">${sum.critical} critical</span> <span class="sev bad">${sum.high} high</span> <span class="sev warn">${sum.medium} medium</span> <span class="sev low">${sum.low} low</span>`;
-  if (!r.findings.length) $('#secFindings').innerHTML = '<div class="sec-clean">✓ No vulnerabilities found. Clean.</div>';
-  else paintFindings();
-  loadTrend(sourceKey);
-}
-
-async function loadTrend(sourceKey) {
-  try {
-    const { runs } = await fetch('/api/security/history?source=' + encodeURIComponent(sourceKey)).then(r => r.json());
-    const el = $('#secTrend'); if (!el || !runs || runs.length < 2) { if (el) el.innerHTML = ''; return; }
-    const series = runs.slice().reverse(), w = 240, h = 40, n = series.length;
-    const pts = series.map((r, i) => `${(i/(n-1))*w},${h-(r.score/100)*h}`).join(' ');
-    el.innerHTML = `<div class="trend-head">Security trend (${n} scans)</div><svg viewBox="0 0 ${w} ${h}" class="trend-svg" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="trend-now">latest ${series[n-1].score}/100</span>`;
-  } catch { /* optional */ }
-}
-
-// ---- overview dashboard + monitoring + integrations ----
-async function loadOverview() {
-  try {
-    const d = await fetch('/api/security/overview').then(r => r.json());
-    const el = $('#secOverview'); if (!el) return;
-    const mons = d.monitors || [], monitored = new Set(mons.map(m => m.repo)), sources = d.sources || [];
-    if (!sources.length && !mons.length) { el.innerHTML = ''; return; }
-    el.innerHTML = `<h3 class="ov-h">📊 Your security overview</h3>
-      <div class="ov-grid">${sources.map(s => { const repo = s.source.startsWith('repo:') ? s.source.slice(5) : null; return `<div class="ov-card">
-        <div class="ov-src">${esc(s.source)}</div>
-        <div class="ov-score ${scoreClass(s.score||0)}">${s.score ?? '—'}</div>
-        <div class="ov-meta">${s.critical||0} crit · ${s.high||0} high · ${s.total||0} total · ${s.scans} scan(s)</div>
-        ${repo ? (monitored.has(repo) ? `<button class="btn ghost sm" data-unmon="${esc(repo)}">🔕 Stop monitoring</button>` : `<button class="btn ghost sm" data-mon="${esc(repo)}">🔔 Monitor</button>`) : ''}
-      </div>`; }).join('')}</div>
-      ${mons.length ? `<div class="ov-mon muted">🔔 Monitoring on push: ${mons.map(m => esc(m.repo) + (m.last_score!=null?` (${m.last_score})`:'')).join(', ')}</div>` : ''}`;
-    el.querySelectorAll('[data-mon]').forEach(b => b.addEventListener('click', () => toggleMonitor(b.dataset.mon, true, b)));
-    el.querySelectorAll('[data-unmon]').forEach(b => b.addEventListener('click', () => toggleMonitor(b.dataset.unmon, false, b)));
-  } catch { /* optional */ }
-}
-async function toggleMonitor(repo, on, btn) {
-  btn.disabled = true; btn.textContent = '…';
-  try {
-    const r = await fetch('/api/security/monitors', { method: on ? 'POST' : 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repo, branch: 'main' }) }).then(x => x.json());
-    if (r.ok || r.already) loadOverview(); else { btn.disabled = false; alert(r.error || 'Failed — is GitHub connected?'); }
-  } catch { btn.disabled = false; alert('Failed — try again.'); }
-}
-async function loadIntegrations() {
-  try {
-    const d = await fetch('/api/security/integrations').then(r => r.json());
-    const g = d.integrations || {};
-    $('#integBody').innerHTML = `
-      <div class="integ-grid">
-        <label>Slack incoming webhook<input id="iSlack" placeholder="${g.slack ? 'configured ✓ (leave blank to keep)' : 'https://hooks.slack.com/services/...'}"></label>
-        <label>Jira base URL<input id="iJiraBase" placeholder="${g.jira ? 'configured ✓' : 'https://you.atlassian.net'}"></label>
-        <label>Jira email<input id="iJiraEmail" placeholder="you@company.com"></label>
-        <label>Jira API token<input id="iJiraToken" type="password" placeholder="${g.jira ? '••• (leave blank to keep)' : 'token'}"></label>
-        <label>Jira project key<input id="iJiraProj" value="${esc(g.jira_project || '')}" placeholder="SEC"></label>
-        <label class="chk"><input type="checkbox" id="iPr" ${g.post_pr_comments ? 'checked' : ''}> Comment findings on PRs</label>
-        <label class="chk"><input type="checkbox" id="iStatus" ${g.post_commit_status !== 0 ? 'checked' : ''}> Set commit-status checks</label>
-      </div>
-      <div class="row-gap"><button class="btn primary sm" id="iSave">Save integrations</button> <span id="iMsg" class="muted"></span></div>
-      <hr style="border:0;border-top:1px solid var(--line);margin:1rem 0">
-      <div class="row-gap"><input id="iRepo" placeholder="owner/repo to monitor on push" style="flex:1"><button class="btn ghost sm" id="iMon">🔔 Monitor repo</button></div>
-      <p class="muted" style="font-size:.76rem;margin:.4rem 0 0">Monitoring adds a GitHub webhook (push + PRs) and re-scans daily, then reports via commit status / PR comment / Slack / Jira. Requires GitHub connected.</p>`;
-    $('#iSave').onclick = saveIntegrations;
-    $('#iMon').onclick = () => { const v = $('#iRepo').value.trim(); if (v) toggleMonitor(v, true, $('#iMon')); };
-  } catch { $('#integBody').innerHTML = '<p class="muted">Could not load.</p>'; }
-}
-async function saveIntegrations() {
-  const v = id => $(id).value.trim();
-  const body = { slack_webhook: v('#iSlack') || undefined, jira_base: v('#iJiraBase') || undefined, jira_email: v('#iJiraEmail') || undefined,
-    jira_token: v('#iJiraToken') || undefined, jira_project: v('#iJiraProj') || undefined, post_pr_comments: $('#iPr').checked, post_commit_status: $('#iStatus').checked };
-  $('#iMsg').textContent = 'Saving…';
-  try { await fetch('/api/security/integrations', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) }); $('#iMsg').textContent = 'Saved ✓'; }
-  catch { $('#iMsg').textContent = 'Failed'; }
+function download(name,text,mime){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:mime})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+function exportAs(fmt){ const stamp=new Date().toISOString().slice(0,10), fs=S.findings||[];
+  if(fmt==='json') return download(`yield-security-${stamp}.json`,JSON.stringify(S.result,null,2),'application/json');
+  if(fmt==='sarif'){ const rules={}, results=fs.map(f=>{ rules[f.type]={id:f.type,name:f.type,properties:{cwe:f.cwe,'security-severity':({CRITICAL:'9.5',HIGH:'8',MEDIUM:'5',LOW:'3'})[f.severity]}}; return {ruleId:f.type,level:({CRITICAL:'error',HIGH:'error',MEDIUM:'warning',LOW:'note'})[f.severity]||'warning',message:{text:f.description},locations:[{physicalLocation:{artifactLocation:{uri:f.location.file},region:{startLine:f.location.line||1}}}]}; });
+    return download(`yield-security-${stamp}.sarif`,JSON.stringify({version:'2.1.0',$schema:'https://json.schemastore.org/sarif-2.1.0.json',runs:[{tool:{driver:{name:'Yield Security',rules:Object.values(rules)}},results}]},null,2),'application/json'); }
+  const html=`<!doctype html><meta charset=utf-8><title>Yield Security report</title><style>body{font:14px system-ui;margin:2rem;color:#111}.s{font-weight:700}pre{background:#f5f5f5;padding:.4rem;border-radius:4px;white-space:pre-wrap}</style><h1>🛡 Yield Security report</h1><p>${esc(S.sourceKey||'')} · ${stamp} · health <b>${S.result?.codeHealthScore??'—'}/100</b> · ${fs.length} findings</p>${fs.map(f=>`<div style="border-left:3px solid #ccc;padding:.3rem .6rem;margin:.5rem 0"><span class="s">${f.severity}</span> <b>${esc(f.type)}</b> · ${esc(f.cwe)} · ${esc(f.location.file)}:${f.location.line}<br>${esc(f.description||'')}<br><b>Fix:</b> ${esc(f.fix||'')}</div>`).join('')}`;
+  download(`yield-security-${stamp}.html`,html,'text/html');
 }
 
 load();

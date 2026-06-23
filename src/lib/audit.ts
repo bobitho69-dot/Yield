@@ -127,6 +127,18 @@ const RULES: Rule[] = [
     languages: ['python'], confidence: 0.85,
     pattern: /(?:execute|executemany|raw|cursor\.\w+)\s*\(\s*f["'][^"']*\b(?:SELECT|INSERT|UPDATE|DELETE)\b[^"']*\{/i,
   },
+  {
+    type: 'SQL_INJECTION', severity: 'CRITICAL', cwe: 'CWE-89', owasp: A03,
+    description: 'A template literal interpolates a variable (${...}) directly into a SQL string — the value is not bound as a parameter, so it can alter the query.',
+    fix: 'Use the driver\'s parameter binding (placeholders + a values array), e.g. db.query("... WHERE id = $1", [id]); never interpolate into the SQL string.',
+    example: {
+      vulnerable: 'db.query(`SELECT * FROM users WHERE id = ${id}`)',
+      safe: 'db.query("SELECT * FROM users WHERE id = $1", [id])',
+    },
+    languages: ['javascript', 'typescript'], confidence: 0.85,
+    // a backtick string containing a SQL verb AND a ${...} interpolation
+    pattern: /`[^`]*\b(?:SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\b[^`]*\$\{/i,
+  },
 
   // ---------------- XSS (CWE-79) ----------------
   {
@@ -138,9 +150,11 @@ const RULES: Rule[] = [
       safe: 'el.textContent = userInput; // or el.innerHTML = DOMPurify.sanitize(userInput)',
     },
     languages: ['javascript', 'typescript', 'html'], confidence: 0.7,
-    // innerHTML/outerHTML assigned something that's NOT a pure string/number literal
-    pattern: /\.(?:inner|outer)HTML\s*=\s*(?!["'`][^"'`]*["'`]\s*;?\s*$)[^=]/,
-    safe: /DOMPurify|sanitize\(|escapeHtml|DOMParser|textContent/i,
+    // innerHTML/outerHTML assignment (not a comparison "==").
+    pattern: /\.(?:inner|outer)HTML\s*=\s*(?!=)\S/,
+    // SAFE when the right-hand side is a pure string/number literal or an
+    // interpolation-free template, or it's sanitized / uses textContent.
+    safe: /DOMPurify|sanitize\(|escapeHtml|DOMParser|textContent|=\s*(?:["'][^"'`]*["']|`[^`$]*`|\d+)\s*;?\s*$/i,
   },
   {
     type: 'XSS', severity: 'HIGH', cwe: 'CWE-79', owasp: A03,

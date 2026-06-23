@@ -974,8 +974,8 @@ async function runScan(level) {
           : `<span class="spin"></span> pattern scan: ${p.found} found`;
         else if (ev === 'done') {
           state.audit = p; renderSecurityBadge();
-          if (status) status.textContent = `✓ Scan complete — health ${p.codeHealthScore}/100`;
-          renderSecurityPane();
+          renderSecurityPane(); // rebuilds the pane (incl. #secStatus) — set the status AFTER
+          const st = $('#secStatus'); if (st) st.textContent = `✓ Scan complete — health ${p.codeHealthScore}/100`;
         } else if (ev === 'error' && status) status.textContent = p.message || 'Scan error';
       }
     }

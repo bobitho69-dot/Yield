@@ -17,7 +17,7 @@ export const AUDIT_MODELS = ['nemotron-3-ultra', 'deepseek-v4-pro', 'qwen3.5-397
 
 // The dedicated audit key, falling back to the shared NVIDIA key until it's created.
 function auditKey(env: Env): string {
-  return (env as any).YIELDNVIDIAAIKEY || env.NVIDIA_API_KEY;
+  return env.YIELDNVIDIAAIKEY || env.NVIDIA_API_KEY;
 }
 
 const SEVERITIES: Severity[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];

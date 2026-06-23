@@ -162,6 +162,42 @@
     .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
     .sb{flex-direction:row;align-items:center;height:auto;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line);padding:.5rem .8rem;gap:.3rem}
     .sb-brand,.sb-sec,.sb-foot,.tier-chip{display:none} .sb-item{white-space:nowrap} }
+  /* Category badges + fills (SAST/SCA/IaC/Secrets/License) */
+  .cat-badge{font-size:.66rem;font-weight:700;padding:.12rem .5rem;border-radius:6px;white-space:nowrap;display:inline-flex;align-items:center;gap:.25rem;border:1px solid transparent}
+  .cat-SAST{background:rgba(111,155,209,.14);color:#9bc0ea;border-color:rgba(111,155,209,.26)}
+  .cat-SCA{background:rgba(62,207,142,.13);color:#5fe0a6;border-color:rgba(62,207,142,.26)}
+  .cat-IaC{background:rgba(168,130,255,.14);color:#bfa6ff;border-color:rgba(168,130,255,.28)}
+  .cat-Secrets{background:rgba(240,86,109,.14);color:#f58ea0;border-color:rgba(240,86,109,.28)}
+  .cat-License{background:rgba(232,194,74,.14);color:#ecd47a;border-color:rgba(232,194,74,.28)}
+  .cat-dot{width:8px;height:8px;border-radius:3px;display:inline-block;margin-right:.5rem;flex:0 0 auto}
+  .cat-dot.cat-SAST{background:#6f9bd1} .cat-dot.cat-SCA{background:#3ecf8e} .cat-dot.cat-IaC{background:#a882ff} .cat-dot.cat-Secrets{background:#f0566d} .cat-dot.cat-License{background:#e8c24a}
+  .cat-fill-SAST{background:linear-gradient(90deg,#6f9bd1,#4d7fbc)} .cat-fill-SCA{background:linear-gradient(90deg,#3ecf8e,#22a06b)} .cat-fill-IaC{background:linear-gradient(90deg,#a882ff,#7d54e0)} .cat-fill-Secrets{background:linear-gradient(90deg,#f0566d,#c33147)} .cat-fill-License{background:linear-gradient(90deg,#e8c24a,#caa01f)}
+  .fchip.cat.on{background:#222a3a;color:var(--text);border-color:#3a4257}
+  /* Findings summary header */
+  .f-summary{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;flex-wrap:wrap}
+  .fs-left{display:flex;align-items:center;gap:1rem}
+  .fs-num{font-size:2rem;font-weight:800;line-height:1;letter-spacing:-.02em}
+  .fs-sev{display:flex;gap:1.3rem;flex-wrap:wrap}
+  .fs-pill{display:flex;flex-direction:column;align-items:center;gap:.22rem;min-width:46px}
+  .fs-pill b{font-size:1.25rem;font-weight:800;line-height:1}
+  .fdiv{width:1px;height:22px;background:var(--line);margin:0 .2rem}
+  .fgroup{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.42rem .6rem;color:var(--text);font-family:inherit;font-size:.82rem;cursor:pointer}
+  /* table panel (flush table inside a card) + grouped headers */
+  .tbl-panel{padding:0;overflow:hidden}
+  .tbl-panel .tbl th:first-child,.tbl-panel .tbl td:first-child{padding-left:1.1rem} .tbl-panel .tbl th:last-child,.tbl-panel .tbl td:last-child{padding-right:1.1rem}
+  .grp-head{display:flex;align-items:center;gap:.6rem;padding:.65rem 1.1rem;border-bottom:1px solid var(--line);background:var(--panel-2)}
+  .grp-n{margin-left:auto;font-size:.74rem;color:var(--muted);font-weight:700}
+  .chev{color:var(--muted);text-align:right;width:26px}
+  /* dashboard analytics: top issues + category breakdown */
+  .catbars{display:flex;flex-direction:column;gap:.95rem}
+  .catbar{cursor:pointer} .catbar .cb-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:.35rem;font-size:.82rem} .catbar .cb-top b{font-weight:800}
+  .cb-track{height:9px;border-radius:5px;background:var(--panel-2);overflow:hidden} .cb-fill{display:block;height:100%;transition:width .7s cubic-bezier(.4,0,.2,1)}
+  .catbar:hover .cb-track{outline:1px solid #3a4257}
+  .ti-list{display:flex;flex-direction:column;gap:.6rem}
+  .ti-row{display:grid;grid-template-columns:1fr 92px 30px;align-items:center;gap:.7rem;font-size:.82rem;cursor:pointer}
+  .ti-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;color:var(--text)}
+  .ti-track{height:8px;border-radius:4px;background:var(--panel-2);overflow:hidden} .ti-track i{display:block;height:100%;transition:width .7s cubic-bezier(.4,0,.2,1)}
+  .ti-n{font-weight:800;text-align:right} .ti-row:hover .ti-name{color:#fff}
 </style>
 </head>
 <body class="sec-app">
@@ -173,7 +209,11 @@ const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sc = s => s>=85?'ok':s>=60?'warn':s>=40?'bad':'crit';
 const ago = t => { if(!t) return ''; const d=Math.floor(Date.now()/1000-t); if(d<60)return 'just now'; if(d<3600)return Math.floor(d/60)+'m ago'; if(d<86400)return Math.floor(d/3600)+'h ago'; return Math.floor(d/86400)+'d ago'; };
-let S = { tier:'none', projects:[], github:{}, level:'detailed', view:'dashboard', findings:[], result:null, src:null, sourceKey:null, overview:null, filter:{sev:'all',q:''} };
+let S = { tier:'none', projects:[], github:{}, level:'detailed', view:'dashboard', findings:[], result:null, src:null, sourceKey:null, overview:null, filter:{sev:'all',q:'',cat:'all',group:'none'} };
+// Scanner category for a finding type.
+const CATS=['SAST','SCA','IaC','Secrets','License'];
+const CAT_ICON={SAST:'🧪',SCA:'📦',IaC:'🐳',Secrets:'🔑',License:'📄'};
+function catOf(t){ t=t||''; if(t==='DEPENDENCY_VULN')return 'SCA'; if(t==='LICENSE_RISK')return 'License'; if(/SECRET/.test(t))return 'Secrets'; if(/^IAC_|^CONTAINER_/.test(t))return 'IaC'; return 'SAST'; }
 
 function toast(m){ let e=$('#toast'); if(!e){e=document.createElement('div');e.id='toast';e.className='toast';document.body.appendChild(e);} e.textContent=m; e.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>e.classList.remove('show'),3000); }
 
@@ -264,6 +304,20 @@ const SCANNERS = [
   ['✨','AI auto-fix','Generate the corrected file for any finding and apply it to your repo or project in one click.'],
 ];
 function capCards(){ return `<div class="cap-grid">${SCANNERS.map(s=>`<div class="cap"><div class="cap-ic">${s[0]}</div><div><h3>${s[1]}</h3><p>${s[2]}</p></div></div>`).join('')}</div>`; }
+// Aggregate the top finding TYPES (from /overview) into the 5 categories.
+function catAgg(topTypes){ const agg={}; let total=0; (topTypes||[]).forEach(t=>{ const cat=catOf(t.type); agg[cat]=(agg[cat]||0)+(t.cnt||0); total+=(t.cnt||0); }); return {agg,total}; }
+function catBreakdown(topTypes){
+  const {agg,total}=catAgg(topTypes);
+  if(!total) return `<div class="empty" style="padding:1.4rem"><p class="mono">No findings yet — run a scan to see your category breakdown.</p></div>`;
+  return `<div class="catbars">${CATS.filter(c=>agg[c]).map(c=>{ const pct=Math.max(4,Math.round(agg[c]/total*100));
+    return `<div class="catbar" data-cat="${c}"><div class="cb-top"><span class="cat-badge cat-${c}">${CAT_ICON[c]} ${c}</span><b>${agg[c]} <span class="mono">· ${Math.round(agg[c]/total*100)}%</span></b></div><div class="cb-track"><i class="cb-fill cat-fill-${c}" style="width:${pct}%"></i></div></div>`; }).join('')}</div>`;
+}
+function topIssues(topTypes, n=8){
+  const list=(topTypes||[]).slice(0,n); if(!list.length) return `<div class="empty" style="padding:1.4rem"><p class="mono">No issues to rank yet — run a scan.</p></div>`;
+  const max=Math.max(...list.map(t=>t.cnt||0))||1;
+  return `<div class="ti-list">${list.map(t=>{ const cat=catOf(t.type);
+    return `<div class="ti-row" data-type="${esc(t.type||'')}"><span class="ti-name" title="${esc((t.type||'').replace(/_/g,' '))}"><span class="cat-dot cat-${cat}"></span>${esc((t.type||'').replace(/_/g,' '))}</span><div class="ti-track"><i class="cat-fill-${cat}" style="width:${Math.max(6,Math.round((t.cnt||0)/max*100))}%"></i></div><b class="ti-n">${t.cnt}</b></div>`; }).join('')}</div>`;
+}
 function gettingStarted(){
   const gh = S.github.connected;
   const step = (done,n,t,d,btn)=>`<div class="gs ${done?'done':''}"><div class="gs-n">${done?'✓':n}</div><div><b>${t}</b><p>${d}</p>${done?'':btn}</div></div>`;
@@ -317,6 +371,10 @@ async function renderDashboard(){
       <div class="kpi"><div class="k-label">🔁 Monitored</div><div class="k-num">${monitors.length}</div><div class="k-sub">scan on push</div></div>
     </div>
     <div class="panel"><h2>📈 Security trend <span class="right">${usageHtml}</span></h2>${lineChart(d.trend||[])}</div>
+    ${(d.topTypes||[]).length?`<div class="grid2">
+      <div class="panel"><h2>🔎 Top issue types <span class="right">across latest scans</span></h2>${topIssues(d.topTypes)}</div>
+      <div class="panel"><h2>🗂 Findings by category <span class="right">click to filter</span></h2>${catBreakdown(d.topTypes)}</div>
+    </div>`:''}
     <div class="grid2">
       <div class="panel">
         <h2>Sources <span class="right">click to open · latest scan</span></h2>
@@ -345,6 +403,8 @@ function wireDash(){
   $$('[data-unmon]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleMonitor(b.dataset.unmon,false,b);});
   $$('[data-scannow]').forEach(b=>b.onclick=e=>{e.stopPropagation();scanNow(b.dataset.scannow,b.dataset.branch);});
   $$('[data-open]').forEach(r=>r.onclick=()=>openSource(r.dataset.open));
+  $$('.catbar[data-cat]').forEach(b=>b.onclick=()=>{ S.filter.sev='all'; S.filter.cat=b.dataset.cat; S.filter.q=''; S.filter.group='none'; go('findings'); });
+  $$('.ti-row[data-type]').forEach(b=>b.onclick=()=>{ S.filter.sev='all'; S.filter.cat='all'; S.filter.group='none'; S.filter.q=(b.dataset.type||''); go('findings'); });
 }
 // Source detail page: score, trend, severity, scan history.
 async function openSource(key){
@@ -440,27 +500,28 @@ async function doScan(src){
   }catch(e){ st.textContent='Scan interrupted: '+e; }
 }
 function scanDone(r){
-  $('#sstatus').innerHTML=`✓ Complete — health ${r.codeHealthScore}/100 · ${r.summary.total} findings · <a href="#" data-exp="sarif">SARIF</a> · <a href="#" data-exp="json">JSON</a> · <a href="#" data-exp="html">Report</a>`;
+  $('#sstatus').innerHTML=`✓ Complete — health ${r.codeHealthScore}/100 · ${r.summary.total} findings · <a href="#" data-exp="sarif">SARIF</a> · <a href="#" data-exp="json">JSON</a> · <a href="#" data-exp="html">Report</a> · <a href="#" onclick="go('findings');return false">Open in Findings →</a>`;
   $$('#sstatus [data-exp]').forEach(a=>a.onclick=e=>{e.preventDefault();exportAs(a.dataset.exp);});
-  $('#sresult').innerHTML = `<div class="panel" style="margin-top:1rem"><h2>Result <span class="right">${esc(S.sourceKey)}</span></h2>
-    <div style="display:flex;align-items:center;gap:1.4rem;margin-bottom:1rem">${ring(r.codeHealthScore,72)}
-      <div><span class="pill2 CRITICAL">${r.summary.critical} critical</span> <span class="pill2 HIGH">${r.summary.high} high</span> <span class="pill2 MEDIUM">${r.summary.medium} med</span> <span class="pill2 LOW">${r.summary.low} low</span>
-      <div class="mono" style="margin-top:.4rem">View all in the Findings tab →</div></div></div>
-    ${findingsTable((S._tableList=r.findings.slice(0,30)))}</div>`;
+  $('#sresult').innerHTML = `<div class="panel"><div style="display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap">${ring(r.codeHealthScore,80)}
+      <div style="min-width:0"><div class="mono">${esc(S.sourceKey)}</div><div style="margin:.55rem 0"><span class="pill2 CRITICAL">${r.summary.critical} critical</span> <span class="pill2 HIGH">${r.summary.high} high</span> <span class="pill2 MEDIUM">${r.summary.medium} med</span> <span class="pill2 LOW">${r.summary.low} low</span></div></div></div>
+    ${findingsTable(r.findings.slice(0,40))}`;
   wireFindingRows($('#sresult'));
 }
 
 // ---------------- findings (table + filters + detail) ----------------
+const FHEAD=`<thead><tr><th>Severity</th><th>Issue</th><th>Location</th><th>Category</th><th>Found by</th><th></th></tr></thead>`;
+function findingRowHtml(f, gi){ const cat=catOf(f.type);
+  return `<tr class="clickable" data-row="${gi}"><td><span class="pill2 ${f.severity}">${f.severity}</span></td>
+    <td><b>${esc((f.type||'').replace(/_/g,' '))}</b> <span class="mono">${esc(f.cwe||'')}</span></td>
+    <td class="mono">${esc(f.location?.file||'')}:${f.location?.line||0}</td>
+    <td><span class="cat-badge cat-${cat}">${CAT_ICON[cat]||''} ${cat}</span></td>
+    <td>${f.source==='ai'?`<span class="src-tag ai">🤖 ${esc(f.model||'AI')}</span>`:'<span class="src-tag">pattern</span>'}</td>
+    <td class="mono chev">▾</td></tr>
+    <tr class="fdetail" data-detail="${gi}" style="display:none"><td colspan="6"></td></tr>`; }
 function findingsTable(list){
-  if(!list.length) return `<div class="empty"><div class="big">✓</div><h2>No findings</h2><p>Nothing flagged. Nice and clean.</p></div>`;
-  return `<table class="tbl"><thead><tr><th>Sev</th><th>Type</th><th>Location</th><th>Source</th><th></th></tr></thead><tbody>
-    ${list.map((f,i)=>`<tr class="clickable" data-row="${i}"><td><span class="pill2 ${f.severity}">${f.severity}</span></td>
-      <td><b>${esc((f.type||'').replace(/_/g,' '))}</b> <span class="mono">${esc(f.cwe||'')}</span></td>
-      <td class="mono">${esc(f.location?.file||'')}:${f.location?.line||0}</td>
-      <td>${f.source==='ai'?`<span class="src-tag ai">🤖 ${esc(f.model||'AI')}</span>`:'<span class="src-tag">pattern</span>'}</td>
-      <td class="mono">▾</td></tr>
-      <tr class="fdetail" data-detail="${i}" style="display:none"><td colspan="5"></td></tr>`).join('')}
-  </tbody></table>`;
+  if(!list.length) return `<div class="empty"><div class="big">✅</div><h2>No findings</h2><p>Nothing flagged here — nice and clean.</p></div>`;
+  S._tableList=list;
+  return `<div class="panel tbl-panel"><table class="tbl">${FHEAD}<tbody>${list.map((f,i)=>findingRowHtml(f,i)).join('')}</tbody></table></div>`;
 }
 function wireFindingRows(root){
   $$('tr[data-row]',root).forEach(tr=>tr.onclick=()=>{
@@ -480,16 +541,46 @@ function detailHtml(f,i){
 function wireDetail(det,f){ const fx=$('[data-fix]',det); if(fx)fx.onclick=()=>doFix(f,fx); const ig=$('[data-ignore]',det); if(ig)ig.onclick=()=>doIgnore(f,ig); }
 function renderFindings(){
   const c=$('#content'); const all=S.findings||[];
-  $('#vsub').textContent = S.sourceKey?`${esc(S.sourceKey)} · ${all.length} findings`:'';
-  $('#tact').innerHTML = all.length?`<a href="#" class="btn ghost sm" data-exp="sarif">SARIF</a><a href="#" class="btn ghost sm" data-exp="json">JSON</a><a href="#" class="btn ghost sm" data-exp="html">Report</a>`:'';
+  $('#vsub').textContent = S.sourceKey?`${esc(S.sourceKey.replace(/^(repo|project):/,''))} · ${all.length} findings`:`${all.length} findings`;
+  $('#tact').innerHTML = all.length?`<a href="#" class="btn ghost sm" data-exp="sarif">SARIF</a><a href="#" class="btn ghost sm" data-exp="json">JSON</a><a href="#" class="btn ghost sm" data-exp="html">Report</a><button class="btn primary sm" onclick="go('scan')">＋ Scan</button>`:'';
   $$('#tact [data-exp]').forEach(a=>a.onclick=e=>{e.preventDefault();exportAs(a.dataset.exp);});
-  if(!all.length){ c.innerHTML=`<div class="empty"><div class="big">⚠️</div><h2>No findings to show yet</h2><p>Run a scan and your vulnerabilities will appear here as a filterable, expandable list — with one-click AI fixes.</p><button class="btn primary" onclick="go('scan')">🔍 New scan →</button></div><div class="panel"><h2>🛡 What we look for</h2>${capCards()}</div>`; return; }
-  const sevs=['all','CRITICAL','HIGH','MEDIUM','LOW'];
-  c.innerHTML=`<div class="filters">${sevs.map(s=>`<span class="fchip ${S.filter.sev===s?'on':''}" data-sev="${s}">${s==='all'?'All':s}</span>`).join('')}<input class="search" id="fsearch" placeholder="Filter by type, file, CWE…" value="${esc(S.filter.q)}"></div><div class="panel" id="ftbl"></div>`;
-  const paint=()=>{ const q=S.filter.q.toLowerCase(); const list=all.filter(f=>(S.filter.sev==='all'||f.severity===S.filter.sev)&&(!q||(f.type+f.location.file+f.cwe+f.description).toLowerCase().includes(q))); S._tableList=list; $('#ftbl').innerHTML=findingsTable(list); wireFindingRows($('#ftbl')); };
-  $$('.fchip').forEach(ch=>ch.onclick=()=>{ S.filter.sev=ch.dataset.sev; $$('.fchip').forEach(x=>x.classList.toggle('on',x===ch)); paint(); });
-  $('#fsearch').oninput=e=>{ S.filter.q=e.target.value; paint(); };
-  paint();
+  if(!all.length){ c.innerHTML=`<div class="empty"><div class="big">⚠️</div><h2>No findings to show yet</h2><p>Run a scan and your vulnerabilities appear here as a filterable, groupable list — expand any row for the fix and one-click AI auto-fix.</p><button class="btn primary" onclick="go('scan')">🔍 New scan →</button></div><div class="panel"><h2>🛡 What we look for</h2>${capCards()}</div>`; return; }
+  const sevC=s=>all.filter(f=>f.severity===s).length, catC=cat=>all.filter(f=>catOf(f.type)===cat).length;
+  const sevs=['CRITICAL','HIGH','MEDIUM','LOW'];
+  c.innerHTML=`
+    <div class="f-summary panel">
+      <div class="fs-left">${ring(S.result?.codeHealthScore??0,64)}<div><div class="fs-num">${all.length}</div><div class="mono">open findings</div></div></div>
+      <div class="fs-sev">${sevs.map(s=>`<div class="fs-pill"><span class="pill2 ${s}">${s.charAt(0)}</span><b>${sevC(s)}</b><span class="mono">${s.toLowerCase()}</span></div>`).join('')}</div>
+    </div>
+    <div class="filters">
+      <span class="fchip ${S.filter.sev==='all'?'on':''}" data-sev="all">All <b>${all.length}</b></span>
+      ${sevs.map(s=>`<span class="fchip ${S.filter.sev===s?'on':''}" data-sev="${s}">${s.charAt(0)+s.slice(1).toLowerCase()} <b>${sevC(s)}</b></span>`).join('')}
+      <span class="fdiv"></span>
+      ${CATS.filter(cat=>catC(cat)).map(cat=>`<span class="fchip cat ${S.filter.cat===cat?'on':''}" data-cat="${cat}">${CAT_ICON[cat]} ${cat} <b>${catC(cat)}</b></span>`).join('')}
+      <input class="search" id="fsearch" placeholder="Filter by issue, file, CWE…" value="${esc(S.filter.q)}">
+      <select id="fgroup" class="fgroup"><option value="none">No grouping</option><option value="severity">Group: severity</option><option value="category">Group: category</option><option value="file">Group: file</option></select>
+    </div>
+    <div id="ftbl"></div>`;
+  $$('.fchip[data-sev]').forEach(ch=>ch.onclick=()=>{ S.filter.sev=ch.dataset.sev; renderFindings(); });
+  $$('.fchip[data-cat]').forEach(ch=>ch.onclick=()=>{ S.filter.cat=(S.filter.cat===ch.dataset.cat?'all':ch.dataset.cat); renderFindings(); });
+  $('#fsearch').oninput=e=>{ S.filter.q=e.target.value; paintFindings2(); };
+  const fg=$('#fgroup'); fg.value=S.filter.group; fg.onchange=e=>{ S.filter.group=e.target.value; paintFindings2(); };
+  paintFindings2();
+}
+function paintFindings2(){
+  const all=S.findings||[], q=(S.filter.q||'').toLowerCase();
+  const list=all.filter(f=>(S.filter.sev==='all'||f.severity===S.filter.sev)&&(S.filter.cat==='all'||catOf(f.type)===S.filter.cat)&&(!q||((f.type||'')+(f.location?.file||'')+(f.cwe||'')+(f.description||'')).toLowerCase().includes(q)));
+  S._tableList=list; const tbl=$('#ftbl'); if(!tbl) return;
+  if(!list.length){ tbl.innerHTML=`<div class="panel"><div class="empty" style="padding:1.8rem"><p>No findings match your filters.</p></div></div>`; return; }
+  if(S.filter.group==='none'){
+    tbl.innerHTML=`<div class="panel tbl-panel"><table class="tbl">${FHEAD}<tbody>${list.map((f,i)=>findingRowHtml(f,i)).join('')}</tbody></table></div>`;
+  } else {
+    const keyOf=S.filter.group==='file'?(f=>f.location?.file||'—'):S.filter.group==='category'?(f=>catOf(f.type)):(f=>f.severity);
+    const groups={}; list.forEach((f,i)=>{ const k=keyOf(f); (groups[k]=groups[k]||[]).push(i); });
+    const order=S.filter.group==='severity'?['CRITICAL','HIGH','MEDIUM','LOW'].filter(k=>groups[k]):Object.keys(groups).sort((a,b)=>groups[b].length-groups[a].length);
+    tbl.innerHTML=order.map(k=>`<div class="panel tbl-panel"><div class="grp-head">${S.filter.group==='severity'?`<span class="pill2 ${k}">${k}</span>`:S.filter.group==='category'?`<span class="cat-badge cat-${k}">${CAT_ICON[k]||''} ${esc(k)}</span>`:`<span class="mono">${esc(k)}</span>`}<span class="grp-n">${groups[k].length}</span></div><table class="tbl"><tbody>${groups[k].map(i=>findingRowHtml(list[i],i)).join('')}</tbody></table></div>`).join('');
+  }
+  wireFindingRows(tbl);
 }
 
 // ---------------- monitoring ----------------

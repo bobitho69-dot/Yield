@@ -59,7 +59,7 @@
   .ring .fg{animation:ringin 1s cubic-bezier(.4,0,.2,1) both}
   @keyframes ringin{from{stroke-dashoffset:var(--circ)}to{stroke-dashoffset:var(--off)}}
   /* trend chart + usage */
-  .lchart{width:100%;height:150px;display:block} .lc-ax{fill:var(--muted);font-size:10px}
+  .lchart{width:100%;height:auto;display:block} .lc-ax{fill:var(--muted);font-size:10px}
   .spark polyline{stroke-linecap:round}
   .usage{display:flex;align-items:center;gap:.7rem} .ubar{flex:1;max-width:240px;height:8px;border-radius:4px;background:var(--panel-2);overflow:hidden} .ubar i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2));transition:width .6s}
   /* skeleton loaders */
@@ -198,6 +198,130 @@
   .ti-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;color:var(--text)}
   .ti-track{height:8px;border-radius:4px;background:var(--panel-2);overflow:hidden} .ti-track i{display:block;height:100%;transition:width .7s cubic-bezier(.4,0,.2,1)}
   .ti-n{font-weight:800;text-align:right} .ti-row:hover .ti-name{color:#fff}
+
+  /* ======================= v2 — command center ======================= */
+  :root{
+    --bg:#0a0c11; --bg-2:#0f131b; --panel:#141823; --panel-2:#1a1f2b; --panel-3:#212838;
+    --line:#222836; --line-2:#2d3445; --line-top:rgba(255,255,255,.05);
+    --r-chip:6px; --r-sm:9px; --r:12px; --r-lg:14px; --r-xl:18px;
+    --grad-brand:linear-gradient(135deg,#8a6bff,#00d4b4);
+    --grad-crit:linear-gradient(135deg,#f0566d,#c33147);
+    --shadow-lift:0 14px 34px -12px rgba(0,0,0,.7);
+    --crit-bg:rgba(240,86,109,.13); --high-bg:rgba(245,158,87,.13); --med-bg:rgba(232,194,74,.13); --low-bg:rgba(111,155,209,.13); --ok-bg:rgba(62,207,142,.13);
+  }
+  /* tabular numerals on every metric so nothing jitters */
+  .k-num,.fs-num,.fs-pill b,.ring text,.gauge-num,.delta,.ti-n,.sc-chip,.ff-cnt,.cov-n,.don-num,.kpi .k-sub b{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+  /* matte panels by default; the glass-edge is reserved for raised/interactive surfaces */
+  .kpi,.hero-card,.src-card{background:linear-gradient(180deg,#171c28,#141823);box-shadow:inset 0 1px 0 var(--line-top),0 1px 2px rgba(0,0,0,.35)}
+  .kpi:hover,.src-card:hover{border-color:var(--line-2);box-shadow:inset 0 1px 0 var(--line-top),var(--shadow-lift);transform:translateY(-2px)}
+  .kpi,.src-card{transition:transform .16s cubic-bezier(.4,0,.2,1),border-color .16s,box-shadow .16s}
+  :focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:8px}
+  @media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}}
+  /* bento grid + bands */
+  .cmd-grid{display:grid;gap:16px;grid-template-columns:repeat(12,1fr);align-items:stretch;margin-bottom:20px}
+  .cmd-grid>*{margin-bottom:0}
+  .span-3{grid-column:span 3}.span-4{grid-column:span 4}.span-5{grid-column:span 5}.span-6{grid-column:span 6}.span-7{grid-column:span 7}.span-8{grid-column:span 8}.span-12{grid-column:span 12}
+  @media(max-width:1180px){.cmd-grid>[class*=span-]{grid-column:span 6}}
+  @media(max-width:720px){.cmd-grid>[class*=span-]{grid-column:span 12}}
+  .band{display:flex;align-items:center;gap:.75rem;margin:2px 2px 0}
+  .band .bl{font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;white-space:nowrap}
+  .band .hr{flex:1;height:1px;background:linear-gradient(90deg,var(--line-2),transparent)}
+  .band .bm{font-size:.72rem;color:var(--muted);white-space:nowrap}
+  .band .bm b{color:var(--text)}
+  /* hero posture card */
+  .hero-card{border:1px solid var(--line);border-radius:var(--r-lg);padding:1.2rem 1.3rem;display:flex;flex-direction:column;gap:.6rem}
+  .hero-top{display:flex;align-items:center;gap:1.2rem}
+  .gauge-wrap{flex:0 0 auto;position:relative;display:grid;place-items:center}
+  .gauge-grade{font-size:.78rem;font-weight:700;letter-spacing:.02em}
+  .hero-meta{min-width:0;display:flex;flex-direction:column;gap:.55rem}
+  .hero-meta .hm-title{font-size:.9rem;font-weight:700;display:flex;align-items:center;gap:.5rem;white-space:nowrap}
+  .hero-stats{display:flex;gap:1.4rem;flex-wrap:wrap}
+  .hstat{display:flex;flex-direction:column;gap:.15rem}
+  .hstat .hl{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  .hstat .hv{font-size:1.15rem;font-weight:800;line-height:1}
+  .gauge .arc-val{animation:gdraw 1.05s cubic-bezier(.4,0,.2,1) both}
+  @keyframes gdraw{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:var(--goff)}}
+  /* Fix-first worklist */
+  .ff-list{display:flex;flex-direction:column}
+  .ff-row{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:.8rem;padding:.7rem .2rem;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
+  .ff-row:last-child{border-bottom:none} .ff-row:hover{background:var(--panel-2)}
+  .ff-rank{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:.72rem;font-weight:800;background:var(--panel-2);color:var(--muted)}
+  .ff-row.sev-crit .ff-rank{background:var(--crit-bg);color:var(--crit)} .ff-row.sev-high .ff-rank{background:var(--high-bg);color:var(--high)}
+  .ff-name{min-width:0} .ff-name .nm{font-family:ui-monospace,monospace;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+  .ff-name .sub{font-size:.7rem;color:var(--muted)}
+  .ff-counts{display:flex;gap:.35rem} .ff-cnt{font-size:.66rem;font-weight:800;padding:.1rem .4rem;border-radius:5px}
+  .ff-cnt.c{background:var(--crit-bg);color:var(--crit)} .ff-cnt.h{background:var(--high-bg);color:var(--high)}
+  .ff-go{font-size:.74rem;color:var(--muted)} .ff-row:hover .ff-go{color:var(--brand-2)}
+  /* KPI tile refinements */
+  .kpi{position:relative;overflow:hidden}
+  .kpi::before{content:'';position:absolute;inset:0 0 auto 0;height:2px;background:var(--accent,var(--line-2));opacity:.9}
+  .kpi.acc-brand::before{background:var(--grad-brand)} .kpi.acc-crit::before{background:var(--grad-crit)}
+  .kpi.crit-glow{box-shadow:inset 0 1px 0 var(--line-top),0 0 0 1px rgba(240,86,109,.4)}
+  .kpi-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem}
+  .kpi .spark{margin-top:.5rem;opacity:.9}
+  .delta{font-size:.66rem;font-weight:800;padding:.12rem .4rem;border-radius:5px;display:inline-flex;align-items:center;gap:.15rem}
+  .delta.up{background:var(--ok-bg);color:var(--ok)} .delta.down{background:var(--crit-bg);color:var(--crit)} .delta.flat{background:var(--panel-2);color:var(--muted)}
+  /* severity donut */
+  .donut-wrap{display:flex;flex-direction:column;align-items:center;gap:.9rem}
+  .donut svg{display:block} .donut .seg{transition:opacity .15s,stroke-width .15s} .donut .arc-seg{animation:gdraw 1s cubic-bezier(.4,0,.2,1) both}
+  .don-num{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
+  .don-legend{display:grid;grid-template-columns:1fr 1fr;gap:.45rem .9rem;width:100%}
+  .dl{display:flex;align-items:center;gap:.45rem;font-size:.78rem}
+  .dl .sw{width:9px;height:9px;border-radius:3px;flex:0 0 auto} .dl b{margin-left:auto;font-variant-numeric:tabular-nums}
+  .dl.c .sw{background:var(--crit)} .dl.h .sw{background:var(--high)} .dl.m .sw{background:var(--med)} .dl.l .sw{background:var(--low)}
+  /* source / repo cards */
+  .src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+  .src-card{border:1px solid var(--line);border-radius:var(--r-lg);padding:1rem 1.05rem;cursor:pointer;display:flex;flex-direction:column;gap:.7rem}
+  .sc-top{display:flex;align-items:center;gap:.5rem}
+  .sc-kind{font-size:.6rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;color:var(--muted);border:1px solid var(--line-2);border-radius:5px;padding:.05rem .3rem}
+  .sc-name{font-family:ui-monospace,monospace;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sc-chip{margin-left:auto;font-size:.8rem;font-weight:800;padding:.12rem .5rem;border-radius:7px}
+  .sc-mbar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:var(--panel-3)}
+  .sc-mbar i.c{background:var(--crit)} .sc-mbar i.h{background:var(--high)} .sc-mbar i.m{background:var(--med)} .sc-mbar i.l{background:var(--low)}
+  .sc-foot{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+  .sc-foot .meta{font-size:.72rem;color:var(--muted)}
+  .sc-spark{height:24px}
+  /* coverage capability wall */
+  .cov-grid{display:flex;flex-direction:column;gap:.55rem}
+  .cov-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.7rem;padding:.4rem .2rem}
+  .cov-ic{width:30px;height:30px;border-radius:8px;background:var(--panel-2);display:grid;place-items:center;font-size:1rem;flex:0 0 auto}
+  .cov-name{font-size:.82rem;font-weight:600} .cov-name .st{font-size:.66rem;color:var(--ok);margin-left:.4rem}
+  .cov-n{font-size:.72rem;color:var(--muted);font-weight:700}
+  .cov-foot{display:flex;align-items:center;gap:.5rem;margin-top:.7rem;font-size:.72rem;color:var(--muted)}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 rgba(62,207,142,.5);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(62,207,142,.45)}70%{box-shadow:0 0 0 7px rgba(62,207,142,0)}100%{box-shadow:0 0 0 0 rgba(62,207,142,0)}}
+  /* trend crosshair tooltip */
+  .trend-wrap{position:relative}
+  .tt{position:absolute;pointer-events:none;background:var(--panel-3);border:1px solid var(--line-2);border-radius:8px;padding:.4rem .6rem;font-size:.74rem;box-shadow:var(--shadow);transform:translate(-50%,-115%);white-space:nowrap;opacity:0;transition:opacity .1s;z-index:5}
+  .tt b{font-variant-numeric:tabular-nums}
+  .lc-cross{stroke:var(--line-2);stroke-width:1;opacity:0}
+  .lc-line{animation:ldraw 1s ease both} @keyframes ldraw{from{stroke-dashoffset:var(--plen)}to{stroke-dashoffset:0}}
+  .lc-pulse{animation:lpulse 1.8s ease-out infinite}
+  @keyframes lpulse{0%{r:3.5;opacity:.55}100%{r:9;opacity:0}}
+  /* getting-started progress */
+  .gs-head{display:flex;align-items:center;gap:.9rem;margin-bottom:1rem}
+  .gs-head .ring{flex:0 0 auto}
+  /* shaped skeletons */
+  .skel.circle{width:150px;height:150px;border-radius:50%;margin:0 auto}
+  .skel.tile{height:120px}
+  .reveal{animation:rise .42s cubic-bezier(.2,.7,.3,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .ghosted{opacity:.5;pointer-events:none}
+  /* category/issue meters are analytics on the dashboard (drill-down is via source cards) */
+  .catbar,.ti-row{cursor:default}
+  /* neutral magnitude bars for ranked issue types — category identity is the dot, not the fill (keeps red=critical everywhere) */
+  .ti-fill{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#414a63,#5d678a);transition:width .7s cubic-bezier(.4,0,.2,1)}
+  /* donut hover: dim siblings, lift the hovered segment */
+  .donut:hover .seg{opacity:.45} .donut .seg:hover{opacity:1;stroke-width:16}
+  /* findings: severity left-rail for fast triage + AI-fixable marker (the autofix story, surfaced not buried) */
+  tr.frow td:first-child{border-left:3px solid var(--rail,transparent)}
+  .rail-CRITICAL{--rail:var(--crit)} .rail-HIGH{--rail:var(--high)} .rail-MEDIUM{--rail:var(--med)} .rail-LOW{--rail:var(--low)}
+  .aifix{color:var(--brand-2);filter:drop-shadow(0 0 4px rgba(0,212,180,.45))}
+  /* equal-height bento tiles + matching panel/card heights */
+  .cmd-grid>.kpi{height:100%} .cmd-grid>.panel{height:100%;display:flex;flex-direction:column}
+  .cmd-grid>.panel>.ti-list,.cmd-grid>.panel>.catbars,.cmd-grid>.panel .donut-wrap{margin-top:auto;margin-bottom:auto}
+  .cmd-grid .donut-wrap{justify-content:center;flex:1}
+  .src-grid{margin-bottom:20px}
 </style>
 </head>
 <body class="sec-app">
@@ -226,23 +350,111 @@ function ring(score, size=72){ const r=(size-9)/2, c=2*Math.PI*r, off=c*(1-(scor
     <circle class="bg" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke-width="7"/>
     <circle class="fg" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="url(#${id})" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c}" style="--circ:${c};--off:${off}"/>
     <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle">${score??'—'}</text></svg></span>`; }
-// Area+line trend chart from a [{score}] series.
-function lineChart(series, w=600, h=150){
-  if(!series||series.length<2) return `<div class="empty" style="padding:1.5rem"><p class="mono">Run a few scans to see your security trend over time.</p></div>`;
-  const vals=series.map(s=>s.score||0), n=vals.length, pad=10, iw=w-pad*2, ih=h-pad*2-14, id='la'+(++_uid);
-  const x=i=>pad+(i/(n-1))*iw, y=v=>pad+ih-(v/100)*ih;
-  const line=vals.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-  const last=vals[n-1], col=({ok:'#3ecf8e',warn:'#e8c24a',bad:'#f59e57',crit:'#f0566d'})[sc(last)];
-  return `<svg viewBox="0 0 ${w} ${h}" class="lchart" preserveAspectRatio="none">
-    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".32"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
-    ${[0,50,100].map(g=>`<line x1="${pad}" x2="${w-pad}" y1="${y(g)}" y2="${y(g)}" stroke="var(--line)" stroke-width="1" opacity=".6"/>`).join('')}
-    <polygon points="${pad},${pad+ih} ${line} ${pad+iw},${pad+ih}" fill="url(#${id})"/>
-    <polyline points="${line}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-    ${vals.map((v,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" fill="${col}"/>`).join('')}
-    <text x="${pad}" y="${h-2}" class="lc-ax">${n} scans</text><text x="${w-pad}" y="${h-2}" text-anchor="end" class="lc-ax">latest ${last}/100</text></svg>`; }
-function sparkline(series, w=86, h=24){ if(!series||series.length<2) return ''; const vals=series.map(s=>s.score||0),n=vals.length,col=({ok:'#3ecf8e',warn:'#e8c24a',bad:'#f59e57',crit:'#f0566d'})[sc(vals[n-1])];
-  return `<svg width="${w}" height="${h}" style="vertical-align:middle"><polyline points="${vals.map((v,i)=>`${(i/(n-1)*w).toFixed(1)},${(h-(v/100)*h).toFixed(1)}`).join(' ')}" fill="none" stroke="${col}" stroke-width="2"/></svg>`; }
+const BANDCOL={ok:'#3ecf8e',warn:'#e8c24a',bad:'#f59e57',crit:'#f0566d'};
+// Honest area+line trend (straight segments, draw-in, last-point pulse, hover crosshair).
+function lineChart(series, w=600, h=164){
+  if(!series||series.length<2) return `<div class="empty" style="padding:1.5rem"><p class="mono">Your security trend builds here once you've run a few scans.</p></div>`;
+  const n=series.length, pad=12, iw=w-pad*2, ih=h-pad*2-12, id='la'+(++_uid);
+  const X=i=>pad+(i/(n-1))*iw, Y=v=>pad+ih-((v||0)/100)*ih;
+  const pts=series.map((s,i)=>({x:+X(i).toFixed(1),y:+Y(s.score).toFixed(1),s:s.score||0,t:s.total,c:s.critical,w:s.created_at}));
+  const line=pts.map(p=>`${p.x},${p.y}`).join(' ');
+  let plen=0; for(let i=1;i<pts.length;i++){ plen+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y); }
+  const last=pts[n-1], col=BANDCOL[sc(last.s)];
+  return `<div class="trend-wrap" data-pts='${esc(JSON.stringify(pts))}'>
+    <svg viewBox="0 0 ${w} ${h}" class="lchart" preserveAspectRatio="xMidYMid meet">
+      <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+      ${[0,50,100].map(g=>`<line x1="${pad}" x2="${w-pad}" y1="${Y(g)}" y2="${Y(g)}" stroke="var(--line)" stroke-width="1" opacity=".55"/>`).join('')}
+      <polygon points="${pad},${pad+ih} ${line} ${pad+iw},${pad+ih}" fill="url(#${id})"/>
+      <polyline class="lc-line" points="${line}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" style="--plen:${plen.toFixed(0)}" stroke-dasharray="${plen.toFixed(0)}"/>
+      <line class="lc-cross" x1="0" y1="${pad}" x2="0" y2="${pad+ih}"/>
+      <circle cx="${last.x}" cy="${last.y}" r="3.5" fill="${col}"/>
+      <circle class="lc-pulse" cx="${last.x}" cy="${last.y}" r="3.5" fill="none" stroke="${col}" stroke-width="2"/>
+      <text x="${pad}" y="${h-2}" class="lc-ax">${n} scans</text><text x="${w-pad}" y="${h-2}" text-anchor="end" class="lc-ax">latest ${last.s}/100</text>
+    </svg><div class="tt"></div></div>`; }
+function wireTrend(root){ const wrap=$('.trend-wrap',root); if(!wrap)return; let pts; try{pts=JSON.parse(wrap.dataset.pts)}catch{return} const svg=$('.lchart',wrap),cross=$('.lc-cross',wrap),tt=$('.tt',wrap),n=pts.length;
+  wrap.onmousemove=e=>{ const r=svg.getBoundingClientRect(); if(!r.width)return; let i=Math.round((e.clientX-r.left)/r.width*(n-1)); i=Math.max(0,Math.min(n-1,i)); const p=pts[i];
+    cross.setAttribute('x1',p.x); cross.setAttribute('x2',p.x); cross.style.opacity='1';
+    tt.style.left=(p.x/600*r.width)+'px'; tt.style.top=(p.y/164*r.height)+'px'; tt.style.opacity='1';
+    tt.innerHTML=`${ago(p.w)||'—'} · score <b>${p.s}</b>${p.c!=null?` · <b>${p.c}</b> crit`:''}`; };
+  wrap.onmouseleave=()=>{ cross.style.opacity='0'; tt.style.opacity='0'; }; }
+function sparkline(series, w=88, h=24){ if(!series||series.length<2) return ''; const vals=series.map(s=>s.score||0),n=vals.length,col=BANDCOL[sc(vals[n-1])],id='sp'+(++_uid);
+  const mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1, Y=v=>(h-3-((v-mn)/rng)*(h-6)); // auto-scale to the series range so shape is visible
+  const P=vals.map((v,i)=>`${(i/(n-1)*w).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle;overflow:visible"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".24"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs><polygon points="0,${h} ${P} ${w},${h}" fill="url(#${id})"/><polyline points="${P}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${w}" cy="${Y(vals[n-1]).toFixed(1)}" r="2" fill="${col}"/></svg>`; }
 function skel(n=3){ return `<div>${Array(n).fill('<div class="skel"></div>').join('')}</div>`; }
+
+// ---- count-up (hero only) ----
+function countUp(el,target,ms=850){ if(!el)return; if(window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches){el.textContent=target;return;}
+  const t0=performance.now(); (function step(t){ const k=Math.min(1,(t-t0)/ms); el.textContent=Math.round((1-(1-k)**3)*target); if(k<1)requestAnimationFrame(step); })(t0); }
+
+// ---- POSTURE GAUGE: one rounded 270° arc, one number, one grade word ----
+function gauge(score){ const cx=100,cy=92,r=76, id='ga'+(++_uid), v=Math.max(0,Math.min(100,score||0));
+  const polar=(deg)=>{ const a=deg*Math.PI/180; return [cx+r*Math.cos(a), cy-r*Math.sin(a)]; };
+  const [sx,sy]=polar(225), [ex,ey]=polar(-45);
+  const arcD=`M ${sx.toFixed(1)} ${sy.toFixed(1)} A ${r} ${r} 0 1 1 ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+  const C=2*Math.PI*r, arc=C*0.75, valLen=arc*v/100;
+  const band=sc(v), col=({ok:['#3ecf8e','#22a06b'],warn:['#e8c24a','#caa01f'],bad:['#f59e57','#d97a2f'],crit:['#f0566d','#c33147']})[band];
+  const grade=({ok:'Strong',warn:'Fair',bad:'At risk',crit:'Critical'})[band];
+  return `<div class="gauge-wrap"><svg class="gauge" width="200" height="150" viewBox="0 0 200 150" role="img" aria-label="Security posture ${v} of 100, ${grade}">
+    <defs><linearGradient id="${id}" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="${col[1]}"/><stop offset="1" stop-color="${col[0]}"/></linearGradient></defs>
+    <path d="${arcD}" fill="none" stroke="var(--panel-3)" stroke-width="14" stroke-linecap="round"/>
+    <path class="arc-val" d="${arcD}" fill="none" stroke="url(#${id})" stroke-width="14" stroke-linecap="round" stroke-dasharray="${valLen.toFixed(1)} ${(C).toFixed(0)}" style="--len:${valLen.toFixed(1)};--goff:0"/>
+    <text class="gauge-num" x="100" y="90" text-anchor="middle" fill="var(--text)" style="font-size:38px;font-weight:800;letter-spacing:-.02em">${v}</text>
+    <text x="100" y="112" text-anchor="middle" class="gauge-grade" fill="${col[0]}">${grade}</text>
+  </svg></div>`; }
+
+// ---- SEVERITY DONUT (real C/H/M/L) ----
+function donut(c,h,m,l,size=132){ const r=46,cx=size/2,cy=size/2,C=2*Math.PI*r, id='dn'+(++_uid);
+  const total=c+h+m+l, segs=[['c',c,'var(--crit)'],['h',h,'var(--high)'],['m',m,'var(--med)'],['l',l,'var(--low)']];
+  let off=0; const circles=segs.filter(s=>s[1]>0).map(([k,val,color])=>{ const f=val/(total||1), len=Math.max(0,f*C-3), dash=`${len} ${C-len}`, o=off; off-=f*C;
+    return `<circle class="seg arc-seg" data-k="${k}" r="${r}" cx="${cx}" cy="${cy}" fill="none" stroke="${color}" stroke-width="14" stroke-dasharray="${dash}" stroke-dashoffset="${o.toFixed(1)}" stroke-linecap="butt"><title>${({c:'Critical',h:'High',m:'Medium',l:'Low'})[k]}: ${val}</title></circle>`; }).join('');
+  return `<div class="donut-wrap"><svg class="donut" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle r="${r}" cx="${cx}" cy="${cy}" fill="none" stroke="var(--panel-2)" stroke-width="14"/>
+    <g transform="rotate(-90 ${cx} ${cy})">${circles}</g>
+    <text class="don-num" x="${cx}" y="${cy-2}" text-anchor="middle" fill="var(--text)">${total}</text>
+    <text x="${cx}" y="${cy+15}" text-anchor="middle" fill="var(--muted)" style="font-size:11px">findings</text></svg>
+    <div class="don-legend">${[['c','Critical',c],['h','High',h],['m','Medium',m],['l','Low',l]].map(([k,nm,val])=>`<span class="dl ${k}"><span class="sw"></span>${nm}<b>${val}</b></span>`).join('')}</div></div>`; }
+
+// ---- delta chip: only meaningful on a coherent (single-source) series ----
+function deltaChip(curr,prev,goodUp=true){ if(prev==null||curr==null) return ''; const d=curr-prev; if(d===0) return `<span class="delta flat">±0</span>`;
+  const better=goodUp?d>0:d<0; return `<span class="delta ${better?'up':'down'}">${d>0?'▲':'▼'}${Math.abs(d)}</span>`; }
+
+// ---- KPI tile ----
+function kpiTile(o){ // {label,num,sub,acc,spark,delta,glow,span}
+  return `<div class="kpi ${o.span||''} ${o.acc||''} ${o.glow?'crit-glow':''}"><div class="kpi-head"><div class="k-label">${o.label}</div>${o.delta||''}</div>
+    <div class="k-num">${o.num}</div><div class="k-sub">${o.sub||''}</div>${o.spark?`<div class="spark">${o.spark}</div>`:''}</div>`; }
+
+// ---- per-source history cache (avoids refetch storms on re-render) ----
+const HIST={};
+async function loadSpark(key){ if(HIST[key]!==undefined) return HIST[key]; HIST[key]=null;
+  try{ const h=await api('/api/security/history?source='+encodeURIComponent(key)); HIST[key]=(h.runs||[]).slice().reverse().map(r=>({score:r.score})); }catch{ HIST[key]=[]; } return HIST[key]; }
+function paintSparks(root){ $$('.sc-spark[data-src]',root).forEach(async el=>{ const key=el.dataset.src; const s=HIST[key]!==undefined?HIST[key]:await loadSpark(key); if(s&&s.length>1) el.innerHTML=sparkline(s,120,24); }); }
+
+// ---- SOURCE / REPO card ----
+function sourceCard(s, monitored){ const key=s.source, name=key.replace(/^(repo|project):/,''), isRepo=key.startsWith('repo:');
+  const band=sc(s.score||0), col=BANDCOL[band], t=s.total||0, c=s.critical||0, h=s.high||0, m=s.medium||0, l=Math.max(0,t-c-h-m);
+  const seg=(cls,val)=>val>0?`<i class="${cls}" style="width:${(val/(t||1)*100).toFixed(1)}%"></i>`:'';
+  return `<div class="src-card" data-open="${esc(key)}" tabindex="0">
+    <div class="sc-top"><span class="sc-kind">${isRepo?'repo':'project'}</span><span class="sc-name" title="${esc(name)}">${esc(name)}</span><span class="sc-chip" style="background:${col}22;color:${col}">${s.score??'—'}</span></div>
+    <div class="sc-mbar">${seg('c',c)}${seg('h',h)}${seg('m',m)}${seg('l',l)||'<i style="width:100%;background:var(--panel-3)"></i>'}</div>
+    <div class="sc-spark" data-src="${esc(key)}"></div>
+    <div class="sc-foot"><span class="meta">${t} findings · ${ago(s.last_at)||'—'}</span>${isRepo?(monitored?`<button class="btn ghost sm" data-unmon="${esc(name)}" onclick="event.stopPropagation()">🔕</button>`:`<button class="btn ghost sm" data-mon="${esc(name)}" onclick="event.stopPropagation()">🔔 Monitor</button>`):'<span class="src-tag">project</span>'}</div></div>`; }
+
+// ---- FIX FIRST: worst sources, ranked (honest — opens the source's real history) ----
+function fixFirst(sources){ const ranked=sources.filter(s=>(s.total||0)>0).slice().sort((a,b)=>(b.critical||0)-(a.critical||0)||(b.high||0)-(a.high||0)||(a.score||0)-(b.score||0)).slice(0,6);
+  if(!ranked.length) return `<div class="empty" style="padding:1.6rem"><div class="big">✅</div><p>No open critical or high issues across your sources. Nice.</p></div>`;
+  return `<div class="ff-list">${ranked.map((s,i)=>{ const name=s.source.replace(/^(repo|project):/,''), sev=s.critical?'sev-crit':s.high?'sev-high':'';
+    return `<div class="ff-row ${sev}" data-open="${esc(s.source)}" tabindex="0"><span class="ff-rank">${i+1}</span>
+      <span class="ff-name"><span class="nm" title="${esc(name)}">${esc(name)}</span><span class="sub">${s.source.startsWith('repo:')?'repository':'project'} · health ${s.score??'—'}</span></span>
+      <span class="ff-counts">${s.critical?`<span class="ff-cnt c">${s.critical} crit</span>`:''}${s.high?`<span class="ff-cnt h">${s.high} high</span>`:''}</span>
+      <span class="ff-go">Open →</span></div>`; }).join('')}</div>`; }
+
+// ---- COVERAGE: capability wall (lit = scanner active; count = findings seen) ----
+function coverageStrip(topTypes, monitors, scanned){ const {agg}=catAgg(topTypes); const fresh=monitors&&monitors.length?Math.max(...monitors.map(m=>m.last_scan_at||0)):0;
+  return `<div class="cov-grid">${CATS.map(cat=>`<div class="cov-row"><div class="cov-ic">${CAT_ICON[cat]}</div>
+    <div class="cov-name">${cat}${scanned?'<span class="st">● active</span>':''}</div>
+    <div class="cov-n">${agg[cat]?agg[cat]+' found':(scanned?'clean':'—')}</div></div>`).join('')}</div>
+    <div class="cov-foot">${scanned?'<span class="live-dot"></span>':''}${fresh?`Monitored · last scan ${ago(fresh)}`:'5 scanners run on every scan'}</div>`; }
 
 async function api(path, opts){ const r = await fetch(path, opts); const ct=r.headers.get('content-type')||''; const d = ct.includes('json')? await r.json().catch(()=>({})) : {}; return { ok:r.ok, status:r.status, ...d }; }
 
@@ -287,9 +499,9 @@ function renderApp(){
 }
 function go(view){
   if ((view==='monitoring'||view==='integrations') && S.tier!=='pro'){ renderUpsell(view); return; }
-  S.view = view;
+  S.view = view; S._animate = true; // a real nav → animate hero on first paint (in-place re-renders don't)
   $$('.sb-item[data-view]').forEach(a=>a.classList.toggle('active', a.dataset.view===view));
-  const map={dashboard:'Dashboard',scan:'New scan',findings:'Findings',monitoring:'Continuous monitoring',integrations:'Integrations',settings:'Settings'};
+  const map={dashboard:'Security posture',scan:'New scan',findings:'Findings',monitoring:'Continuous monitoring',integrations:'Integrations',settings:'Settings'};
   $('#vtitle').textContent = map[view]||view; $('#vsub').textContent=''; $('#tact').innerHTML='';
   ({dashboard:renderDashboard,scan:renderScan,findings:renderFindings,monitoring:renderMonitoring,integrations:renderIntegrations,settings:renderSettings}[view])();
 }
@@ -316,16 +528,7 @@ function topIssues(topTypes, n=8){
   const list=(topTypes||[]).slice(0,n); if(!list.length) return `<div class="empty" style="padding:1.4rem"><p class="mono">No issues to rank yet — run a scan.</p></div>`;
   const max=Math.max(...list.map(t=>t.cnt||0))||1;
   return `<div class="ti-list">${list.map(t=>{ const cat=catOf(t.type);
-    return `<div class="ti-row" data-type="${esc(t.type||'')}"><span class="ti-name" title="${esc((t.type||'').replace(/_/g,' '))}"><span class="cat-dot cat-${cat}"></span>${esc((t.type||'').replace(/_/g,' '))}</span><div class="ti-track"><i class="cat-fill-${cat}" style="width:${Math.max(6,Math.round((t.cnt||0)/max*100))}%"></i></div><b class="ti-n">${t.cnt}</b></div>`; }).join('')}</div>`;
-}
-function gettingStarted(){
-  const gh = S.github.connected;
-  const step = (done,n,t,d,btn)=>`<div class="gs ${done?'done':''}"><div class="gs-n">${done?'✓':n}</div><div><b>${t}</b><p>${d}</p>${done?'':btn}</div></div>`;
-  return `<div class="panel"><h2>🚀 Get started</h2><div class="gs-list">
-    ${step(gh,1,'Connect GitHub', gh?`Connected as @${esc(S.github.login||'')}`:'Link GitHub to scan and monitor your repositories.', `<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`)}
-    ${step(false,2,'Run your first scan','Scan a repo or one of your Yield projects — SAST, SCA, IaC and licenses in seconds.', `<button class="btn primary sm" onclick="go('scan')">🔍 New scan</button>`)}
-    ${step(false,3,'Turn on monitoring','Watch a repo so every push & PR is scanned automatically, with a daily re-scan.', `<button class="btn ghost sm" onclick="go('monitoring')">🔁 Set up monitoring</button>`)}
-  </div></div>`;
+    return `<div class="ti-row" data-type="${esc(t.type||'')}"><span class="ti-name" title="${esc((t.type||'').replace(/_/g,' '))}"><span class="cat-dot cat-${cat}"></span>${esc((t.type||'').replace(/_/g,' '))}</span><div class="ti-track"><i class="ti-fill" style="width:${Math.max(6,Math.round((t.cnt||0)/max*100))}%"></i></div><b class="ti-n">${t.cnt}</b></div>`; }).join('')}</div>`;
 }
 function monitoredPanel(monitors){
   if(!monitors.length) return `<div class="panel"><h2>🔁 Monitored repositories <span class="right"><button class="btn ghost sm" onclick="go('monitoring')">Set up →</button></span></h2><p class="mono">No repositories are being watched yet. Enable monitoring to scan on every push & PR automatically.</p></div>`;
@@ -339,72 +542,103 @@ function monitoredPanel(monitors){
 }
 
 // ---------------- dashboard ----------------
-async function renderDashboard(){
-  const c = $('#content'); c.innerHTML = `<div class="kpis">${skel(4)}</div>${skel(2)}`;
-  const d = await api('/api/security/overview'); S.overview = d;
-  const sources = d.sources||[], monitors = d.monitors||[];
-  const sum = sources.reduce((a,s)=>({c:a.c+(s.critical||0),h:a.h+(s.high||0),t:a.t+(s.total||0)}),{c:0,h:0,t:0});
-  const med = Math.max(0, sum.t-sum.c-sum.h);
-  const avg = sources.length? Math.round(sources.reduce((a,s)=>a+(s.score||0),0)/sources.length) : null;
-  const usg = d.usage; const usageHtml = usg ? (usg.unlimited?'<span class="mono">unlimited · testing</span>':`<span class="mono">${usg.usedToday}/${usg.cap} scans today</span>`) : '';
-  $('#vsub').textContent = sources.length? `${sources.length} source(s) · ${monitors.length} monitored` : 'Welcome to Yield Security';
-  $('#tact').innerHTML = `<button class="btn primary sm" onclick="go('scan')">＋ New scan</button>`;
-
-  // Empty state: a welcoming, full getting-started + capability showcase.
-  if (!sources.length){
-    c.innerHTML = `<div class="welcome">
-        <h2>👋 Welcome${S.github.login?', @'+esc(S.github.login):''}</h2>
-        <p>Yield Security scans your GitHub repos and Yield projects for real, exploitable vulnerabilities — with a live advisory feed and every top AI model. Here's how to get going:</p>
-      </div>
-      ${gettingStarted()}
-      ${monitoredPanel(monitors)}
-      <div class="panel"><h2>🛡 What we scan</h2>${capCards()}</div>`;
-    wireDash();
-    return;
-  }
-
-  c.innerHTML = `
-    <div class="kpis">
-      <div class="kpi ${avg>=70?'ok':avg<40?'crit':''}"><div class="k-label">⌀ Code health</div><div class="k-num">${avg??'—'}</div><div class="k-sub">across ${sources.length} sources</div></div>
-      <div class="kpi"><div class="k-label">Open findings</div><div class="k-num">${sum.t}</div><div class="k-sub">latest scans</div></div>
-      <div class="kpi ${sum.c?'crit':''}"><div class="k-label"><span class="dot c"></span>Critical</div><div class="k-num">${sum.c}</div><div class="k-sub">${sum.h} high</div></div>
-      <div class="kpi"><div class="k-label">🔁 Monitored</div><div class="k-num">${monitors.length}</div><div class="k-sub">scan on push</div></div>
-    </div>
-    <div class="panel"><h2>📈 Security trend <span class="right">${usageHtml}</span></h2>${lineChart(d.trend||[])}</div>
-    ${(d.topTypes||[]).length?`<div class="grid2">
-      <div class="panel"><h2>🔎 Top issue types <span class="right">across latest scans</span></h2>${topIssues(d.topTypes)}</div>
-      <div class="panel"><h2>🗂 Findings by category <span class="right">click to filter</span></h2>${catBreakdown(d.topTypes)}</div>
-    </div>`:''}
-    <div class="grid2">
-      <div class="panel">
-        <h2>Sources <span class="right">click to open · latest scan</span></h2>
-        <table class="tbl"><thead><tr><th>Source</th><th>Health</th><th>Findings</th><th>Last</th><th></th></tr></thead><tbody>
-        ${sources.map(s=>{ const repo=s.source.startsWith('repo:')?s.source.slice(5):null; const mon=monitors.some(m=>m.repo===repo);
-          return `<tr class="clickable" data-open="${esc(s.source)}"><td class="src-name">${esc(s.source.replace(/^(repo|project):/,''))}<div class="src-tag" style="display:inline-block;margin-left:.4rem">${s.source.startsWith('repo:')?'repo':'project'}</div></td>
-          <td><b style="color:${({ok:'var(--ok)',warn:'var(--med)',bad:'var(--high)',crit:'var(--crit)'})[sc(s.score||0)]}">${s.score??'—'}</b></td>
-          <td><span class="pill2 CRITICAL">${s.critical||0}C</span> <span class="pill2 HIGH">${s.high||0}H</span> <span class="mono">${s.total||0} total</span></td>
-          <td class="mono">${ago(s.last_at)}</td>
-          <td>${repo?(mon?`<button class="btn ghost sm" data-unmon="${esc(repo)}">🔕</button>`:`<button class="btn ghost sm" data-mon="${esc(repo)}">🔔 Monitor</button>`):''}</td></tr>`; }).join('')}
-        </tbody></table>
-      </div>
-      <div class="panel">
-        <h2>Severity breakdown</h2>
-        <div class="sevbar">${sum.t?`<i class="c" style="width:${sum.c/sum.t*100}%"></i><i class="h" style="width:${sum.h/sum.t*100}%"></i><i class="m" style="width:${med/sum.t*100}%"></i><i class="l" style="width:${(sum.t-sum.c-sum.h-med)/sum.t*100}%"></i>`:'<i class="l" style="width:100%;background:var(--panel-2)"></i>'}</div>
-        <div class="sevlegend"><span><span class="dot c"></span>Critical <b>${sum.c}</b></span><span><span class="dot h"></span>High <b>${sum.h}</b></span><span><span class="dot m"></span>Medium <b>${med}</b></span><span><span class="dot l"></span>Low <b>${Math.max(0,sum.t-sum.c-sum.h-med)}</b></span></div>
-        <h2 style="margin-top:1.6rem">Coverage</h2>
-        <div class="sevlegend" style="flex-direction:column;gap:.55rem;align-items:flex-start">${SCANNERS.map(s=>`<span>${s[0]} <b>${s[1]}</b></span>`).join('')}</div>
-      </div>
-    </div>
+function gsStep(done,n,t,d,btn){ return `<div class="gs ${done?'done':''}"><div class="gs-n">${done?'✓':n}</div><div><b>${t}</b><p>${d}</p>${done?'':btn}</div></div>`; }
+function renderDashEmpty(c, monitors){
+  const gh=S.github.connected, done=gh?1:0, pct=Math.round(done/3*100);
+  c.innerHTML=`<div class="welcome"><h2>👋 Welcome${S.github.login?', @'+esc(S.github.login):''}</h2>
+      <p>Yield Security scans your GitHub repos and Yield projects for real, exploitable vulnerabilities — SAST · SCA · IaC · secrets · licenses — with a live advisory feed, an AI ensemble and one-click AI auto-fix.</p></div>
+    <div class="panel"><div class="gs-head">${ring(pct,52)}<div><h2 style="margin:0">Get started · ${done}/3</h2><p class="mono" style="margin:.25rem 0 0">Three steps to your first security posture.</p></div></div>
+      <div class="gs-list">
+        ${gsStep(gh,1,'Connect GitHub', gh?`Connected as @${esc(S.github.login||'')}`:'Link GitHub to scan and monitor your repositories.', `<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`)}
+        ${gsStep(false,2,'Run your first scan','Scan a repo or a Yield project — SAST, SCA, IaC and licenses in seconds.', `<button class="btn primary sm" onclick="go('scan')">🔍 New scan</button>`)}
+        ${gsStep(false,3,'Turn on monitoring','Watch a repo so every push & PR is scanned automatically, with a daily re-scan.', `<button class="btn ghost sm" onclick="go('monitoring')">🔁 Monitoring</button>`)}
+      </div></div>
+    <div class="band"><span class="bl">Preview</span><span class="hr"></span><span class="bm">your command center, once you scan</span></div>
+    <div class="cmd-grid ghosted"><div class="span-4"><div class="skel circle"></div></div><div class="span-8"><div class="skel tile" style="height:160px"></div></div>
+      <div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div></div>
+    <div class="panel"><h2>🛡 What we scan</h2>${capCards()}</div>
     ${monitoredPanel(monitors)}`;
   wireDash();
+}
+async function renderDashboard(){
+  const anim=S._animate; S._animate=false;
+  const c = $('#content');
+  c.innerHTML=`<div class="cmd-grid"><div class="span-4"><div class="skel circle"></div></div><div class="span-8"><div class="skel tile" style="height:160px"></div></div>
+    <div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div></div>`;
+  const d = await api('/api/security/overview'); S.overview = d;
+  const src0 = d.sources||[], monitors = d.monitors||[], trend = d.trend||[];
+  $('#vtitle').textContent='Security posture';
+  $('#tact').innerHTML = `<button class="btn primary sm" onclick="go('scan')">＋ New scan</button>`;
+  if (!src0.length){ $('#vsub').textContent='Welcome to Yield Security'; renderDashEmpty(c, monitors); return; }
+
+  // severity aggregation INCLUDING medium + low (the /overview schema provides them)
+  const sum = src0.reduce((a,s)=>({c:a.c+(s.critical||0),h:a.h+(s.high||0),m:a.m+(s.medium||0),t:a.t+(s.total||0)}),{c:0,h:0,m:0,t:0});
+  const lowAdj = Math.max(0, sum.t-sum.c-sum.h-sum.m); // low + anything uncategorized, so donut sums to total
+  const avg = Math.round(src0.reduce((a,s)=>a+(s.score||0),0)/src0.length);
+  const worst = src0.reduce((w,s)=>((s.score??100)<(w.score??100)?s:w));
+  const below = src0.filter(s=>(s.score||0)<50).length;
+  const sources = src0.slice().sort((a,b)=>(b.critical||0)-(a.critical||0)||(a.score||0)-(b.score||0)); // worst first
+  const monset = new Set(monitors.map(m=>m.repo));
+  const single = src0.length===1; // trend deltas are only honest for one source
+  const dScore = (single&&trend.length>1)?deltaChip(trend[trend.length-1].score,trend[trend.length-2].score,true):'';
+  const tScore = trend.map(p=>({score:p.score}));
+  const usg=d.usage, usageTxt = usg?(usg.unlimited?'unlimited · testing':`${usg.usedToday}/${usg.cap} scans today`):'';
+  $('#vsub').textContent = `${src0.length} source${src0.length>1?'s':''} · ${monitors.length} monitored${usageTxt?' · '+usageTxt:''}`;
+  const grade=({ok:'Strong',warn:'Fair',bad:'At risk',crit:'Critical'})[sc(avg)];
+
+  c.innerHTML = `
+    <div class="band"><span class="bl">Posture</span><span class="hr"></span><span class="bm">${grade} · worst source <b>${worst.score??'—'}</b></span></div>
+    <div class="cmd-grid">
+      <div class="span-4 hero-card">
+        <div class="hero-top">${gauge(avg)}
+          <div class="hero-meta"><div class="hm-title">Org posture ${dScore}</div>
+            <div class="hero-stats">
+              <div class="hstat"><span class="hl">Open critical</span><span class="hv" style="color:${sum.c?'var(--crit)':'var(--ok)'}">${sum.c}</span></div>
+              <div class="hstat"><span class="hl">High</span><span class="hv" style="color:${sum.h?'var(--high)':'var(--muted)'}">${sum.h}</span></div>
+              <div class="hstat"><span class="hl">Worst</span><span class="hv" style="color:${BANDCOL[sc(worst.score||0)]}">${worst.score??'—'}</span></div>
+            </div></div></div>
+        ${coverageStrip(d.topTypes, monitors, true)}
+      </div>
+      <div class="span-8 panel">
+        <h2>🚑 Fix first <span class="right">${below?`${below} source${below>1?'s':''} below 50`:'worst sources first'}</span></h2>
+        ${fixFirst(src0)}
+      </div>
+    </div>
+
+    <div class="band"><span class="bl">Overview</span><span class="hr"></span><span class="bm">${single?(trend.length>1?'vs last scan':'latest scan'):'across all sources'}</span></div>
+    <div class="cmd-grid">
+      ${kpiTile({span:'span-3',label:'⌀ Code health',num:avg,sub:`across ${src0.length} source${src0.length>1?'s':''}`,acc:'acc-brand',delta:dScore,spark:trend.length>1?sparkline(tScore):''})}
+      ${kpiTile({span:'span-3',label:'Open findings',num:sum.t,sub:'across latest scans'})}
+      ${kpiTile({span:'span-3',label:'<span class="dot c"></span>Critical',num:sum.c,sub:`${sum.h} high`,acc:'acc-crit',glow:sum.c>0})}
+      ${kpiTile({span:'span-3',label:'🔁 Monitored',num:monitors.length,sub:'scan on push'})}
+    </div>
+
+    <div class="band"><span class="bl">Breakdown</span><span class="hr"></span><span class="bm">${sum.t} open findings</span></div>
+    <div class="cmd-grid">
+      <div class="span-4 panel"><h2>Severity</h2>${donut(sum.c,sum.h,sum.m,lowAdj)}</div>
+      <div class="span-8 panel trend-wrap-panel"><h2>📈 Recent scan activity <span class="right">${single?'this source':'all sources · newest →'}</span></h2>${lineChart(trend)}</div>
+    </div>
+
+    ${(d.topTypes||[]).length?`<div class="band"><span class="bl">Insights</span><span class="hr"></span><span class="bm">most common issue types</span></div>
+    <div class="cmd-grid">
+      <div class="span-7 panel"><h2>🔎 Top issue types</h2>${topIssues(d.topTypes,9)}</div>
+      <div class="span-5 panel"><h2>🗂 By category</h2>${catBreakdown(d.topTypes)}</div>
+    </div>`:''}
+
+    <div class="band"><span class="bl">Sources</span><span class="hr"></span><span class="bm">${src0.length} scanned · worst first</span></div>
+    <div class="src-grid">${sources.map(s=>sourceCard(s, monset.has(s.source.replace(/^repo:/,'')))).join('')}</div>
+
+    ${monitors.length?`<div class="band"><span class="bl">Monitoring</span><span class="hr"></span><span class="bm">${monitors.length} watched · scan on push</span></div>${monitoredPanel(monitors)}`:''}`;
+
+  wireDash();
+  wireTrend(c); paintSparks(c);
+  if(anim){ const gn=$('.gauge-num',c); if(gn) countUp(gn, avg); }
 }
 function wireDash(){
   $$('[data-mon]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleMonitor(b.dataset.mon,true,b);});
   $$('[data-unmon]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleMonitor(b.dataset.unmon,false,b);});
   $$('[data-scannow]').forEach(b=>b.onclick=e=>{e.stopPropagation();scanNow(b.dataset.scannow,b.dataset.branch);});
-  $$('[data-open]').forEach(r=>r.onclick=()=>openSource(r.dataset.open));
-  $$('.catbar[data-cat]').forEach(b=>b.onclick=()=>{ S.filter.sev='all'; S.filter.cat=b.dataset.cat; S.filter.q=''; S.filter.group='none'; go('findings'); });
-  $$('.ti-row[data-type]').forEach(b=>b.onclick=()=>{ S.filter.sev='all'; S.filter.cat='all'; S.filter.group='none'; S.filter.q=(b.dataset.type||''); go('findings'); });
+  $$('[data-open]').forEach(r=>{ r.onclick=()=>openSource(r.dataset.open); r.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();openSource(r.dataset.open);} }; });
 }
 // Source detail page: score, trend, severity, scan history.
 async function openSource(key){
@@ -510,12 +744,12 @@ function scanDone(r){
 
 // ---------------- findings (table + filters + detail) ----------------
 const FHEAD=`<thead><tr><th>Severity</th><th>Issue</th><th>Location</th><th>Category</th><th>Found by</th><th></th></tr></thead>`;
-function findingRowHtml(f, gi){ const cat=catOf(f.type);
-  return `<tr class="clickable" data-row="${gi}"><td><span class="pill2 ${f.severity}">${f.severity}</span></td>
+function findingRowHtml(f, gi){ const cat=catOf(f.type); const fixable=f.location?.file&&f.location.file.indexOf('.')>-1;
+  return `<tr class="clickable frow rail-${f.severity}${fixable?' fixable':''}" data-row="${gi}"><td><span class="pill2 ${f.severity}">${f.severity}</span></td>
     <td><b>${esc((f.type||'').replace(/_/g,' '))}</b> <span class="mono">${esc(f.cwe||'')}</span></td>
     <td class="mono">${esc(f.location?.file||'')}:${f.location?.line||0}</td>
     <td><span class="cat-badge cat-${cat}">${CAT_ICON[cat]||''} ${cat}</span></td>
-    <td>${f.source==='ai'?`<span class="src-tag ai">🤖 ${esc(f.model||'AI')}</span>`:'<span class="src-tag">pattern</span>'}</td>
+    <td>${fixable?'<span class="aifix" title="AI auto-fixable">✨</span> ':''}${f.source==='ai'?`<span class="src-tag ai">🤖 ${esc(f.model||'AI')}</span>`:'<span class="src-tag">pattern</span>'}</td>
     <td class="mono chev">▾</td></tr>
     <tr class="fdetail" data-detail="${gi}" style="display:none"><td colspan="6"></td></tr>`; }
 function findingsTable(list){

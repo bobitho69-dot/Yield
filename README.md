@@ -15,10 +15,10 @@ repos, and builds run server-side so they finish even if you close the tab. It's
 
 - **Chat → full app.** Not a single HTML file — real multi-file projects (HTML/CSS/JS, components, a worker backend) shown in a file tree + editor.
 - **Real multi-page apps.** Builds genuine multi-page sites (separate `.html` pages sharing one nav/styles/scripts) with working links between them — preview any page from the toolbar's page picker.
-- **Auto-verification.** After every build, a static check catches broken links, missing pages, leftover placeholders and dead buttons — and the AI auto-repairs them before you see the result. No mock/placeholder data unless you ask for it.
+- **Auto-verification.** After every build, a static check catches broken links, missing pages, leftover placeholders and dead buttons — and the AI auto-repairs them before you see the result.
 - **Live code view.** Watch each file being written in real time, labelled by which AI is writing it.
 - **Pick your thinking level.** 🧠 Fast / Balanced / Max controls how hard the models reason.
-- **Builds run in the background.** Each build runs inside a Durable Object, independent of your tab — refresh or close the page and it keeps going (and saves). A reopened tab re-attaches to the live build.
+- **Builds run in the background.** Each build runs inside a Durable Object, independent of your tab — refresh or close the page and it keeps going (and saves). A reopened tab re-attaches to the live stream.
 - **Helper AIs (research).** The coder can launch other AIs to research/plan a tricky part first (a data schema, an algorithm), then build with their findings.
 - **Parallel build agents.** For big apps the coder can fan out to several agents that write different files at the same time.
 - **AI agents per app.** The coder can create runtime agents your app calls (chatbots, generators, classifiers).
@@ -33,13 +33,13 @@ repos, and builds run server-side so they finish even if you close the tab. It's
 Generated apps run in a sandboxed iframe with a small runtime injected. This is what the coder builds against (full reference is served at **`GET /api/docs`** and lives in [`src/lib/platformGuide.ts`](src/lib/platformGuide.ts)):
 
 | API | Purpose |
-|-----|---------|
+|-----|----------|
 | `window.YIELD.entities.{list,create,get,update,delete}(entity, …)` | Free built-in database (records persist to GitHub / D1) |
 | `window.YIELD.agents["Name"]` → `POST /api/agents/<id>/run` | Call an AI agent the coder created |
 | `window.YIELD.secrets.NAME` | Owner-provided API keys/secrets (requested via `=== secret: … ===`) |
 | `await window.YIELD.image(prompt)` | AI image generation (FLUX), returns an image URL |
 
-The coder also uses build-time directives in its output: `=== file: path ===` (a file), `=== agent: Name | model ===` (a runtime agent), `=== secret: NAME — why ===` (request a secret), `=== research: Name ===` (a helper AI), `=== task: Name | model ===` (a parallel build agent).
+The coder also uses build-time directives in its output: `=== file: path ===` (a file), `=== agent: Name | model ===` (a runtime agent), `=== secret: NAME — why ===` (request a secret), `=== research: Name ===` (a helper AI to plan first), `=== task: Name ===` (parallel build agent).
 
 ---
 
@@ -78,7 +78,7 @@ Put keys in `wrangler secret put …` (production) or `.dev.vars` (local). See `
 | # | Service | What to create | Secret(s) to set |
 |---|---------|----------------|------------------|
 | 1 | **NVIDIA NIM** | One free developer key powers all the AIs + image gen | `NVIDIA_API_KEY` (`nvapi-…`) — https://build.nvidia.com |
-| 2 | **Per-AI keys** *(optional)* | Separate key per AI for isolated quotas | `KIMI_API_KEY`, `MINIMAX_API_KEY`, `DEEPSEEK_FLASH_API_KEY`, `STEP_API_KEY`, `DEEPSEEK_PRO_API_KEY`, `GLM_API_KEY`, `GPTOSS_API_KEY`, `NEMOGUARD_API_KEY` |
+| 2 | **Per-AI keys** *(optional)* | Separate key per AI for isolated quotas | `KIMI_API_KEY`, `MINIMAX_API_KEY`, `DEEPSEEK_FLASH_API_KEY`, `STEP_API_KEY`, `DEEPSEEK_PRO_API_KEY`, `GLM_API_KEY`, `GPTOSS_API_KEY`, `NEMOGUARD_API_KEY`, `OPENROUTER_API_KEY`, `GEMMA_API_KEY`, `NEMOTRON_API_KEY` |
 | 3 | **GitHub OAuth App** | Login + code storage. Callback: `…/api/auth/github/callback` | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` |
 | 4 | **Google OAuth Client** *(optional)* | Login. Redirect: `…/api/auth/google/callback` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | 5 | **Stripe** *(optional)* | A $20/mo recurring Price + a webhook to `…/api/billing/webhook` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` (var) |
@@ -99,7 +99,7 @@ migration are already declared — free on the Workers Free plan).
 Full reference in [`docs/API.md`](docs/API.md). Highlights:
 
 ### AI / generation
-- `POST /api/generate` — **prompt → app**, streamed as SSE. Body: `{ prompt, model?, projectId?, thinking? }` (`thinking` = `low`|`medium`|`high`). Runs in a Durable Object so it survives a tab close. Events: `status`, `meta`, `thinking`, `research`, `code`, `chat`, `done`, plus `blocked`/`gate`/`error`/`end`.
+- `POST /api/generate` — **prompt → app**, streamed as SSE. Body: `{ prompt, model?, projectId?, thinking? }` (`thinking` = `low`|`medium`|`high`). Runs in a Durable Object so it survives a tab close/refresh.
 - `GET  /api/projects/:id/stream` — reconnect a refreshed tab to an in-progress build (SSE).
 - `POST /api/route` — auto-pick the best coder model (gpt-oss-20b).
 - `GET  /api/models` — pickable models (+ Auto). · `GET /api/docs` — the coder's platform reference.
@@ -186,3 +186,21 @@ src/lib/         nvidia, jailbreak, auth, db (D1), usage gate, billing, github, 
 src/routes/      generate, projects, agents, secrets, appdata, media, auth, billing, github, misc
 schema.sql       D1 schema
 ```
+
+---
+
+## 📄 License
+
+Yield is licensed under the MIT License — see [LICENSE](./LICENSE) file for details.
+
+**Copyright © 2026 Penusila Digital Solutions LLC**
+
+You are free to:
+- ✅ Use Yield for personal or commercial projects
+- ✅ Modify and distribute Yield
+- ✅ Run your own hosted version
+- ✅ Fork and customize for your needs
+
+The only requirement: include the original license and copyright notice.
+
+For more details, see the [MIT License](./LICENSE) file.

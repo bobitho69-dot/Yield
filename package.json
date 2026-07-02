@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "Yield — a free AI coder. Chat turns prompts into apps, with manual editing, live preview, NVIDIA-hosted models, and a jailbreak guard. Runs on Cloudflare Workers.",
+  "author": "Penusila Digital Solutions LLC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bobitho69-dot/Yield.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

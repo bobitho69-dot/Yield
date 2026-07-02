@@ -1,3 +1,10 @@
+/**
+ * Yield — Free AI App Builder
+ * Copyright (c) 2026 Penusila Digital Solutions LLC
+ * Licensed under the MIT License
+ * See LICENSE file in the root directory
+ */
+
 // Yield — Cloudflare Worker entry point.
 // Serves the static frontend (./public) and the /api/* JSON+SSE API.
 

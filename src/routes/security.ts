@@ -18,7 +18,7 @@ import {
   getProject, getProjectFiles, listProjects, getGithubAuth, listAuditRunsBySource,
   listAuditIgnores, addAuditIgnore, removeAuditIgnore, upsertFile, setProjectCode,
   addMonitor, listMonitors, getMonitor, getMonitorByRepo, removeMonitor, touchMonitor, listAllMonitors,
-  getIntegrations, setIntegrations, overviewStats, recordAuditRun, recentAuditRuns, getUser, type MonitorRow,
+  getIntegrations, setIntegrations, overviewStats, recordAuditRun, recentAuditRuns, latestFindingTypes, getUser, type MonitorRow,
 } from '../lib/db';
 import { decryptToken, encryptToken, listRepos, listCommits, getCommitFiles, getRepoFile, putRepoFile, createWebhook, deleteWebhook } from '../lib/github';
 import { notifyScan, type IntegrationConfig } from '../lib/integrations';
@@ -55,11 +55,11 @@ export async function handleSecurity(req: Request, c: Ctx, action?: string): Pro
 async function overview(c: Ctx): Promise<Response> {
   if (!c.user) return json({ sources: [], monitors: [], trend: [], usage: null });
   const tier = await securityTier(c);
-  const [{ results: sources }, { results: mons }, { results: trend }, used, u] = await Promise.all([
-    overviewStats(c.env, c.user.id), listMonitors(c.env, c.user.id), recentAuditRuns(c.env, c.user.id, 40), scansUsedToday(c), getUser(c.env, c.user.id),
+  const [{ results: sources }, { results: mons }, { results: trend }, { results: topTypes }, used, u] = await Promise.all([
+    overviewStats(c.env, c.user.id), listMonitors(c.env, c.user.id), recentAuditRuns(c.env, c.user.id, 40), latestFindingTypes(c.env, c.user.id), scansUsedToday(c), getUser(c.env, c.user.id),
   ]);
   return json({
-    sources, monitors: mons, tier,
+    sources, monitors: mons, tier, topTypes,
     trend: (trend as any[]).slice().reverse(), // oldest -> newest
     usage: { usedToday: used, cap: tier === 'pro' ? PRO_SCANS_PER_DAY : FREE_SCANS_PER_DAY, unlimited: c.env.AUTH_ENABLED === 'false' },
     account: { plan: u?.plan ?? 'free', security_active: !!u?.security_active, hasCustomer: !!u?.stripe_customer_id },

@@ -273,6 +273,18 @@ export function recentAuditRuns(env: Env, userId: string, limit = 40): Promise<{
   return env.DB.prepare('SELECT source,level,score,total,critical,high,created_at FROM audit_runs WHERE user_id=? ORDER BY created_at DESC LIMIT ?').bind(userId, limit).all();
 }
 
+// Open finding TYPES across each source's latest scan (powers "top issues" + categories).
+export function latestFindingTypes(env: Env, userId: string): Promise<{ results: any[] }> {
+  return env.DB.prepare(
+    `SELECT type, COUNT(*) AS cnt FROM audit_findings
+       WHERE run_id IN (
+         SELECT r.id FROM audit_runs r
+          WHERE r.user_id=?1 AND r.created_at=(SELECT MAX(created_at) FROM audit_runs r2 WHERE r2.source=r.source AND r2.user_id=?1)
+       )
+       GROUP BY type ORDER BY cnt DESC LIMIT 30`,
+  ).bind(userId).all();
+}
+
 // Audit history for any scan source ("project:<id>" or "repo:<owner/name>").
 export function listAuditRunsBySource(env: Env, source: string): Promise<{ results: any[] }> {
   return env.DB.prepare(

@@ -75,14 +75,32 @@ function isForeign(baseUrl: string): boolean {
 // `top_p` and any extra params, clamps temperature to [0,1], caps max_tokens to a widely
 // accepted 8192, and can switch the token param name — a conservative body that most
 // OpenAI-compatible gateways (incl. Anthropic-backed models on ZenMux) accept.
+// Collapse consecutive same-role messages into one (join text with a blank line). Anthropic
+// (and gateways fronting it) require a single system message + alternating user/assistant —
+// our prompts send two system messages, which trips them. Only merges string content.
+function mergeMessages(messages: ChatMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const m of messages) {
+    const last = out[out.length - 1];
+    if (last && last.role === m.role && typeof last.content === 'string' && typeof m.content === 'string') {
+      last.content = `${last.content}\n\n${m.content}`;
+    } else {
+      out.push({ role: m.role, content: m.content });
+    }
+  }
+  return out;
+}
 function buildBody(opts: ChatOptions, stream: boolean, over: { tokenParam?: string; safe?: boolean }): string {
   const extra: Record<string, unknown> = { ...(opts.extra || {}) };
   if (isForeign(opts.baseUrl) && 'reasoning_effort' in extra) delete extra.reasoning_effort;
   const tokenParam = over.tokenParam || 'max_tokens';
+  // Full mode honors the caller (omit = no cap / "inf"). Safe mode sends a compatibility cap
+  // because Anthropic REQUIRES max_tokens and free models cap output.
   const maxTok = over.safe ? Math.min(8192, opts.max_tokens ?? 8192) : opts.max_tokens;
   const body: Record<string, unknown> = {
     model: opts.model,
-    messages: opts.messages,
+    // Safe mode merges consecutive same-role messages (Anthropic needs one system + alternation).
+    messages: over.safe ? mergeMessages(opts.messages) : opts.messages,
     // Anthropic models 400 when BOTH temperature and top_p are set → in safe mode send
     // only temperature (clamped). Full mode keeps both (fine for NVIDIA / most models).
     temperature: over.safe ? Math.min(1, Math.max(0, opts.temperature ?? 0.4)) : (opts.temperature ?? 0.4),

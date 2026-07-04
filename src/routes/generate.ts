@@ -56,7 +56,12 @@ function shortReason(e: unknown): string {
   const msg = String((e as any)?.message || e || '');
   const code = msg.match(/\b(4\d\d|5\d\d)\b/)?.[1] || '';
   if (code === '401' || code === '403') return `${code} auth — check the API key`;
-  if (code === '400') return '400 — provider rejected a request parameter';
+  if (code === '400') { // surface the provider's ACTUAL complaint so the bad param is visible
+    let detail = msg.replace(/^Model API\s*\d+:\s*/i, '');
+    const j = detail.match(/"message"\s*:\s*"([^"]+)"/); // pull the message out of a JSON error body
+    detail = (j ? j[1] : detail).replace(/\s+/g, ' ').trim().slice(0, 140);
+    return detail ? `400 — ${detail}` : '400 — bad request';
+  }
   if (code === '404') return '404 model id not found';
   if (code === '429') return '429 rate-limited';
   if (code === '402') return '402 payment/credits required';
@@ -882,8 +887,10 @@ export async function runBuild(
           try {
             await chatStream(
               {
+                // No max_tokens → uncapped ("inf"): the model outputs up to its own limit,
+                // so large multi-file apps aren't truncated. Bounded only by timeoutMs.
                 baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-                temperature: 0.3, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000, signal,
+                temperature: 0.3, top_p: 0.95, timeoutMs: 600000, signal,
                 ...(eff ? { extra: { reasoning_effort: eff } } : {}),
               },
               async (delta) => { await streamer.feed(delta); await heartbeat(); },

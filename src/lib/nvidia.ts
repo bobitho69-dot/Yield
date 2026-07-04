@@ -28,10 +28,13 @@ export interface ChatOptions {
 }
 
 function headers(apiKey: string): HeadersInit {
+  // Trim the key: a stray space or newline pasted into a secret (a common cause of a
+  // provider 403 "access_denied", e.g. ZenMux) would otherwise be sent verbatim.
   return {
-    authorization: `Bearer ${apiKey}`,
+    authorization: `Bearer ${(apiKey || '').trim()}`,
     'content-type': 'application/json',
     accept: 'application/json',
+    'x-title': 'Yield',
   };
 }
 
@@ -62,24 +65,53 @@ async function postChat(url: string, body: string, signal: AbortSignal, opts: Ch
   return res;
 }
 
+// NVIDIA's endpoint is our "home" provider; everything else (ZenMux, OpenRouter) is foreign
+// and may reject NVIDIA/OpenAI-only params. Detected by host so the client stays env-free.
+function isForeign(baseUrl: string): boolean {
+  return !/integrate\.api\.nvidia\.com/i.test(baseUrl || '');
+}
+// Build the JSON request body. Drops `reasoning_effort` for foreign providers (an
+// NVIDIA/OpenAI-only param that others 400 on), and lets a 400-retry swap the token
+// parameter name or shrink the cap.
+function buildBody(opts: ChatOptions, stream: boolean, over: { tokenParam?: string; maxTokens?: number }): string {
+  const extra: Record<string, unknown> = { ...(opts.extra || {}) };
+  if (isForeign(opts.baseUrl) && 'reasoning_effort' in extra) delete extra.reasoning_effort;
+  const tokenParam = over.tokenParam || 'max_tokens';
+  const maxTok = over.maxTokens ?? opts.max_tokens;
+  return JSON.stringify({
+    model: opts.model,
+    messages: opts.messages,
+    temperature: opts.temperature ?? 0.4,
+    top_p: opts.top_p ?? 0.9,
+    ...(maxTok ? { [tokenParam]: maxTok } : {}), // omit = no cap
+    stream,
+    ...extra,
+  });
+}
+// Inspect a 400 body: if it's a known token-parameter problem, return how to retry.
+// - some models want `max_completion_tokens` instead of `max_tokens`
+// - free/foreign models often cap output below our default → retry with a safe 8192
+function tokenRetry(body: string, curMax?: number): { tokenParam?: string; maxTokens?: number } | null {
+  if (/max_completion_tokens/i.test(body)) return { tokenParam: 'max_completion_tokens', maxTokens: curMax };
+  if ((curMax ?? 0) > 8192 && /max_?tokens|maximum.*tokens?|tokens?.*(limit|exceed|maximum|greater|too\s+large)/i.test(body)) {
+    return { maxTokens: 8192 };
+  }
+  return null;
+}
+
 /** Non-streaming completion. Returns the full assistant text + token usage. */
 export async function chat(opts: ChatOptions): Promise<{ text: string; usage: { in: number; out: number } }> {
   const to = timeout(opts.timeoutMs ?? 30000);
+  const url = `${opts.baseUrl}/chat/completions`;
   try {
-    const body = JSON.stringify({
-      model: opts.model,
-      messages: opts.messages,
-      temperature: opts.temperature ?? 0.4,
-      top_p: opts.top_p ?? 0.9,
-      ...(opts.max_tokens ? { max_tokens: opts.max_tokens } : {}), // omit = no cap
-      stream: false,
-      ...(opts.extra || {}),
-    });
-    const res = await postChat(`${opts.baseUrl}/chat/completions`, body, to.signal, opts);
-    if (!res.ok) {
-      const body = await res.text();
-      throw new NvidiaError(res.status, body);
+    let res = await postChat(url, buildBody(opts, false, {}), to.signal, opts);
+    if (res.status === 400) { // auto-correct a token-param 400 (free/foreign models); else surface it
+      const b = await res.text().catch(() => '');
+      const retry = tokenRetry(b, opts.max_tokens);
+      if (retry) res = await postChat(url, buildBody(opts, false, retry), to.signal, opts);
+      else throw new NvidiaError(400, b);
     }
+    if (!res.ok) throw new NvidiaError(res.status, await res.text().catch(() => ''));
     const data: any = await res.json();
     const msg = data?.choices?.[0]?.message ?? {};
     return {
@@ -103,16 +135,14 @@ export async function chatStream(
   onReasoning?: (r: string) => void | Promise<void>,
 ): Promise<{ text: string }> {
   const to = timeout(opts.timeoutMs ?? 90000);
-  const body = JSON.stringify({
-    model: opts.model,
-    messages: opts.messages,
-    temperature: opts.temperature ?? 0.4,
-    top_p: opts.top_p ?? 0.9,
-    ...(opts.max_tokens ? { max_tokens: opts.max_tokens } : {}), // omit = no cap
-    stream: true,
-    ...(opts.extra || {}),
-  });
-  const res = await postChat(`${opts.baseUrl}/chat/completions`, body, to.signal, opts);
+  const url = `${opts.baseUrl}/chat/completions`;
+  let res = await postChat(url, buildBody(opts, true, {}), to.signal, opts);
+  if (res.status === 400) { // auto-correct a token-param 400 (free/foreign models); else surface it
+    const b = await res.text().catch(() => '');
+    const retry = tokenRetry(b, opts.max_tokens);
+    if (retry) res = await postChat(url, buildBody(opts, true, retry), to.signal, opts);
+    else { to.clear(); throw new NvidiaError(400, b); }
+  }
   if (!res.ok || !res.body) {
     to.clear();
     const body = await res.text().catch(() => '');

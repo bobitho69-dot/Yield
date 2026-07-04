@@ -45,6 +45,13 @@ export interface ModelDef {
   cons: string[];
   /** Per-model API endpoint + key (each AI is its own API). */
   provider: ProviderConfig;
+  /**
+   * Alternate providers hosting the SAME model, tried AFTER the primary provider (and its
+   * backup key) fail — e.g. the same model on a second provider. Lets one picker entry
+   * survive a provider outage instead of listing the model twice. Each alt is only tried
+   * when its key env var is actually set (so an unconfigured provider is skipped).
+   */
+  alt?: { baseUrl: string; apiKeyEnv: string; modelId: string }[];
   /** Hidden from the picker (router/guard utility models). */
   internal?: boolean;
 }
@@ -129,7 +136,10 @@ export const CODER_MODELS: ModelDef[] = [
     blurb: 'Snappy generations with solid front-end instincts.',
     pros: ['Fast', 'Good front-end / layout sense', 'Nice default visuals'],
     cons: ['Less consistent on heavy logic', 'Can miss edge cases'],
+    // NVIDIA primary; if it's unavailable (after the backup key), fall back to the SAME
+    // model free on ZenMux (only when ZEMUZAPI is set). One entry, no duplicate in the picker.
     provider: { apiKeyEnv: 'STEP_API_KEY' },
+    alt: [{ baseUrl: ZENMUX_BASE, apiKeyEnv: 'ZEMUZAPI', modelId: 'stepfun/step-3.7-flash-free' }],
   },
   {
     id: 'deepseek-v4-pro',
@@ -249,18 +259,8 @@ export const CODER_MODELS: ModelDef[] = [
     cons: ['Free tier is rate-limited', 'Less depth on complex logic', 'Needs a ZenMux key (ZEMUZAPI)'],
     provider: zenmux(),
   },
-  {
-    id: 'step-3.7-flash-free',
-    label: 'Step 3.7 Flash (free)',
-    modelId: 'stepfun/step-3.7-flash-free',
-    role: 'coder',
-    tier: 'flash',
-    speed: 5,
-    blurb: 'StepFun Step 3.7 Flash — fast, good front-end instincts. Free via ZenMux.',
-    pros: ['Free to use', 'Fast', 'Nice default visuals / layout sense'],
-    cons: ['Free tier is rate-limited', 'Can miss edge cases', 'Needs a ZenMux key (ZEMUZAPI)'],
-    provider: zenmux(),
-  },
+  // NOTE: ZenMux's Step 3.7 Flash is NOT a separate entry — it's the alt-provider fallback
+  // on the NVIDIA "step-3.7-flash" model above (avoids a duplicate in the picker).
 ];
 
 // Auto router — analyzes the prompt and picks the best coder model.
@@ -366,10 +366,28 @@ export function keyForModel(env: Env, model: ModelDef): string {
  * backup key (NVIDIA_API_KEY_BACKUP) the client falls back to on a rate-limit / quota
  * (429/402) so one key hitting its limit doesn't break the build.
  */
-export function endpointFor(env: Env, model: ModelDef): { baseUrl: string; apiKey: string; apiKeyBackup?: string; modelId: string } {
+export type Endpoint = { baseUrl: string; apiKey: string; apiKeyBackup?: string; modelId: string };
+
+export function endpointFor(env: Env, model: ModelDef): Endpoint {
   const baseUrl = model.provider.baseUrl || env.NVIDIA_CHAT_BASE;
   const apiKeyBackup = model.provider.baseUrl ? undefined : (env.NVIDIA_API_KEY_BACKUP || undefined);
   return { baseUrl, apiKey: keyForModel(env, model), apiKeyBackup, modelId: model.modelId };
+}
+
+/**
+ * The ordered endpoint chain for a model: the primary provider first (which itself tries
+ * its key then the NVIDIA backup key), then any alternate providers hosting the SAME model.
+ * An alt is included ONLY when its key env var is set — so an unconfigured provider is
+ * skipped rather than wasting a doomed request. Callers try each in order until one works.
+ */
+export function endpointsFor(env: Env, model: ModelDef): Endpoint[] {
+  const chain: Endpoint[] = [endpointFor(env, model)];
+  for (const a of model.alt ?? []) {
+    const key = envGet(env, a.apiKeyEnv);
+    if (!key) continue; // alt provider isn't configured — skip it
+    chain.push({ baseUrl: a.baseUrl, apiKey: key, modelId: a.modelId });
+  }
+  return chain;
 }
 
 /** Public list for the model picker (Auto + coder models, with pros/cons). */

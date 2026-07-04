@@ -71,32 +71,33 @@ function isForeign(baseUrl: string): boolean {
   return !/integrate\.api\.nvidia\.com/i.test(baseUrl || '');
 }
 // Build the JSON request body. Drops `reasoning_effort` for foreign providers (an
-// NVIDIA/OpenAI-only param that others 400 on), and lets a 400-retry swap the token
-// parameter name or shrink the cap.
-function buildBody(opts: ChatOptions, stream: boolean, over: { tokenParam?: string; maxTokens?: number }): string {
+// NVIDIA/OpenAI-only param that others 400 on). In `safe` mode (a 400-retry) it also drops
+// `top_p` and any extra params, clamps temperature to [0,1], caps max_tokens to a widely
+// accepted 8192, and can switch the token param name — a conservative body that most
+// OpenAI-compatible gateways (incl. Anthropic-backed models on ZenMux) accept.
+function buildBody(opts: ChatOptions, stream: boolean, over: { tokenParam?: string; safe?: boolean }): string {
   const extra: Record<string, unknown> = { ...(opts.extra || {}) };
   if (isForeign(opts.baseUrl) && 'reasoning_effort' in extra) delete extra.reasoning_effort;
   const tokenParam = over.tokenParam || 'max_tokens';
-  const maxTok = over.maxTokens ?? opts.max_tokens;
-  return JSON.stringify({
+  const maxTok = over.safe ? Math.min(8192, opts.max_tokens ?? 8192) : opts.max_tokens;
+  const body: Record<string, unknown> = {
     model: opts.model,
     messages: opts.messages,
-    temperature: opts.temperature ?? 0.4,
-    top_p: opts.top_p ?? 0.9,
+    // Anthropic models 400 when BOTH temperature and top_p are set → in safe mode send
+    // only temperature (clamped). Full mode keeps both (fine for NVIDIA / most models).
+    temperature: over.safe ? Math.min(1, Math.max(0, opts.temperature ?? 0.4)) : (opts.temperature ?? 0.4),
+    ...(over.safe ? {} : { top_p: opts.top_p ?? 0.9 }),
     ...(maxTok ? { [tokenParam]: maxTok } : {}), // omit = no cap
     stream,
-    ...extra,
-  });
+    ...(over.safe ? {} : extra),
+  };
+  return JSON.stringify(body);
 }
-// Inspect a 400 body: if it's a known token-parameter problem, return how to retry.
-// - some models want `max_completion_tokens` instead of `max_tokens`
-// - free/foreign models often cap output below our default → retry with a safe 8192
-function tokenRetry(body: string, curMax?: number): { tokenParam?: string; maxTokens?: number } | null {
-  if (/max_completion_tokens/i.test(body)) return { tokenParam: 'max_completion_tokens', maxTokens: curMax };
-  if ((curMax ?? 0) > 8192 && /max_?tokens|maximum.*tokens?|tokens?.*(limit|exceed|maximum|greater|too\s+large)/i.test(body)) {
-    return { maxTokens: 8192 };
-  }
-  return null;
+// A foreign provider 400 usually means it rejected one of our params (top_p+temperature,
+// an oversized/mis-named max_tokens, reasoning_effort, …). Retry once with a conservative,
+// widely-compatible body; if the message names max_completion_tokens, use that param.
+function safeRetryOver(body: string): { safe: true; tokenParam?: string } {
+  return /max_completion_tokens/i.test(body) ? { safe: true, tokenParam: 'max_completion_tokens' } : { safe: true };
 }
 
 /** Non-streaming completion. Returns the full assistant text + token usage. */
@@ -105,11 +106,9 @@ export async function chat(opts: ChatOptions): Promise<{ text: string; usage: { 
   const url = `${opts.baseUrl}/chat/completions`;
   try {
     let res = await postChat(url, buildBody(opts, false, {}), to.signal, opts);
-    if (res.status === 400) { // auto-correct a token-param 400 (free/foreign models); else surface it
+    if (res.status === 400 && isForeign(opts.baseUrl)) { // foreign provider rejected a param → conservative retry
       const b = await res.text().catch(() => '');
-      const retry = tokenRetry(b, opts.max_tokens);
-      if (retry) res = await postChat(url, buildBody(opts, false, retry), to.signal, opts);
-      else throw new NvidiaError(400, b);
+      res = await postChat(url, buildBody(opts, false, safeRetryOver(b)), to.signal, opts);
     }
     if (!res.ok) throw new NvidiaError(res.status, await res.text().catch(() => ''));
     const data: any = await res.json();
@@ -137,11 +136,9 @@ export async function chatStream(
   const to = timeout(opts.timeoutMs ?? 90000);
   const url = `${opts.baseUrl}/chat/completions`;
   let res = await postChat(url, buildBody(opts, true, {}), to.signal, opts);
-  if (res.status === 400) { // auto-correct a token-param 400 (free/foreign models); else surface it
+  if (res.status === 400 && isForeign(opts.baseUrl)) { // foreign provider rejected a param → conservative retry
     const b = await res.text().catch(() => '');
-    const retry = tokenRetry(b, opts.max_tokens);
-    if (retry) res = await postChat(url, buildBody(opts, true, retry), to.signal, opts);
-    else { to.clear(); throw new NvidiaError(400, b); }
+    res = await postChat(url, buildBody(opts, true, safeRetryOver(b)), to.signal, opts);
   }
   if (!res.ok || !res.body) {
     to.clear();

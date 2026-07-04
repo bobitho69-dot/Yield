@@ -45,9 +45,23 @@ export interface ModelDef {
   cons: string[];
   /** Per-model API endpoint + key (each AI is its own API). */
   provider: ProviderConfig;
+  /**
+   * Alternate providers hosting the SAME model, tried AFTER the primary provider (and its
+   * backup key) fail — e.g. the same model on a second provider. Lets one picker entry
+   * survive a provider outage instead of listing the model twice. Each alt is only tried
+   * when its key env var is actually set (so an unconfigured provider is skipped).
+   */
+  alt?: { baseUrl: string; apiKeyEnv: string; modelId: string }[];
   /** Hidden from the picker (router/guard utility models). */
   internal?: boolean;
 }
+
+// ZenMux (https://zenmux.ai) — a second OpenAI-compatible provider (like OpenRouter).
+// Its free models all share ONE key: the ZEMUZAPI secret. Base + a per-model provider
+// helper so the ZenMux ModelDefs below (and the vision pre-pass) route to the right
+// endpoint/key. Model ids are ZenMux "provider/model-name" slugs (free tier ends "-free").
+const ZENMUX_BASE = 'https://zenmux.ai/api/v1';
+const zenmux = (): ProviderConfig => ({ apiKeyEnv: 'ZEMUZAPI', baseUrl: ZENMUX_BASE });
 
 export const CODER_MODELS: ModelDef[] = [
   {
@@ -122,7 +136,10 @@ export const CODER_MODELS: ModelDef[] = [
     blurb: 'Snappy generations with solid front-end instincts.',
     pros: ['Fast', 'Good front-end / layout sense', 'Nice default visuals'],
     cons: ['Less consistent on heavy logic', 'Can miss edge cases'],
+    // NVIDIA primary; if it's unavailable (after the backup key), fall back to the SAME
+    // model free on ZenMux (only when ZEMUZAPI is set). One entry, no duplicate in the picker.
     provider: { apiKeyEnv: 'STEP_API_KEY' },
+    alt: [{ baseUrl: ZENMUX_BASE, apiKeyEnv: 'ZEMUZAPI', modelId: 'stepfun/step-3.7-flash-free' }],
   },
   {
     id: 'deepseek-v4-pro',
@@ -203,6 +220,47 @@ export const CODER_MODELS: ModelDef[] = [
     // named exactly after the modelId, and falls back to NVIDIA_API_KEY.
     provider: { apiKeyEnv: 'NEMOTRON_API_KEY' },
   },
+  // --- ZenMux free models (OpenAI-compatible; share the ZEMUZAPI key) ------------
+  // TEXT/CODE models only. ZenMux's image/vision models (GLM-4.6V, Gemini image) are
+  // NOT here — image models are for image/vision, never coding (see visionEndpoint).
+  {
+    id: 'claude-sonnet-5-free',
+    label: 'Claude Sonnet 5 (free)',
+    modelId: 'anthropic/claude-sonnet-5-free',
+    role: 'coder',
+    tier: 'pro',
+    speed: 3,
+    blurb: "Anthropic's Claude Sonnet 5 — elite coding & reasoning, free via ZenMux.",
+    pros: ['Free to use', 'Top-tier code quality & reasoning', 'Great on large, multi-file apps'],
+    cons: ['Free tier is rate-limited', 'Heavier token use', 'Needs a ZenMux key (ZEMUZAPI)'],
+    provider: zenmux(),
+  },
+  {
+    id: 'claude-fable-5-free',
+    label: 'Claude Fable 5 (free)',
+    modelId: 'anthropic/claude-fable-5-free',
+    role: 'coder',
+    tier: 'standard',
+    speed: 4,
+    blurb: "Anthropic's Claude Fable 5 — fast, capable, clean output. Free via ZenMux.",
+    pros: ['Free to use', 'Fast for its quality', 'Clean, idiomatic code'],
+    cons: ['Free tier is rate-limited', 'Less depth than Sonnet on hard logic', 'Needs a ZenMux key (ZEMUZAPI)'],
+    provider: zenmux(),
+  },
+  {
+    id: 'glm-4.7-flash-free',
+    label: 'GLM 4.7 Flash (free)',
+    modelId: 'z-ai/glm-4.7-flash-free',
+    role: 'coder',
+    tier: 'flash',
+    speed: 5,
+    blurb: 'Z.ai GLM-4.7 Flash — snappy coder with clean output. Free via ZenMux.',
+    pros: ['Free to use', 'Very fast', 'Good everyday all-rounder'],
+    cons: ['Free tier is rate-limited', 'Less depth on complex logic', 'Needs a ZenMux key (ZEMUZAPI)'],
+    provider: zenmux(),
+  },
+  // NOTE: ZenMux's Step 3.7 Flash is NOT a separate entry — it's the alt-provider fallback
+  // on the NVIDIA "step-3.7-flash" model above (avoids a duplicate in the picker).
 ];
 
 // Auto router — analyzes the prompt and picks the best coder model.
@@ -243,6 +301,28 @@ export const GUARD_MODEL: ModelDef = {
 const DEFAULT_VISION_MODEL = 'qwen/qwen3.5-397b-a17b';
 export function visionModelId(env: Env): string {
   return (env.VISION_MODEL && env.VISION_MODEL.trim()) || DEFAULT_VISION_MODEL;
+}
+
+// Vision / image models that live on ZenMux (NOT NVIDIA). These are image-understanding
+// (VLM) models — used ONLY for the vision pre-pass, never as coders. Set VISION_MODEL to
+// one of these to run the pre-pass on ZenMux (key: ZEMUZAPI).
+const ZENMUX_VISION = new Set<string>([
+  'z-ai/glm-4.6v-flash-free',
+  'z-ai/glm-4.6v-flash',
+  'google/gemini-3.1-flash-lite-image-free',
+]);
+
+/**
+ * Resolve the vision pre-pass endpoint/key for the configured VISION_MODEL. Defaults to
+ * NVIDIA (the shared key + backup). If VISION_MODEL is a ZenMux vision model, routes to
+ * ZenMux with the ZEMUZAPI key so an image model on a different provider "just works".
+ */
+export function visionEndpoint(env: Env): { baseUrl: string; apiKey: string; apiKeyBackup?: string; modelId: string } {
+  const modelId = visionModelId(env);
+  if (ZENMUX_VISION.has(modelId)) {
+    return { baseUrl: ZENMUX_BASE, apiKey: envGet(env, 'ZEMUZAPI') || env.NVIDIA_API_KEY, modelId };
+  }
+  return { baseUrl: env.NVIDIA_CHAT_BASE, apiKey: env.NVIDIA_API_KEY, apiKeyBackup: env.NVIDIA_API_KEY_BACKUP || undefined, modelId };
 }
 
 const BY_ID: Record<string, ModelDef> = Object.fromEntries(
@@ -286,10 +366,28 @@ export function keyForModel(env: Env, model: ModelDef): string {
  * backup key (NVIDIA_API_KEY_BACKUP) the client falls back to on a rate-limit / quota
  * (429/402) so one key hitting its limit doesn't break the build.
  */
-export function endpointFor(env: Env, model: ModelDef): { baseUrl: string; apiKey: string; apiKeyBackup?: string; modelId: string } {
+export type Endpoint = { baseUrl: string; apiKey: string; apiKeyBackup?: string; modelId: string };
+
+export function endpointFor(env: Env, model: ModelDef): Endpoint {
   const baseUrl = model.provider.baseUrl || env.NVIDIA_CHAT_BASE;
   const apiKeyBackup = model.provider.baseUrl ? undefined : (env.NVIDIA_API_KEY_BACKUP || undefined);
   return { baseUrl, apiKey: keyForModel(env, model), apiKeyBackup, modelId: model.modelId };
+}
+
+/**
+ * The ordered endpoint chain for a model: the primary provider first (which itself tries
+ * its key then the NVIDIA backup key), then any alternate providers hosting the SAME model.
+ * An alt is included ONLY when its key env var is set — so an unconfigured provider is
+ * skipped rather than wasting a doomed request. Callers try each in order until one works.
+ */
+export function endpointsFor(env: Env, model: ModelDef): Endpoint[] {
+  const chain: Endpoint[] = [endpointFor(env, model)];
+  for (const a of model.alt ?? []) {
+    const key = envGet(env, a.apiKeyEnv);
+    if (!key) continue; // alt provider isn't configured — skip it
+    chain.push({ baseUrl: a.baseUrl, apiKey: key, modelId: a.modelId });
+  }
+  return chain;
 }
 
 /** Public list for the model picker (Auto + coder models, with pros/cons). */

@@ -41,7 +41,9 @@ export interface Env {
   VIDEO_API_MODEL?: string;
 
   // Vision model id (optional). Interprets user-uploaded images in the builder (a
-  // pre-pass that describes them for the coder). NVIDIA-hosted, reuses NVIDIA_API_KEY.
+  // pre-pass that describes them for the coder). Defaults to NVIDIA (reuses NVIDIA_API_KEY);
+  // set it to a ZenMux vision id (e.g. z-ai/glm-4.6v-flash-free) to run the pre-pass on
+  // ZenMux with the ZEMUZAPI key. Vision/image models are used ONLY here, never as coders.
   VISION_MODEL?: string;
 
   // Secrets
@@ -51,9 +53,14 @@ export interface Env {
   // Optional — falls back to NVIDIA_API_KEY when unset.
   YIELDNVIDIAAIKEY?: string;
 
-  // The only non-NVIDIA provider: OpenRouter (Qwen3 Coder / Laguna). Optional — those
-  // two models just fall back if unset. The old per-model NVIDIA keys are no longer used.
+  // Non-NVIDIA provider: OpenRouter (Qwen3 Coder / Laguna). Optional — those two models
+  // just fall back if unset. The old per-model NVIDIA keys are no longer used.
   OPENROUTER_API_KEY?: string;
+
+  // Non-NVIDIA provider: ZenMux (https://zenmux.ai) — one key for all its free coder
+  // models (Claude Sonnet 5 / Fable 5, GLM 4.7 Flash, Step 3.7 Flash) and the ZenMux
+  // vision models (GLM-4.6V, Gemini image) when VISION_MODEL points at one. Optional.
+  ZEMUZAPI?: string;
 
   // Secret used to sign/verify GitHub webhooks for continuous monitoring (scan-on-push).
   GITHUB_WEBHOOK_SECRET?: string;

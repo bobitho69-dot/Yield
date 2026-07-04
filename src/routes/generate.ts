@@ -10,7 +10,7 @@ import type { Ctx, Env } from '../types';
 import { sse, json, error } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
-import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, visionModelId, type ModelDef } from '../config/models';
+import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, endpointsFor, visionEndpoint, type ModelDef } from '../config/models';
 import { chat, chatStream, type ContentPart } from '../lib/nvidia';
 import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, ENHANCE_SYSTEM, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
@@ -176,11 +176,13 @@ async function describeImages(c: Ctx, prompt: string, images: Attachment[], sign
         `The user's request: "${prompt.slice(0, 600)}"`,
     }];
     for (const im of images) if (im.dataUrl) content.push({ type: 'image_url', image_url: { url: im.dataUrl } });
+    // Provider-aware: the vision model may be NVIDIA-hosted (default) or a ZenMux VLM.
+    const v = visionEndpoint(c.env);
     const { text } = await chat({
-      baseUrl: c.env.NVIDIA_CHAT_BASE,
-      apiKey: c.env.NVIDIA_API_KEY,
-      apiKeyBackup: c.env.NVIDIA_API_KEY_BACKUP || undefined,
-      model: visionModelId(c.env),
+      baseUrl: v.baseUrl,
+      apiKey: v.apiKey,
+      apiKeyBackup: v.apiKeyBackup,
+      model: v.modelId,
       messages: [{ role: 'user', content }],
       temperature: 0.2, max_tokens: 1500, timeoutMs: 60000, signal,
     });
@@ -869,16 +871,30 @@ export async function runBuild(
     const streamOnce = async () => {
       const streamer = makeFileStreamer(send);
       const streamWith = async (mdef: typeof model, eff: 'low' | 'medium' | 'high' | null) => {
-        const ep = endpointFor(c.env, mdef);
-        await chatStream(
-          {
-            baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-            temperature: 0.3, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000, signal,
-            ...(eff ? { extra: { reasoning_effort: eff } } : {}),
-          },
-          async (delta) => { await streamer.feed(delta); await heartbeat(); },
-          async (rr) => { await send('thinking', rr); await heartbeat(); },
-        );
+        // Endpoint chain: primary provider (key + backup key), then any alternate provider
+        // hosting the SAME model. Fall through to the next only if this one produced nothing.
+        const chain = endpointsFor(c.env, mdef);
+        for (let i = 0; i < chain.length; i++) {
+          const ep = chain[i];
+          try {
+            await chatStream(
+              {
+                baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
+                temperature: 0.3, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000, signal,
+                ...(eff ? { extra: { reasoning_effort: eff } } : {}),
+              },
+              async (delta) => { await streamer.feed(delta); await heartbeat(); },
+              async (rr) => { await send('thinking', rr); await heartbeat(); },
+            );
+            return; // succeeded on this endpoint
+          } catch (e) {
+            // Already streamed output, user stopped, or no alt left → let the caller handle it.
+            if (streamer.produced || stopped() || i === chain.length - 1) throw e;
+            // Same model, alternate provider (tried only after the primary's keys were exhausted).
+            await send('status', { stage: `${mdef.label}: primary provider unavailable — trying backup provider…` });
+            streamer.reset();
+          }
+        }
       };
       try {
         await streamWith(activeModel, wantEffort);

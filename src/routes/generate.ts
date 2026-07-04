@@ -56,6 +56,7 @@ function shortReason(e: unknown): string {
   const msg = String((e as any)?.message || e || '');
   const code = msg.match(/\b(4\d\d|5\d\d)\b/)?.[1] || '';
   if (code === '401' || code === '403') return `${code} auth — check the API key`;
+  if (code === '400') return '400 — provider rejected a request parameter';
   if (code === '404') return '404 model id not found';
   if (code === '429') return '429 rate-limited';
   if (code === '402') return '402 payment/credits required';
@@ -327,7 +328,8 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
   const LOGO = /^={2,}\s*logo\s*={2,}\s*$/i;
   // "=== ask: Question? | Option A | Option B ===" — a clarifying question with optional
   // clickable choices; surfaced as an 'ask' event (a pop-up) and produces no files.
-  const ASK = /^={2,}\s*ask:\s*(.+?)\s*={2,}\s*$/i;
+  // Tolerant: the closing "===" is optional (models often drop it on a long options line).
+  const ASK = /^={2,}\s*ask:\s*(.+)$/i;
   // "=== image: a sunset over mountains ===" — generate an illustration to show in chat.
   const IMAGE = /^={2,}\s*image:\s*(.+?)\s*={2,}\s*$/i;
   // Reasoning wrappers some models emit (routed to the Thinking panel, never to chat).
@@ -423,7 +425,8 @@ function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>,
     if ((m = line.match(DESC))) { if (!appDescription) appDescription = m[1].trim().slice(0, 200); return; } // single-line
     if ((m = line.match(IMAGE))) { const p = m[1].trim(); if (p && imagePrompts.length < 4) imagePrompts.push(p); return; } // single-line
     if ((m = line.match(ASK))) { // single-line clarifying question with optional choices
-      const parts = m[1].split('|').map((s) => s.trim()).filter(Boolean);
+      const raw = m[1].replace(/\s*={2,}\s*$/, ''); // strip a trailing "===" if the model added one
+      const parts = raw.split('|').map((s) => s.trim()).filter(Boolean);
       const question = parts[0] || '';
       if (question) { asked = true; await send('ask', { question, options: parts.slice(1, 7) }); }
       return;

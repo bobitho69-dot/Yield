@@ -111,8 +111,11 @@ VIDEO_API_MODEL = ""
 
 # Vision model — lets the builder "see" images you upload in chat (UI mockups,
 # screenshots, logos, photos, diagrams). It runs as a pre-pass that describes the
-# image(s) in detail, then feeds that to the coder. NVIDIA-hosted, reuses
-# NVIDIA_API_KEY. Override the id here if NVIDIA renames it (verify at build.nvidia.com).
+# image(s) in detail, then feeds that to the coder. Default is NVIDIA-hosted (reuses
+# NVIDIA_API_KEY). You can instead point it at a ZenMux vision model — e.g.
+# "z-ai/glm-4.6v-flash-free" or "google/gemini-3.1-flash-lite-image-free" — and the
+# pre-pass automatically uses the ZEMUZAPI key. Vision/image models run ONLY as this
+# image pre-pass — they are never offered as coder models.
 VISION_MODEL = "qwen/qwen3.5-397b-a17b"
 
 # OAuth is OPTIONAL — email + password login works without it. These placeholders
@@ -129,6 +132,7 @@ GOOGLE_CLIENT_SECRET = "PLACEHOLDER_GOOGLE_CLIENT_SECRET"
 #   NVIDIA_API_KEY_BACKUP     nvapi-...  optional 2nd NVIDIA key — used automatically on a 429/402 (rate-limit/quota)
 #   YIELDNVIDIAAIKEY          nvapi-...  optional DEDICATED key for the security-audit feature (so it's metered/keyed separately). Falls back to NVIDIA_API_KEY.
 #   OPENROUTER_API_KEY        optional — only for Qwen3 Coder / Laguna (the two OpenRouter models). Omit and they just fall back.
+#   ZEMUZAPI                  optional — ONE ZenMux (zenmux.ai) key for all its free models: the coder models Claude Sonnet 5 / Fable 5, GLM 4.7 Flash, Step 3.7 Flash, plus the ZenMux vision models (GLM-4.6V, Gemini image) when VISION_MODEL points at one. Omit and those models just fall back.
 #   GITHUB_WEBHOOK_SECRET     optional — enables Yield Security continuous monitoring (scan-on-push). Random 32+ byte string; set on the repo webhook automatically.
 #   SESSION_SECRET            random 32+ byte string (HMAC for session cookies)
 #   # GitHub/Google OAuth are OPTIONAL placeholder vars above (email+password works

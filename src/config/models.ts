@@ -49,6 +49,13 @@ export interface ModelDef {
   internal?: boolean;
 }
 
+// ZenMux (https://zenmux.ai) — a second OpenAI-compatible provider (like OpenRouter).
+// Its free models all share ONE key: the ZEMUZAPI secret. Base + a per-model provider
+// helper so the ZenMux ModelDefs below (and the vision pre-pass) route to the right
+// endpoint/key. Model ids are ZenMux "provider/model-name" slugs (free tier ends "-free").
+const ZENMUX_BASE = 'https://zenmux.ai/api/v1';
+const zenmux = (): ProviderConfig => ({ apiKeyEnv: 'ZEMUZAPI', baseUrl: ZENMUX_BASE });
+
 export const CODER_MODELS: ModelDef[] = [
   {
     id: 'kimi-k2.6',
@@ -203,6 +210,57 @@ export const CODER_MODELS: ModelDef[] = [
     // named exactly after the modelId, and falls back to NVIDIA_API_KEY.
     provider: { apiKeyEnv: 'NEMOTRON_API_KEY' },
   },
+  // --- ZenMux free models (OpenAI-compatible; share the ZEMUZAPI key) ------------
+  // TEXT/CODE models only. ZenMux's image/vision models (GLM-4.6V, Gemini image) are
+  // NOT here — image models are for image/vision, never coding (see visionEndpoint).
+  {
+    id: 'claude-sonnet-5-free',
+    label: 'Claude Sonnet 5 (free)',
+    modelId: 'anthropic/claude-sonnet-5-free',
+    role: 'coder',
+    tier: 'pro',
+    speed: 3,
+    blurb: "Anthropic's Claude Sonnet 5 — elite coding & reasoning, free via ZenMux.",
+    pros: ['Free to use', 'Top-tier code quality & reasoning', 'Great on large, multi-file apps'],
+    cons: ['Free tier is rate-limited', 'Heavier token use', 'Needs a ZenMux key (ZEMUZAPI)'],
+    provider: zenmux(),
+  },
+  {
+    id: 'claude-fable-5-free',
+    label: 'Claude Fable 5 (free)',
+    modelId: 'anthropic/claude-fable-5-free',
+    role: 'coder',
+    tier: 'standard',
+    speed: 4,
+    blurb: "Anthropic's Claude Fable 5 — fast, capable, clean output. Free via ZenMux.",
+    pros: ['Free to use', 'Fast for its quality', 'Clean, idiomatic code'],
+    cons: ['Free tier is rate-limited', 'Less depth than Sonnet on hard logic', 'Needs a ZenMux key (ZEMUZAPI)'],
+    provider: zenmux(),
+  },
+  {
+    id: 'glm-4.7-flash-free',
+    label: 'GLM 4.7 Flash (free)',
+    modelId: 'z-ai/glm-4.7-flash-free',
+    role: 'coder',
+    tier: 'flash',
+    speed: 5,
+    blurb: 'Z.ai GLM-4.7 Flash — snappy coder with clean output. Free via ZenMux.',
+    pros: ['Free to use', 'Very fast', 'Good everyday all-rounder'],
+    cons: ['Free tier is rate-limited', 'Less depth on complex logic', 'Needs a ZenMux key (ZEMUZAPI)'],
+    provider: zenmux(),
+  },
+  {
+    id: 'step-3.7-flash-free',
+    label: 'Step 3.7 Flash (free)',
+    modelId: 'stepfun/step-3.7-flash-free',
+    role: 'coder',
+    tier: 'flash',
+    speed: 5,
+    blurb: 'StepFun Step 3.7 Flash — fast, good front-end instincts. Free via ZenMux.',
+    pros: ['Free to use', 'Fast', 'Nice default visuals / layout sense'],
+    cons: ['Free tier is rate-limited', 'Can miss edge cases', 'Needs a ZenMux key (ZEMUZAPI)'],
+    provider: zenmux(),
+  },
 ];
 
 // Auto router — analyzes the prompt and picks the best coder model.
@@ -243,6 +301,28 @@ export const GUARD_MODEL: ModelDef = {
 const DEFAULT_VISION_MODEL = 'qwen/qwen3.5-397b-a17b';
 export function visionModelId(env: Env): string {
   return (env.VISION_MODEL && env.VISION_MODEL.trim()) || DEFAULT_VISION_MODEL;
+}
+
+// Vision / image models that live on ZenMux (NOT NVIDIA). These are image-understanding
+// (VLM) models — used ONLY for the vision pre-pass, never as coders. Set VISION_MODEL to
+// one of these to run the pre-pass on ZenMux (key: ZEMUZAPI).
+const ZENMUX_VISION = new Set<string>([
+  'z-ai/glm-4.6v-flash-free',
+  'z-ai/glm-4.6v-flash',
+  'google/gemini-3.1-flash-lite-image-free',
+]);
+
+/**
+ * Resolve the vision pre-pass endpoint/key for the configured VISION_MODEL. Defaults to
+ * NVIDIA (the shared key + backup). If VISION_MODEL is a ZenMux vision model, routes to
+ * ZenMux with the ZEMUZAPI key so an image model on a different provider "just works".
+ */
+export function visionEndpoint(env: Env): { baseUrl: string; apiKey: string; apiKeyBackup?: string; modelId: string } {
+  const modelId = visionModelId(env);
+  if (ZENMUX_VISION.has(modelId)) {
+    return { baseUrl: ZENMUX_BASE, apiKey: envGet(env, 'ZEMUZAPI') || env.NVIDIA_API_KEY, modelId };
+  }
+  return { baseUrl: env.NVIDIA_CHAT_BASE, apiKey: env.NVIDIA_API_KEY, apiKeyBackup: env.NVIDIA_API_KEY_BACKUP || undefined, modelId };
 }
 
 const BY_ID: Record<string, ModelDef> = Object.fromEntries(

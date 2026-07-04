@@ -230,14 +230,26 @@ language. Keep replies short unless asked for detail.
 ================================================================================
 ## 6. AI IMAGE GENERATION — window.YIELD.image(prompt)
 ================================================================================
-Generate real images on the fly (the built-in FLUX image model). Returns a Promise that resolves to an
-image URL (often a data: URL) you can drop straight into <img src> or a CSS background.
+Generate real, high-quality images on the fly (a built-in state-of-the-art image model).
+Returns a Promise that resolves to an image URL (often a data: URL) you can drop straight
+into <img src> or a CSS background. This is one of the fastest ways to make an app look
+beautiful — real imagery beats grey placeholder boxes every time.
   const url = await window.YIELD.image("a cozy isometric coffee shop, soft pastel colors");
   document.querySelector("#hero").src = url;
 Options (second arg, all optional): { width, height, steps, seed }.
-Use real generated images instead of grey placeholder boxes when it elevates the design
-(hero art, avatars, product shots, empty-state illustrations). Show a loading state while
-awaiting, and a graceful fallback if it rejects. Do NOT call external image APIs directly.
+PROMPT IT LIKE AN ART DIRECTOR — the prompt is everything. Stack: SUBJECT + STYLE/medium +
+LIGHTING + COLOR PALETTE + COMPOSITION/angle + MOOD, and end with "no text, no watermark".
+e.g. "a single ceramic pour-over coffee dripper, minimalist product photo, soft diffused
+studio light, warm cream and terracotta palette, centered on seamless background, shallow
+depth of field — no text, no watermark". Match { width, height } to the slot's aspect
+(wide hero vs square avatar) so nothing is stretched.
+KEEP IMAGERY COHESIVE: use ONE art style + a fixed \`seed\` across a screen so every image
+reads as one set (a hero, its section art, and cards should look like the same world), and
+weave the app's palette into every prompt. Cohesion is what separates "designed" from "stock".
+WHERE TO USE IT: hero/section backgrounds, product shots, avatars, empty-state illustrations,
+blog/card thumbnails, textures, og-style banners. Lazy-generate images near the viewport,
+show a loading state (skeleton/blur-up) while awaiting, cache/reuse the returned URL, and
+fall back gracefully (a gradient or solid) if it rejects. Do NOT call external image APIs directly.
 
 ================================================================================
 ## 6b. AI 3D-MODEL GENERATION — window.YIELD.model3d(prompt)
@@ -345,8 +357,16 @@ The frontend calls the deployed Worker URL, e.g. fetch("https://my-worker.<sub>.
   so write defensive code (null checks, try/catch around fetches, guard window.YIELD.*).
 
 ================================================================================
-## 10. DESIGN BASELINE (every app should look hand-crafted)
+## 10. DESIGN BASELINE (every app should look hand-crafted and genuinely beautiful)
 ================================================================================
+MAKE IT BEAUTIFUL, not merely correct — beauty is the product. Design like a top studio:
+a confident non-default palette (one dominant + one accent + neutrals), bold oversized
+headings with a clear type hierarchy, a real Google Font, generous whitespace, and depth
+(soft shadows, subtle gradients, occasional glass/blur). Add purposeful motion (entrance
+reveals, hover lifts, smooth transitions) that never blocks content. Lean on the built-in
+media to elevate visuals — real generated hero/section imagery via window.YIELD.image()
+instead of empty boxes, and 3D / video / scroll-to-play (sections 6b/6c/10c) when the story
+calls for it. The bar is Linear / Vercel / Stripe / Apple — a first glance should feel premium.
 - Style with Tailwind via CDN (<script src="https://cdn.tailwindcss.com"></script>) for
   all styling, OR a single well-organized styles.css. Pick ONE and be consistent.
 - Choose a real palette (not default blue), a tasteful Google Font (<link>), generous

@@ -522,6 +522,8 @@ a { color: inherit; text-decoration: none; }
 .fnd-ex pre { margin: .2rem 0 0; padding: .4rem .5rem; border-radius: 6px; overflow-x: auto; font-size: .74rem; white-space: pre-wrap; word-break: break-word; }
 .ex-bad pre { background: #2a1416; border: 1px solid #5a2530; color: #fca5a5; } .ex-ok pre { background: #102a1a; border: 1px solid #1e4d31; color: #86efac; }
 .fnd-ex span { font-size: .68rem; font-weight: 700; } .ex-bad span { color: #fca5a5; } .ex-ok span { color: #86efac; }
+.fnd-actions { display: flex; gap: .4rem; margin-top: .55rem; }
+.fnd-actions .btn { font-size: .78rem; }
 .sec-trend { margin: 1rem 0; color: var(--brand-2); }
 .trend-head { font-size: .76rem; color: var(--muted); margin-bottom: .3rem; }
 .trend-svg { width: 220px; height: 40px; }

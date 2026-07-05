@@ -882,21 +882,27 @@ function renderSecurityBadge() {
   b.textContent = a.codeHealthScore;
 }
 
-function findingCard(f) {
+function isFixable(f) { return !!(f.location && f.location.file && f.location.file.indexOf('.') > -1); }
+function findingCard(f, idx) {
   const loc = f.location ? `${esc(f.location.file || '')}:${f.location.line || 0}` : '';
   const ex = f.example && (f.example.vulnerable || f.example.safe)
     ? `<div class="fnd-ex"><div class="ex-bad"><span>✗ vulnerable</span><pre>${esc(f.example.vulnerable || '')}</pre></div><div class="ex-ok"><span>✓ safe</span><pre>${esc(f.example.safe || '')}</pre></div></div>`
     : '';
+  // Per-finding AI auto-fix — only in the final (non-streaming) render, and only when the
+  // finding points at a real file we can rewrite in this Yield project.
+  const canFix = idx != null && isFixable(f);
+  const actions = canFix ? `<div class="fnd-actions"><button class="btn primary sm" data-projfix="${idx}">✦ AI Fix &amp; apply</button></div>` : '';
   return `<div class="fnd ${sevClass(f.severity)}">
     <div class="fnd-head"><span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span>
       <b>${esc((f.type || '').replace(/_/g, ' '))}</b>
       <span class="fnd-cwe">${esc(f.cwe || '')}</span>
-      ${f.source === 'ai' ? `<span class="fnd-ai" title="Found by ${esc(f.model || 'AI')}">🤖 ${esc(f.model || 'AI')}</span>` : '<span class="fnd-pat">pattern</span>'}
+      ${f.source === 'ai' ? `<span class="fnd-ai" title="Found by ${esc(f.model || 'AI')}">✦ ${esc(f.model || 'AI')}</span>` : '<span class="fnd-pat">pattern</span>'}
       <span class="fnd-loc">${loc}</span></div>
     <div class="fnd-owasp">${esc(f.owasp || '')}</div>
     <div class="fnd-desc">${esc(f.description || '')}</div>
     ${f.fix ? `<div class="fnd-fix"><b>Fix:</b> ${esc(f.fix)}</div>` : ''}
     ${ex}
+    ${actions}
   </div>`;
 }
 
@@ -906,6 +912,7 @@ function renderSecurityPane() {
   const hasFiles = state.files && state.files.length;
   const sum = a ? a.summary : null;
   const score = a ? a.codeHealthScore : null;
+  const fixableN = a ? a.findings.filter(isFixable).length : 0;
   pane.innerHTML = `
     <div class="sec-top">
       <div class="sec-score ${a ? scoreClass(score) : ''}">
@@ -918,22 +925,80 @@ function renderSecurityPane() {
           <span class="sev warn">${sum.medium} medium</span>
           <span class="sev low">${sum.low} low</span>` : '<span class="muted">No scan yet.</span>'}
         <div class="sec-actions">
-          <button class="btn ghost sm" data-scan="basic" ${!hasFiles ? 'disabled' : ''}>⚡ Quick scan</button>
-          <button class="btn ghost sm" data-scan="detailed" ${!hasFiles ? 'disabled' : ''}>🔒 Deep scan (all models)</button>
-          <button class="btn ghost sm" data-scan="compliance" ${!hasFiles ? 'disabled' : ''}>🔒 Compliance (GDPR/PCI)</button>
+          <button class="btn ghost sm" data-scan="basic" ${!hasFiles ? 'disabled' : ''}>Quick scan</button>
+          <button class="btn ghost sm" data-scan="detailed" ${!hasFiles ? 'disabled' : ''}>Deep scan (all models)</button>
+          <button class="btn ghost sm" data-scan="compliance" ${!hasFiles ? 'disabled' : ''}>Compliance (GDPR/PCI)</button>
+          ${fixableN ? `<button class="btn primary sm" id="secFixAll">✦ Fix all &amp; apply (${fixableN})</button>` : ''}
         </div>
       </div>
     </div>
     <div id="secStatus" class="sec-status"></div>
     <div id="secFindings" class="sec-findings">${
-      a ? (a.findings.length ? a.findings.map(findingCard).join('') : '<div class="sec-clean">✓ No vulnerabilities found. Nice and clean.</div>')
+      a ? (a.findings.length ? a.findings.map((f, i) => findingCard(f, i)).join('') : '<div class="sec-clean">✓ No vulnerabilities found. Nice and clean.</div>')
         : (hasFiles ? '<div class="muted">Run a scan to audit this app for security vulnerabilities.</div>' : '<div class="muted">Build an app first, then audit it here.</div>')
     }</div>
     <div id="secTrend" class="sec-trend"></div>
-    <div class="sec-upsell">🛡 Want to scan your whole codebase? <a href="/security" target="_blank">Yield Security</a> scans your GitHub repos &amp; Yield projects with every top AI model — <a href="/security" target="_blank">learn more →</a></div>
-    <div class="sec-privacy">🔒 ${esc(a ? a.privacyNotice : 'Code is analyzed and discarded immediately. Only vulnerability metadata is retained.')}</div>`;
+    <div class="sec-upsell">Want to scan your whole codebase? <a href="/security" target="_blank">Yield Security</a> scans your GitHub repos &amp; Yield projects with every top AI model — and can auto-fix &amp; commit for you — <a href="/security" target="_blank">learn more →</a></div>
+    <div class="sec-privacy">${esc(a ? a.privacyNotice : 'Code is analyzed and discarded immediately. Only vulnerability metadata is retained.')}</div>`;
   pane.querySelectorAll('[data-scan]').forEach((b) => b.addEventListener('click', () => runScan(b.dataset.scan)));
+  pane.querySelectorAll('[data-projfix]').forEach((b) => b.addEventListener('click', () => projectFix(+b.dataset.projfix, b)));
+  const fa = $('#secFixAll'); if (fa) fa.addEventListener('click', () => projectFixAll(fa));
   loadAuditTrend();
+}
+
+// Recompute the severity summary after findings are fixed/removed (score needs a rescan).
+function recountSummary(list) {
+  const s = { critical: 0, high: 0, medium: 0, low: 0, total: list.length };
+  for (const f of list) { const k = f.severity;
+    if (k === 'CRITICAL') s.critical++; else if (k === 'HIGH') s.high++; else if (k === 'MEDIUM') s.medium++; else s.low++; }
+  return s;
+}
+// AI-fix ONE finding in the current Yield project: rewrite the file, save it to the project
+// (upsert + preview), and drop the finding. This is the "fix it through Yield" path.
+async function projectFix(idx, btn) {
+  const a = state.audit; if (!a || !state.projectId) return;
+  const f = a.findings[idx]; if (!f || !isFixable(f)) return;
+  const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'Fixing…';
+  try {
+    const r = await fetch('/api/security/fix', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: 'project', projectId: state.projectId, file: f.location.file, line: f.location.line, finding: f, apply: true }) })
+      .then((x) => x.json()).catch(() => ({}));
+    if (r.applied) {
+      a.findings = a.findings.filter((x) => x !== f); a.summary = recountSummary(a.findings);
+      await loadFiles(); refreshPreview();
+      toast(`Fixed ${f.location.file} — app updated. Re-scan to refresh the score.`);
+      renderSecurityBadge(); renderSecurityPane();
+    } else if (r.code === 'security_required') {
+      btn.disabled = false; btn.innerHTML = orig;
+      const st = $('#secStatus'); if (st) st.innerHTML = `AI auto-fix is part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`;
+    } else { btn.disabled = false; btn.innerHTML = orig; toast(r.applyError || r.error || 'Could not generate a fix.'); }
+  } catch (e) { btn.disabled = false; btn.innerHTML = orig; toast('Fix failed: ' + String(e)); }
+}
+// AI-fix EVERY fixable finding at once — one AI rewrite + save per file — then reload the app.
+async function projectFixAll(btn) {
+  const a = state.audit; if (!a || !state.projectId) return;
+  const fixable = a.findings.filter(isFixable);
+  if (!fixable.length) return;
+  if (!confirm(`AI-fix ${fixable.length} finding(s) and update your app's files automatically?`)) return;
+  const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'Fixing all…';
+  const st = $('#secStatus'); if (st) st.innerHTML = `<span class="spin"></span> Fixing & saving ${fixable.length} finding(s)…`;
+  try {
+    const r = await fetch('/api/security/fix-all', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: 'project', projectId: state.projectId, findings: fixable, apply: true }) })
+      .then((x) => x.json()).catch(() => ({}));
+    if (r.results) {
+      const fixedFiles = new Set(r.results.filter((x) => x.applied).map((x) => x.file));
+      if (fixedFiles.size) {
+        a.findings = a.findings.filter((f) => !fixedFiles.has(f.location && f.location.file)); a.summary = recountSummary(a.findings);
+        await loadFiles(); refreshPreview();
+        toast(`Fixed ${fixedFiles.size} file(s) — app updated. Re-scan to refresh the score.`);
+      } else { toast('Could not auto-fix these — try them individually.'); }
+      renderSecurityBadge(); renderSecurityPane();
+    } else if (r.code === 'security_required') {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (st) st.innerHTML = `AI auto-fix is part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`;
+    } else { btn.disabled = false; btn.innerHTML = orig; if (st) st.textContent = r.error || 'Bulk fix failed.'; }
+  } catch (e) { btn.disabled = false; btn.innerHTML = orig; if (st) st.textContent = 'Fix failed: ' + String(e); }
 }
 
 // Run a scan over the current files. "basic" is instant + local; deep/compliance stream
@@ -943,7 +1008,7 @@ async function runScan(level) {
   state.auditScanning = true;
   const status = $('#secStatus'); const list = $('#secFindings');
   const found = [];
-  const render = () => { if (list) list.innerHTML = found.length ? found.map(findingCard).join('') : '<div class="muted">Scanning…</div>'; };
+  const render = () => { if (list) list.innerHTML = found.length ? found.map((f) => findingCard(f)).join('') : '<div class="muted">Scanning…</div>'; };
   if (status) status.innerHTML = `<span class="spin"></span> ${level === 'basic' ? 'Scanning…' : 'Running through all top models, one at a time…'}`;
   render();
   try {

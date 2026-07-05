@@ -20,8 +20,7 @@
       <a href="#compare">Why Yield</a>
       <a href="#models">Models</a>
       <a href="#pricing">Pricing</a>
-      <a href="/security">🛡 Security</a>
-      <a href="/donate">💜 Donate</a>
+      <a href="/security">Security</a>
       <a href="/dashboard">Projects</a>
       <a class="btn ghost" href="/login">Sign in</a>
       <a class="btn primary" href="/app">Start building →</a>
@@ -30,51 +29,32 @@
 
   <main>
     <!-- ============================ HERO ============================ -->
-    <section class="hero lp-hero">
-      <div class="pill">100% free · only paused during High Usage Times</div>
-      <h1>Describe an app.<br /><span class="grad">Yield builds the whole thing.</span></h1>
-      <p class="sub">
-        Not just a single page — real, multi-file apps with a backend, a database,
-        AI agents and live preview. Your code lives on <b>your GitHub</b>, with full
-        version history. Everything base44, Lovable and Replit do — <b>free</b>.
-      </p>
-      <div class="hero-cta">
-        <a class="btn primary lg" href="/app">Open the builder →</a>
-        <a class="btn ghost lg" href="#features">See what it can do</a>
-      </div>
-      <div class="trust-row">
-        <span>✓ No credit card</span>
-        <span>✓ Your code on GitHub</span>
-        <span>✓ Frontier AI models</span>
-        <span>✓ Jailbreak-guarded</span>
-      </div>
-
-      <!-- Faux browser showing chat -> live preview -->
-      <div class="window">
-        <div class="window-chrome">
-          <i class="dot r"></i><i class="dot y"></i><i class="dot g"></i>
-          <div class="url-bar">yield.app/p/pomodoro-timer</div>
-          <div class="chrome-tag">live preview</div>
-        </div>
-        <div class="window-body">
-          <div class="wb-chat">
-            <div class="bubble user">make a pomodoro timer with a tomato that fills up as time passes</div>
-            <div class="bubble ai">
-              <span class="ai-step">Routing → <b>DeepSeek V4 Pro</b></span>
-              <span class="ai-step">Planning files…</span>
-              <span class="ai-step ok">index.html · app.js · styles.css ✓</span>
-              <span class="ai-step ok">Done — preview is live →</span>
-            </div>
+    <section class="hero">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <h1>Chat. It builds a real app — on your own GitHub.</h1>
+          <p class="sub">Free to build, free to ship — no credit card, ever. Multi-file apps, a database, AI agents, and version history, committed straight to your GitHub.</p>
+          <div class="hero-cta">
+            <a class="btn primary lg" href="/app">Start building free</a>
+            <a class="btn ghost" href="#features">See how it works</a>
           </div>
-          <div class="wb-preview">
-            <div class="mini-app">
-              <div class="ma-title">🍅 Focus Timer</div>
-              <div class="tomato">
-                <div class="tomato-fill"></div>
-                <span class="tomato-time">17:42</span>
-              </div>
-              <div class="ma-btns"><span class="ma-btn primary">Start</span><span class="ma-btn">Reset</span></div>
-            </div>
+          <div class="trust-line">GitHub-native · no vendor lock-in · no credit card</div>
+        </div>
+
+        <!-- Build Transcript: an honest look at the actual mechanism (prompt -> route -> files -> live preview) -->
+        <div class="transcript">
+          <div class="tr-status"><span class="tr-dot"></span> yield · building live</div>
+          <div class="tr-prompt">"build a pomodoro timer with a tomato that fills up as time passes"</div>
+          <span class="tr-route">→ routed to DeepSeek V4 Pro</span>
+          <div class="tr-files">
+            <div class="tr-file"><span class="ok">✓</span> index.html</div>
+            <div class="tr-file"><span class="ok">✓</span> app.js</div>
+            <div class="tr-file"><span class="ok">✓</span> styles.css</div>
+          </div>
+          <div class="tr-divider"></div>
+          <div class="tr-live">
+            <div class="tr-ring"></div>
+            <div class="tr-live-info"><b>Focus Timer</b><span>17:42 remaining</span></div>
           </div>
         </div>
       </div>
@@ -92,84 +72,65 @@
     </section>
 
     <!-- ========================= FEATURES ========================= -->
-    <section id="features" class="band">
+    <section id="features" class="feat-section">
       <h2>Everything you need to ship a real app</h2>
-      <p class="band-sub">Yield isn't a toy that spits out one HTML file. It builds, debugs and version-controls complete applications.</p>
-      <div class="feature-grid">
-        <div class="feat">
-          <div class="feat-ic">🧩</div>
-          <h3>Multi-file apps</h3>
-          <p>A real file tree — HTML, JS, CSS, components, a worker backend. Edit any file by hand or just ask the AI.</p>
+      <div class="feat-hero">
+        <h3>Six coder models. One Auto router that picks the right one.</h3>
+        <p>Every model shows its own pros and cons. Auto reads your prompt and reaches for the right one — or pick one yourself.</p>
+        <div class="model-chips">
+          <span class="model-chip on">Auto</span>
+          <span class="model-chip"><span class="dot"></span>Kimi K2.6</span>
+          <span class="model-chip"><span class="dot"></span>Qwen3.5 397B</span>
+          <span class="model-chip"><span class="dot"></span>DeepSeek V4 Pro</span>
+          <span class="model-chip"><span class="dot"></span>GLM 5.1</span>
         </div>
-        <div class="feat">
-          <div class="feat-ic">🐙</div>
-          <h3>Your code on GitHub</h3>
-          <p>Link a repo and every build is committed to <b>your</b> GitHub. Storage is yours, not ours — and it's truly portable.</p>
+      </div>
+      <div class="feat-list">
+        <div class="feat-row">
+          <div>
+            <svg class="ic" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="7" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="8" y="3" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+            <h3>Multi-file apps, for real</h3>
+          </div>
+          <p>A real file tree — HTML, JS, CSS, components, a Worker backend. Edit any file by hand or just ask.</p>
         </div>
-        <div class="feat">
-          <div class="feat-ic">⏪</div>
-          <h3>Version history & rollback</h3>
+        <div class="feat-row">
+          <div>
+            <svg class="ic" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="6" y1="3" x2="6" y2="21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 8C6 12 10 12 14 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="6" cy="5" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="19" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="12" r="2" stroke="currentColor" stroke-width="1.5"/></svg>
+            <h3>Your code, your GitHub</h3>
+          </div>
+          <p>Every build commits straight to your own repo. Full ownership, full portability, zero lock-in.</p>
+        </div>
+        <div class="feat-row">
+          <div><h3>Version history &amp; rollback</h3></div>
           <p>Every change is a commit. Browse past versions and roll back to any point in one click.</p>
         </div>
-        <div class="feat">
-          <div class="feat-ic">🤖</div>
-          <h3>AI agents per app</h3>
-          <p>The AI can create helper agents your app calls at runtime — chatbots, classifiers, generators — wired in automatically.</p>
+        <div class="feat-row">
+          <div>
+            <svg class="ic" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M10 8.5L16 12L10 15.5V8.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <h3>Live preview, instantly</h3>
+          </div>
+          <p>Watch your app render as it's built, in a sandboxed preview — no refresh, no wait.</p>
         </div>
-        <div class="feat">
-          <div class="feat-ic">🗄️</div>
-          <h3>Database & backend</h3>
-          <p>Entities for storing data, end-user login via Supabase, and serverless Worker backends for anything heavier.</p>
+        <div class="feat-row">
+          <div><h3>AI agents per app</h3></div>
+          <p>The AI can spin up helper agents your app calls at runtime — chatbots, classifiers, generators.</p>
         </div>
-        <div class="feat">
-          <div class="feat-ic">🎨</div>
-          <h3>AI image generation</h3>
-          <p>Apps generate real images on the fly with <code>window.YIELD.image()</code> — powered by FLUX, no setup.</p>
+        <div class="feat-row">
+          <div><h3>Auto bug-checker</h3></div>
+          <p>Runtime errors are caught and fed back to the AI, which fixes them itself — often before you notice.</p>
         </div>
-        <div class="feat">
-          <div class="feat-ic">🎯</div>
-          <h3>Click-to-edit</h3>
-          <p>Point at any element in the preview and tell the AI what to change. No hunting through code.</p>
+        <div class="feat-row">
+          <div><h3>Background builds</h3></div>
+          <p>Close the tab — the build keeps going. Queue follow-ups and come back to a finished app.</p>
         </div>
-        <div class="feat">
-          <div class="feat-ic">🛟</div>
-          <h3>Auto bug-checker</h3>
-          <p>Runtime errors are caught and fed back to the AI, which fixes them itself — before you even notice.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-ic">🌙</div>
-          <h3>Background builds</h3>
-          <p>Close the tab — the build keeps going. Queue follow-up prompts and come back to a finished app.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-ic">🧠</div>
-          <h3>See the thinking</h3>
-          <p>Watch the AI's plan and reasoning as it works, so you always know what it's about to build.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-ic">🔀</div>
-          <h3>Pick your model</h3>
-          <p>Six coder models plus an Auto router that reads your prompt and picks the best one — with pros & cons shown.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-ic">📦</div>
-          <h3>Export & deploy</h3>
-          <p>Download the whole app as a <code>.zip</code>, or follow the guide to deploy it yourself for free.</p>
+        <div class="feat-row">
+          <div><h3>Export &amp; deploy anywhere</h3></div>
+          <p>Download the whole app as a .zip, or deploy it yourself for free. No lock-in either way.</p>
         </div>
       </div>
     </section>
 
-    <!-- ======================= HOW IT WORKS ======================= -->
-    <section id="how" class="band alt">
-      <h2>How it works</h2>
-      <div class="grid3">
-        <div class="card"><div class="num">1</div><h3>Chat your idea</h3><p>Describe what you want in plain English. Pick a model, or let <b>Auto</b> choose the best one for the job.</p></div>
-        <div class="card"><div class="num">2</div><h3>Watch it build</h3><p>See the plan, the files appearing, and the app rendering live in a sandboxed preview as it's written.</p></div>
-        <div class="card"><div class="num">3</div><h3>Refine, save, ship</h3><p>Tweak by chatting or by editing code, save to GitHub with full history, then export or deploy for free.</p></div>
-      </div>
-    </section>
-
-    <!-- ======================== COMPARISON ======================== -->
+    <!-- ======================= COMPARISON ======================= -->
     <section id="compare" class="band">
       <h2>Why Yield</h2>
       <p class="band-sub">The same superpowers as the paid app builders — without the paywall, and with your code in your hands.</p>
@@ -188,7 +149,7 @@
             <tr><td>Price to start</td><td class="me"><b>Free</b></td><td>Paid</td><td>Paid</td><td>Paid</td></tr>
             <tr><td>Full multi-file apps</td><td class="me">✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
             <tr><td>Your code on your GitHub</td><td class="me">✓</td><td>Partial</td><td>✓</td><td>Partial</td></tr>
-            <tr><td>Version history & rollback</td><td class="me">✓</td><td>✓</td><td>Partial</td><td>✓</td></tr>
+            <tr><td>Version history &amp; rollback</td><td class="me">✓</td><td>✓</td><td>Partial</td><td>✓</td></tr>
             <tr><td>AI agents per app</td><td class="me">✓</td><td>Partial</td><td>—</td><td>—</td></tr>
             <tr><td>AI image generation built in</td><td class="me">✓</td><td>Partial</td><td>Partial</td><td>—</td></tr>
             <tr><td>Background builds (close the tab)</td><td class="me">✓</td><td>—</td><td>—</td><td>Partial</td></tr>
@@ -209,87 +170,41 @@
 
     <!-- ========================= SECURITY PRODUCT ========================= -->
     <section id="security" class="band">
-      <span class="pill">🛡 New · sold separately</span>
       <h2>Yield Security — find vulnerabilities before attackers do</h2>
-      <p class="band-sub">A standalone security product: scan your <b>GitHub repos</b> and <b>Yield projects</b> for real, exploitable flaws — checked by a deterministic engine <b>and every top AI model, one at a time</b>. Your code is analyzed and discarded immediately; only the findings are kept.</p>
-      <div class="feature-grid">
-        <div class="feat">
-          <div class="feat-ic">🔗</div>
-          <h3>Scan any source</h3>
-          <p>Connect a GitHub repo or pick one of your Yield projects. We pull the code, scan it, and forget it — only metadata is stored.</p>
+      <p class="band-sub">A standalone security product: scan your GitHub repos and Yield projects for real, exploitable flaws — checked by a deterministic engine and every top AI model. Your code is analyzed and discarded immediately; only the findings are kept.</p>
+      <div class="feat-hero">
+        <h3>SAST · SCA · IaC · secrets · licenses, plus one-click AI auto-fix</h3>
+        <p>A fast pattern engine plus an AI ensemble scan every commit. Track a 0–100 code health score, triage findings, and apply the fix straight to your repo.</p>
+        <div class="hero-cta" style="margin-top:1.2rem">
+          <a class="btn primary" href="/security">Explore Yield Security →</a>
+          <a class="btn ghost" href="/security">See pricing</a>
         </div>
-        <div class="feat">
-          <div class="feat-ic">🤖</div>
-          <h3>Every top model</h3>
-          <p>A fast pattern engine plus an AI ensemble — each top model audits the code and findings are merged, so agreement raises confidence.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-ic">🧪</div>
-          <h3>SAST · SCA · IaC</h3>
-          <p>Code flaws (OWASP/CWE), known-vulnerable dependencies with CVEs, and infra misconfigs — Dockerfiles, GitHub Actions, committed .env.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-ic">✨</div>
-          <h3>One-click AI fix</h3>
-          <p>Generate the corrected file for any finding and apply it straight to your repo or project. Triage false positives, export SARIF/JSON/reports.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-ic">🎯</div>
-          <h3>Low false positives</h3>
-          <p>Parameterized queries, sanitized HTML, env-var secrets and constant-time compares are recognized as safe — not flagged.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-ic">📈</div>
-          <h3>Track your code health</h3>
-          <p>Every scan records a 0–100 health score. Watch it climb as you fix issues — metadata only, never your source.</p>
-        </div>
-      </div>
-      <div class="hero-cta" style="margin-top:2rem">
-        <a class="btn primary lg" href="/security">Explore Yield Security →</a>
-        <a class="btn ghost lg" href="/security">See pricing</a>
       </div>
     </section>
 
     <!-- ========================= PRICING ========================= -->
     <section id="pricing" class="band">
       <h2>Pricing</h2>
-      <p class="band-sub">Free for everyone. One simple paid tier keeps the lights on during the busiest times.</p>
-      <div class="grid2">
-        <div class="card price">
-          <h3>Free</h3>
-          <div class="amount">$0</div>
-          <ul>
-            <li>✓ All coder models + Auto router</li>
-            <li>✓ Multi-file apps, agents & database</li>
-            <li>✓ Live preview & manual editing</li>
-            <li>✓ Your code on GitHub + version history</li>
-            <li>✓ AI image generation</li>
-            <li>· Paused during High Usage Times</li>
-          </ul>
-          <a class="btn ghost" href="/app">Start free</a>
-        </div>
-        <div class="card price featured">
-          <div class="tag">Keeps Yield alive</div>
-          <h3>Priority Access</h3>
-          <div class="amount">$20<span>/mo</span></div>
-          <ul>
-            <li>✓ Everything in Free</li>
-            <li>✓ <b>Works during High Usage Times</b></li>
-            <li>✓ Unlimited daily generations</li>
-            <li>✓ Priority queue</li>
-            <li>✓ Directly funds the free tier</li>
-          </ul>
-          <a class="btn primary" href="/app?upgrade=1">Get Priority</a>
-        </div>
+      <div class="price-teaser">
+        <div class="amt">$0</div>
+        <p class="sub">Free to build, free to ship. All six coder models, unlimited projects, your own GitHub.</p>
+        <ul>
+          <li>All six coder models, plus the Auto router</li>
+          <li>Multi-file apps, a database, and AI agents</li>
+          <li>Your code committed to your own GitHub</li>
+          <li>Full version history and one-click rollback</li>
+          <li>AI image generation, built in</li>
+        </ul>
+        <a class="btn primary lg" href="/app">Start building free</a>
       </div>
       <p class="fineprint">
         <b>What's "High Usage Times"?</b> Yield is free to use. But our hosting only stays free up to a monthly budget.
         When traffic gets so high that it would start costing real money, Yield switches to High Usage Times: generation pauses
-        for free accounts until the next month, while Priority members keep full access — their $20/mo is exactly what funds
+        for free accounts until the next month, while Priority members ($20/mo) keep full access — that's exactly what funds
         those busy periods. No surprise bills, and the app stays free the rest of the time.
       </p>
-      <p class="center" style="margin-top:1.2rem">
-        Not ready for a subscription but want to help anyway? <a class="toplink" href="/donate"><b>💜 Make a one-time donation →</b></a>
+      <p style="margin-top:1.2rem">
+        Not ready for a subscription but want to help anyway? <a class="toplink" href="/donate"><b>Make a one-time donation →</b></a>
       </p>
     </section>
 
@@ -303,7 +218,7 @@
         </details>
         <details>
           <summary>Where does my code live?</summary>
-          <p>On <b>your</b> GitHub. Link or create a repo and every build is committed there, so you own your code, your history, and you can clone or deploy it anywhere — no lock-in.</p>
+          <p>On your GitHub. Link or create a repo and every build is committed there, so you own your code, your history, and you can clone or deploy it anywhere — no lock-in.</p>
         </details>
         <details>
           <summary>How does Yield compare to base44, Lovable and Replit?</summary>
@@ -335,11 +250,11 @@
   <footer class="foot">
     <span>◆ Yield — free AI app builder</span>
     <span>
-      <a class="toplink" href="/pricing">Pricing</a> ·
-      <a class="toplink" href="/donate">Donate</a> ·
-      <a class="toplink" href="/dashboard">Projects</a> ·
-      <a class="toplink" href="/status">Status</a> ·
-      <a class="toplink" href="/terms">Terms</a> ·
+      <a class="toplink" href="/pricing">Pricing</a>
+      <a class="toplink" href="/donate">Donate</a>
+      <a class="toplink" href="/dashboard">Projects</a>
+      <a class="toplink" href="/status">Status</a>
+      <a class="toplink" href="/terms">Terms</a>
       <a class="toplink" href="/privacy">Privacy</a>
     </span>
     <span>Free to start · Your code stays yours</span>

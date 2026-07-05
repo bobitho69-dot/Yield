@@ -17,11 +17,12 @@ import { createSecurityCheckout } from '../lib/billing';
 import {
   getProject, getProjectFiles, listProjects, getGithubAuth, listAuditRunsBySource,
   listAuditIgnores, addAuditIgnore, removeAuditIgnore, upsertFile, setProjectCode,
-  addMonitor, listMonitors, getMonitor, getMonitorByRepo, removeMonitor, touchMonitor, listAllMonitors,
+  addMonitor, listMonitors, getMonitor, getMonitorByRepo, removeMonitor, touchMonitor, listAllMonitors, setMonitorAutoFix,
   getIntegrations, setIntegrations, overviewStats, recordAuditRun, recentAuditRuns, latestFindingTypes, getUser, type MonitorRow,
 } from '../lib/db';
 import { decryptToken, encryptToken, listRepos, listCommits, getCommitFiles, getRepoFile, putRepoFile, createWebhook, deleteWebhook } from '../lib/github';
-import { notifyScan, type IntegrationConfig } from '../lib/integrations';
+import { notifyScan, postSlack, type IntegrationConfig } from '../lib/integrations';
+import type { AuditFinding } from '../lib/audit';
 import { computeAudit, scansUsedToday } from './audit';
 import { chat } from '../lib/nvidia';
 import { resolveModel } from '../config/models';
@@ -46,6 +47,7 @@ export async function handleSecurity(req: Request, c: Ctx, action?: string): Pro
   if (action === 'integrations') return integrations(req, c);
   if (action === 'ignores') return ignores(req, c);
   if (action === 'fix' && req.method === 'POST') return fix(req, c);
+  if (action === 'fix-all' && req.method === 'POST') return fixAll(req, c);
   if (action === 'checkout' && req.method === 'POST') return checkout(c);
   if (action === 'scan' && req.method === 'POST') return scan(req, c);
   return error(404, 'Not found');
@@ -86,8 +88,13 @@ async function monitors(req: Request, c: Ctx): Promise<Response> {
       try { hookId = await createWebhook(token, repo, `${c.env.APP_URL}/api/security/webhook`, c.env.GITHUB_WEBHOOK_SECRET); }
       catch (e: any) { return error(502, `Could not add the webhook: ${String(e?.message || e).slice(0, 160)}`); }
     }
-    await addMonitor(c.env, { user_id: c.user.id, repo, branch: String(body.branch || 'main'), hook_id: hookId });
+    await addMonitor(c.env, { user_id: c.user.id, repo, branch: String(body.branch || 'main'), hook_id: hookId, auto_fix: body.auto_fix === true });
     return json({ ok: true, monitoring: repo, scanOnPush: !!hookId });
+  }
+  if (req.method === 'PATCH') {
+    if (!(await getMonitor(c.env, c.user.id, repo))) return error(404, 'Not monitored');
+    await setMonitorAutoFix(c.env, c.user.id, repo, body.auto_fix === true);
+    return json({ ok: true });
   }
   if (req.method === 'DELETE') {
     const m = await getMonitor(c.env, c.user.id, repo);
@@ -242,20 +249,28 @@ function stripFences(t: string): string {
   if (m) s = m[1];
   return s.trim();
 }
-async function aiFix(c: Ctx, path: string, content: string, f: any): Promise<{ fixed: string; explanation: string } | null> {
-  const sys = `You are a senior security engineer. The given file "${path}" contains a ${f.type} vulnerability (${f.cwe}) at/near line ${f.line}: ${f.description || ''}. Return the COMPLETE corrected contents of the file that fixes ONLY this vulnerability while preserving all other behavior, structure, and style. Output ONLY the full file content — no markdown fences, no commentary.`;
-  const key = c.env.YIELDNVIDIAAIKEY || c.env.NVIDIA_API_KEY;
+type FixTarget = { type: string; cwe?: string; line: number; description?: string };
+async function aiFixCore(env: Ctx['env'], path: string, content: string, findings: FixTarget[]): Promise<{ fixed: string; explanation: string } | null> {
+  const plural = findings.length > 1;
+  const list = findings.map((f) => `- ${f.type}${f.cwe ? ` (${f.cwe})` : ''} near line ${f.line}: ${f.description || ''}`).join('\n');
+  const sys = `You are a senior security engineer. The given file "${path}" contains the following ${plural ? 'vulnerabilities' : 'vulnerability'}:\n${list}\nReturn the COMPLETE corrected contents of the file that fixes ${plural ? 'ALL of the above' : 'this vulnerability'} while preserving all other behavior, structure, and style. Output ONLY the full file content — no markdown fences, no commentary.`;
+  const key = env.YIELDNVIDIAAIKEY || env.NVIDIA_API_KEY;
   for (const id of ['nemotron-3-ultra', 'glm-5.1', 'deepseek-v4-flash']) {
     try {
       const m = resolveModel(id);
       const { text } = await chat({
-        baseUrl: c.env.NVIDIA_CHAT_BASE, apiKey: key, apiKeyBackup: c.env.NVIDIA_API_KEY_BACKUP || undefined,
+        baseUrl: env.NVIDIA_CHAT_BASE, apiKey: key, apiKeyBackup: env.NVIDIA_API_KEY_BACKUP || undefined,
         model: m.modelId, messages: [{ role: 'system', content: sys }, { role: 'user', content: content.slice(0, 40000) }],
         temperature: 0.1, max_tokens: 9000, timeoutMs: 120000,
       });
       const fixed = stripFences(text);
       if (fixed && fixed.length > 20 && fixed !== content.trim()) {
-        return { fixed, explanation: `Rewrote ${path} to fix ${f.type} (${f.cwe}) near line ${f.line}.` };
+        return {
+          fixed,
+          explanation: plural
+            ? `Rewrote ${path} to fix ${findings.length} findings.`
+            : `Rewrote ${path} to fix ${findings[0].type}${findings[0].cwe ? ` (${findings[0].cwe})` : ''} near line ${findings[0].line}.`,
+        };
       }
     } catch { /* try the next model */ }
   }
@@ -295,7 +310,7 @@ async function fix(req: Request, c: Ctx): Promise<Response> {
     content = ff.content;
   }
 
-  const out = await aiFix(c, filePath, content, { type: finding.type, cwe: finding.cwe, line: finding.location?.line || body.line || 0, description: finding.description });
+  const out = await aiFixCore(c.env, filePath, content, [{ type: finding.type, cwe: finding.cwe, line: finding.location?.line || body.line || 0, description: finding.description }]);
   if (!out) return error(502, 'Could not generate a fix — try again or fix it manually.');
 
   let applied = false;
@@ -314,6 +329,107 @@ async function fix(req: Request, c: Ctx): Promise<Response> {
   return json({ file: filePath, fixedContent: out.fixed, explanation: out.explanation, applied });
 }
 
+// POST /api/security/fix-all — AI auto-fix every given finding, grouped by file (one AI
+// call + one commit per file), and apply. "For you" bulk version of /fix — the whole reason
+// Yield Security can push fixes on your behalf instead of one click at a time.
+const FIX_ALL_MAX_FILES = 12;
+async function fixAll(req: Request, c: Ctx): Promise<Response> {
+  const gate = await scanGate(c, true); // one fair-use slot for the whole batch, not per file
+  if (!gate.ok) return error(gate.status, gate.error || 'Locked', { code: gate.code });
+  const body = (await req.json().catch(() => ({}))) as any;
+  const findings: any[] = Array.isArray(body.findings) ? body.findings : [];
+  const apply = body.apply === true;
+
+  const byFile = new Map<string, FixTarget[]>();
+  for (const f of findings) {
+    const file = String(f.location?.file || f.file || '');
+    if (!file || file.indexOf('.') < 0) continue; // skip anything without a real path
+    if (!byFile.has(file)) byFile.set(file, []);
+    byFile.get(file)!.push({ type: f.type, cwe: f.cwe, line: f.location?.line || 0, description: f.description });
+  }
+  if (!byFile.size) return error(400, 'No fixable findings (missing file paths).');
+
+  let repoCtx: { token: string; repo: string; branch: string } | null = null;
+  let project: { id: string } | null = null;
+  let projectFiles: { path: string; content: string }[] | null = null;
+  if (body.source === 'repo') {
+    if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
+    const repo = String(body.repo || '');
+    const auth = await getGithubAuth(c.env, c.user.id);
+    if (!auth) return error(400, 'Connect GitHub first.', { code: 'github_not_connected' });
+    const token = await decryptToken(c.env, auth.tokenEnc);
+    repoCtx = { token, repo, branch: String(body.branch || 'main') };
+  } else {
+    const p = await getProject(c.env, String(body.projectId || ''));
+    if (!p) return error(404, 'Project not found');
+    if (c.user && p.user_id !== c.user.id) return error(403, 'Not your project');
+    project = { id: p.id };
+    projectFiles = await getProjectFiles(c.env, p);
+  }
+
+  const entries = [...byFile.entries()];
+  const skipped = Math.max(0, entries.length - FIX_ALL_MAX_FILES);
+  const results: { file: string; findings: number; applied: boolean; error?: string }[] = [];
+  for (const [file, fs] of entries.slice(0, FIX_ALL_MAX_FILES)) {
+    try {
+      let content = '';
+      if (repoCtx) {
+        const rf = await getRepoFile(repoCtx.token, repoCtx.repo, repoCtx.branch, file);
+        if (!rf) { results.push({ file, findings: fs.length, applied: false, error: 'not found in repo' }); continue; }
+        content = rf.content;
+      } else {
+        const ff = projectFiles!.find((x) => x.path === file);
+        if (!ff) { results.push({ file, findings: fs.length, applied: false, error: 'not found in project' }); continue; }
+        content = ff.content;
+      }
+      const out = await aiFixCore(c.env, file, content, fs);
+      if (!out) { results.push({ file, findings: fs.length, applied: false, error: 'AI fix failed' }); continue; }
+      let applied = false;
+      if (apply) {
+        if (repoCtx) {
+          await putRepoFile(repoCtx.token, repoCtx.repo, repoCtx.branch, file, out.fixed, `Yield Security: auto-fix ${fs.length} finding${fs.length > 1 ? 's' : ''} in ${file}`);
+          applied = true;
+        } else if (project) {
+          await upsertFile(c.env, project.id, file, out.fixed);
+          if (file === 'index.html') await setProjectCode(c.env, project.id, out.fixed);
+          applied = true;
+        }
+      }
+      results.push({ file, findings: fs.length, applied });
+    } catch (e: any) {
+      results.push({ file, findings: fs.length, applied: false, error: String(e?.message || e).slice(0, 200) });
+    }
+  }
+  return json({ results, filesFixed: results.filter((r) => r.applied).length, skipped });
+}
+
+// Auto-fix critical/high findings on a monitored repo and commit directly (bounded, best-effort).
+// This is the "push and commit the fixes for you" path — no manual click required.
+const AUTO_FIX_MAX_FILES = 5;
+const AUTO_FIX_MAX_FINDINGS = 10;
+async function autoFixMonitor(env: Ctx['env'], mon: MonitorRow, token: string, branch: string, findings: AuditFinding[]): Promise<number> {
+  const fixable = findings.filter((f) => (f.severity === 'CRITICAL' || f.severity === 'HIGH') && !!f.location?.file && f.location.file.indexOf('.') > -1).slice(0, AUTO_FIX_MAX_FINDINGS);
+  if (!fixable.length) return 0;
+  const byFile = new Map<string, FixTarget[]>();
+  for (const f of fixable) {
+    const file = f.location.file;
+    if (!byFile.has(file)) byFile.set(file, []);
+    byFile.get(file)!.push({ type: f.type, cwe: f.cwe, line: f.location.line, description: f.description });
+  }
+  let fixedFiles = 0;
+  for (const [file, fs] of [...byFile.entries()].slice(0, AUTO_FIX_MAX_FILES)) {
+    try {
+      const rf = await getRepoFile(token, mon.repo, branch, file);
+      if (!rf) continue;
+      const out = await aiFixCore(env, file, rf.content, fs);
+      if (!out) continue;
+      await putRepoFile(token, mon.repo, branch, file, out.fixed, `Yield Security: auto-fix ${fs.length} finding${fs.length > 1 ? 's' : ''} in ${file}`);
+      fixedFiles++;
+    } catch { /* one file failing must not break the rest */ }
+  }
+  return fixedFiles;
+}
+
 // Scan one monitored repo (at `sha`, or latest on its branch), record it, and notify.
 async function scanRepoMonitor(env: Ctx['env'], mon: MonitorRow, appUrl: string, sha?: string): Promise<void> {
   try {
@@ -328,8 +444,14 @@ async function scanRepoMonitor(env: Ctx['env'], mon: MonitorRow, appUrl: string,
     const result = await computeAudit(env, files, 'basic');
     await recordAuditRun(env, { source: `repo:${mon.repo}`, user_id: mon.user_id, level: 'basic', score: result.codeHealthScore, summary: result.summary, findings: result.findings });
     await touchMonitor(env, mon.repo, result.codeHealthScore);
+
+    const fixedFiles = mon.auto_fix ? await autoFixMonitor(env, mon, token, branch, result.findings) : 0;
+
     const integ = await getIntegrations(env, mon.user_id);
     await notifyScan(env, (integ as IntegrationConfig | null), { repo: mon.repo, sha: useSha, githubToken: token, appUrl }, result);
+    if (fixedFiles > 0 && integ?.slack_webhook) {
+      await postSlack(integ.slack_webhook, `🔧 Yield Security auto-fixed ${fixedFiles} file${fixedFiles > 1 ? 's' : ''} in ${mon.repo} and pushed the commit to ${branch}.`);
+    }
   } catch { /* one repo failing must not break the batch */ }
 }
 

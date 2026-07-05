@@ -70,14 +70,17 @@ async function postChat(url: string, body: string, signal: AbortSignal, opts: Ch
 function isForeign(baseUrl: string): boolean {
   return !/integrate\.api\.nvidia\.com/i.test(baseUrl || '');
 }
-// Build the JSON request body. Drops `reasoning_effort` for foreign providers (an
-// NVIDIA/OpenAI-only param that others 400 on). In `safe` mode (a 400-retry) it also drops
-// `top_p` and any extra params, clamps temperature to [0,1], caps max_tokens to a widely
-// accepted 8192, and can switch the token param name — a conservative body that most
-// OpenAI-compatible gateways (incl. Anthropic-backed models on ZenMux) accept.
-// Collapse consecutive same-role messages into one (join text with a blank line). Anthropic
-// (and gateways fronting it) require a single system message + alternating user/assistant —
-// our prompts send two system messages, which trips them. Only merges string content.
+// Anthropic models (Claude, via ZenMux's anthropic/* ids) have hard API requirements that
+// are NOT just "foreign provider quirks" — they apply on every request, not only a retry:
+//  - Newer Claude models (Opus 4.7+, Sonnet 5) reject sampling params outright. The fix is
+//    to OMIT temperature/top_p/top_k entirely, not send a tuned/clamped value.
+//  - The Messages API allows only ONE system message + strictly alternating user/assistant.
+//  - max_tokens is REQUIRED (there's no "unbounded" on Anthropic's own API).
+function isAnthropicModel(modelId: string): boolean {
+  return /^anthropic\//i.test(modelId) || /claude/i.test(modelId);
+}
+// Collapse consecutive same-role messages into one (join text with a blank line) — needed
+// for Anthropic's single-system/alternating-roles rule; our prompts send two system messages.
 function mergeMessages(messages: ChatMessage[]): ChatMessage[] {
   const out: ChatMessage[] = [];
   for (const m of messages) {
@@ -90,25 +93,33 @@ function mergeMessages(messages: ChatMessage[]): ChatMessage[] {
   }
   return out;
 }
+// Build the JSON request body. Anthropic models ALWAYS get the constraints above applied
+// (not just on a 400-retry). For other foreign providers, `reasoning_effort` (an NVIDIA/
+// OpenAI-only param) is dropped, and `safe` mode (a 400-retry) sends a conservative body —
+// no top_p/extra params, clamped temperature, a widely-accepted 8192 token cap.
 function buildBody(opts: ChatOptions, stream: boolean, over: { tokenParam?: string; safe?: boolean }): string {
+  const anthropic = isAnthropicModel(opts.model);
   const extra: Record<string, unknown> = { ...(opts.extra || {}) };
   if (isForeign(opts.baseUrl) && 'reasoning_effort' in extra) delete extra.reasoning_effort;
   const tokenParam = over.tokenParam || 'max_tokens';
-  // Full mode honors the caller (omit = no cap / "inf"). Safe mode sends a compatibility cap
-  // because Anthropic REQUIRES max_tokens and free models cap output.
-  const maxTok = over.safe ? Math.min(8192, opts.max_tokens ?? 8192) : opts.max_tokens;
+  // Full mode honors the caller (omit = no cap / "inf"). Anthropic REQUIRES max_tokens, so it
+  // always gets a value. Safe mode also sends a compatibility cap (free models cap output).
+  const maxTok = anthropic ? (opts.max_tokens ?? 8192) : (over.safe ? Math.min(8192, opts.max_tokens ?? 8192) : opts.max_tokens);
   const body: Record<string, unknown> = {
     model: opts.model,
-    // Safe mode merges consecutive same-role messages (Anthropic needs one system + alternation).
-    messages: over.safe ? mergeMessages(opts.messages) : opts.messages,
-    // Anthropic models 400 when BOTH temperature and top_p are set → in safe mode send
-    // only temperature (clamped). Full mode keeps both (fine for NVIDIA / most models).
-    temperature: over.safe ? Math.min(1, Math.max(0, opts.temperature ?? 0.4)) : (opts.temperature ?? 0.4),
-    ...(over.safe ? {} : { top_p: opts.top_p ?? 0.9 }),
+    // Anthropic always gets merged messages (its hard single-system/alternation rule);
+    // other providers only need it as part of the conservative safe-mode retry.
+    messages: (anthropic || over.safe) ? mergeMessages(opts.messages) : opts.messages,
     ...(maxTok ? { [tokenParam]: maxTok } : {}), // omit = no cap
     stream,
-    ...(over.safe ? {} : extra),
   };
+  // Sampling params: Anthropic models reject them outright → omit entirely (every attempt,
+  // not just the retry). Other providers keep temperature (+ top_p unless in safe mode).
+  if (!anthropic) {
+    body.temperature = over.safe ? Math.min(1, Math.max(0, opts.temperature ?? 0.4)) : (opts.temperature ?? 0.4);
+    if (!over.safe) body.top_p = opts.top_p ?? 0.9;
+  }
+  if (!anthropic && !over.safe) Object.assign(body, extra);
   return JSON.stringify(body);
 }
 // A foreign provider 400 usually means it rejected one of our params (top_p+temperature,

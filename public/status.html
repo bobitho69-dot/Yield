@@ -36,6 +36,7 @@
     section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 1.1rem; overflow: hidden; }
     .sec-head { padding: .8rem 1.15rem; font-weight: 700; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
     .sec-head .count { color: var(--muted); letter-spacing: 0; text-transform: none; font-weight: 600; }
+    .sub-head { padding: .7rem 1.15rem .5rem; font-weight: 700; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-top: 1px solid var(--line); background: var(--panel-2); }
     .row { display: flex; align-items: center; gap: .8rem; padding: .8rem 1.15rem; border-bottom: 1px solid var(--line); }
     .row:last-child { border-bottom: 0; }
     .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
@@ -113,11 +114,13 @@
         <div>${healthy ? 'All systems operational' : 'Some systems are degraded'}
           <small>${ais.up}/${ais.total} AIs operational · ${d.authEnabled ? 'Accounts required' : 'Open testing mode'}</small></div>`;
 
-      // Each AI on its own line
-      const aiRows = (ais.models || []).map((m) =>
-        row(m.label, m.status, m.status === 'operational' ? `${m.latencyMs} ms` : look(m.status)[1])
-      ).join('') || row('No AIs configured', 'unknown', 'n/a');
-      $('#ai').innerHTML = `<div class="sec-head"><span>AIs</span><span class="count">${ais.up}/${ais.total} up</span></div>${aiRows}`;
+      // Each AI on its own line, split into coder models and utility AIs (router / vision / guard).
+      const line = (m) => row(m.label, m.status, m.status === 'operational' ? `${m.latencyMs} ms` : look(m.status)[1]);
+      const coders = (ais.models || []).filter((m) => m.group !== 'utility');
+      const utils = (ais.models || []).filter((m) => m.group === 'utility');
+      const coderRows = coders.map(line).join('') || row('No AIs configured', 'unknown', 'n/a');
+      const utilRows = utils.length ? `<div class="sub-head">Utility AIs</div>${utils.map(line).join('')}` : '';
+      $('#ai').innerHTML = `<div class="sec-head"><span>Coder models</span><span class="count">${ais.up}/${ais.total} up</span></div>${coderRows}${utilRows}`;
 
       // Platform services (named by function, no vendor names)
       const pf = d.platform || {};

@@ -10,7 +10,7 @@
 // analyzed in-memory, and discarded — only finding metadata is stored.
 
 import type { Ctx } from '../types';
-import { json, error, hmac, safeEqual } from '../lib/response';
+import { json, error, hmac, safeEqual, newId, now } from '../lib/response';
 import { PRIVACY_NOTICE, type AuditInput, type AuditLevel } from '../lib/audit';
 import { auditResponse, securityTier, scanGate, FREE_SCANS_PER_DAY, PRO_SCANS_PER_DAY } from './audit';
 import { createSecurityCheckout } from '../lib/billing';
@@ -48,6 +48,7 @@ export async function handleSecurity(req: Request, c: Ctx, action?: string): Pro
   if (action === 'ignores') return ignores(req, c);
   if (action === 'fix' && req.method === 'POST') return fix(req, c);
   if (action === 'fix-all' && req.method === 'POST') return fixAll(req, c);
+  if (action === 'fix-status') return fixStatus(c);
   if (action === 'checkout' && req.method === 'POST') return checkout(c);
   if (action === 'scan' && req.method === 'POST') return scan(req, c);
   return error(404, 'Not found');
@@ -283,7 +284,43 @@ async function aiFixCore(env: Ctx['env'], path: string, content: string, finding
   return null;
 }
 
-// POST /api/security/fix — AI auto-fix one finding (Pro). Optionally apply it to the source.
+// --- Background fix jobs (KV-backed) --------------------------------------------------
+// An AI fix is a slow model call (sometimes several, back to back, for /fix-all) followed
+// by a real GitHub commit — long enough that blocking the HTTP request on it is a bad
+// experience and risks a Worker timeout. So /fix and /fix-all validate synchronously, then
+// hand the actual work to a background task (via waitUntil) and return a jobId right away.
+// The fix keeps running — and still gets committed — even if the tab is closed; the client
+// polls /fix-status to find out when it's done.
+interface FixJob {
+  status: 'running' | 'done' | 'error';
+  kind: 'single' | 'all';
+  startedAt: number;
+  updatedAt: number;
+  filesDone?: number;
+  filesTotal?: number;
+  result?: any;
+  error?: string;
+}
+const FIX_JOB_TTL = 3600; // 1 hour — plenty for a client to poll to completion
+const fixJobKey = (id: string) => `secfix:${id}`;
+async function putFixJob(env: Ctx['env'], id: string, job: FixJob): Promise<void> {
+  try { await env.KV.put(fixJobKey(id), JSON.stringify(job), { expirationTtl: FIX_JOB_TTL }); } catch { /* best-effort */ }
+}
+async function getFixJob(env: Ctx['env'], id: string): Promise<FixJob | null> {
+  try { const raw = await env.KV.get(fixJobKey(id)); return raw ? (JSON.parse(raw) as FixJob) : null; } catch { return null; }
+}
+
+// GET /api/security/fix-status?id=<jobId> — poll a background /fix or /fix-all job.
+async function fixStatus(c: Ctx): Promise<Response> {
+  const id = c.url.searchParams.get('id') || '';
+  if (!id) return error(400, 'id required');
+  const job = await getFixJob(c.env, id);
+  if (!job) return error(404, 'Job not found or expired.');
+  return json({ jobId: id, ...job });
+}
+
+// POST /api/security/fix — AI auto-fix one finding (Pro). Kicks off in the background;
+// returns { jobId } immediately. Poll /fix-status?id=<jobId> for the result.
 async function fix(req: Request, c: Ctx): Promise<Response> {
   const gate = await scanGate(c, true); // AI feature -> Pro + fair use
   if (!gate.ok) return error(gate.status, gate.error || 'Locked', { code: gate.code });
@@ -293,51 +330,80 @@ async function fix(req: Request, c: Ctx): Promise<Response> {
   if (!filePath) return error(400, 'file required');
   const apply = body.apply === true;
 
-  // Load the current file content from the source.
-  let content = '';
-  let repoCtx: { token: string; repo: string; branch: string } | null = null;
   if (body.source === 'repo') {
     if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
-    const repo = String(body.repo || '');
+    if (!String(body.repo || '')) return error(400, 'repo required');
     const auth = await getGithubAuth(c.env, c.user.id);
     if (!auth) return error(400, 'Connect GitHub first.', { code: 'github_not_connected' });
-    const token = await decryptToken(c.env, auth.tokenEnc);
-    const branch = String(body.branch || 'main');
-    const rf = await getRepoFile(token, repo, branch, filePath);
-    if (!rf) return error(404, 'File not found in repo.');
-    content = rf.content; repoCtx = { token, repo, branch };
-  } else {
-    const project = await getProject(c.env, String(body.projectId || ''));
-    if (!project) return error(404, 'Project not found');
-    if (c.user && project.user_id !== c.user.id) return error(403, 'Not your project');
-    const files = await getProjectFiles(c.env, project);
-    const ff = files.find((x) => x.path === filePath);
-    if (!ff) return error(404, 'File not found in project.');
-    content = ff.content;
+  } else if (!body.projectId) {
+    return error(400, 'projectId required');
   }
 
-  const out = await aiFixCore(c.env, filePath, content, [{ type: finding.type, cwe: finding.cwe, line: finding.location?.line || body.line || 0, description: finding.description }]);
-  if (!out) return error(502, 'Could not generate a fix — try again or fix it manually.');
+  const jobId = newId();
+  const startedAt = now();
+  await putFixJob(c.env, jobId, { status: 'running', kind: 'single', startedAt, updatedAt: startedAt });
+  c.ctx.waitUntil(runFixJob(c.env, c.user?.id ?? null, jobId, startedAt, {
+    filePath, finding, apply, source: body.source, repo: body.repo, branch: body.branch, projectId: body.projectId,
+  }));
+  return json({ jobId, status: 'running' });
+}
 
-  let applied = false;
-  if (apply) {
-    try {
-      if (repoCtx) {
-        await putRepoFile(repoCtx.token, repoCtx.repo, repoCtx.branch, filePath, out.fixed, `Yield Security: fix ${finding.type || 'vulnerability'} in ${filePath}`);
-        applied = true;
-      } else if (body.projectId) {
-        await upsertFile(c.env, String(body.projectId), filePath, out.fixed);
-        if (filePath === 'index.html') await setProjectCode(c.env, String(body.projectId), out.fixed);
-        applied = true;
-      }
-    } catch (e: any) { return json({ file: filePath, fixedContent: out.fixed, explanation: out.explanation, applied: false, applyError: String(e?.message || e).slice(0, 200) }); }
+async function runFixJob(
+  env: Ctx['env'], userId: string | null, jobId: string, startedAt: number,
+  input: { filePath: string; finding: any; apply: boolean; source?: string; repo?: string; branch?: string; projectId?: string },
+): Promise<void> {
+  try {
+    let content = '';
+    let repoCtx: { token: string; repo: string; branch: string } | null = null;
+    if (input.source === 'repo') {
+      const auth = userId ? await getGithubAuth(env, userId) : null;
+      if (!auth) throw new Error('Connect GitHub first.');
+      const token = await decryptToken(env, auth.tokenEnc);
+      const branch = String(input.branch || 'main');
+      const rf = await getRepoFile(token, String(input.repo), branch, input.filePath);
+      if (!rf) throw new Error('File not found in repo.');
+      content = rf.content; repoCtx = { token, repo: String(input.repo), branch };
+    } else {
+      const project = await getProject(env, String(input.projectId || ''));
+      if (!project) throw new Error('Project not found.');
+      const files = await getProjectFiles(env, project);
+      const ff = files.find((x) => x.path === input.filePath);
+      if (!ff) throw new Error('File not found in project.');
+      content = ff.content;
+    }
+
+    const out = await aiFixCore(env, input.filePath, content, [{
+      type: input.finding.type, cwe: input.finding.cwe, line: input.finding.location?.line || 0, description: input.finding.description,
+    }]);
+    if (!out) throw new Error('Could not generate a fix — try again or fix it manually.');
+
+    let applied = false; let applyError: string | undefined;
+    if (input.apply) {
+      try {
+        if (repoCtx) {
+          await putRepoFile(repoCtx.token, repoCtx.repo, repoCtx.branch, input.filePath, out.fixed, `Yield Security: fix ${input.finding.type || 'vulnerability'} in ${input.filePath}`);
+          applied = true;
+        } else if (input.projectId) {
+          await upsertFile(env, String(input.projectId), input.filePath, out.fixed);
+          if (input.filePath === 'index.html') await setProjectCode(env, String(input.projectId), out.fixed);
+          applied = true;
+        }
+      } catch (e: any) { applyError = String(e?.message || e).slice(0, 200); }
+    }
+    await putFixJob(env, jobId, {
+      status: 'done', kind: 'single', startedAt, updatedAt: now(),
+      result: { file: input.filePath, fixedContent: out.fixed, explanation: out.explanation, applied, applyError },
+    });
+  } catch (e: any) {
+    await putFixJob(env, jobId, { status: 'error', kind: 'single', startedAt, updatedAt: now(), error: String(e?.message || e).slice(0, 300) });
   }
-  return json({ file: filePath, fixedContent: out.fixed, explanation: out.explanation, applied });
 }
 
 // POST /api/security/fix-all — AI auto-fix every given finding, grouped by file (one AI
-// call + one commit per file), and apply. "For you" bulk version of /fix — the whole reason
-// Yield Security can push fixes on your behalf instead of one click at a time.
+// call + one commit per file). "For you" bulk version of /fix — the whole reason Yield
+// Security can push fixes on your behalf instead of one click at a time. Runs in the
+// background (see FixJob above); returns { jobId } immediately, with live per-file
+// progress (filesDone/filesTotal) visible via /fix-status while it works.
 const FIX_ALL_MAX_FILES = 12;
 async function fixAll(req: Request, c: Ctx): Promise<Response> {
   const gate = await scanGate(c, true); // one fair-use slot for the whole batch, not per file
@@ -355,58 +421,95 @@ async function fixAll(req: Request, c: Ctx): Promise<Response> {
   }
   if (!byFile.size) return error(400, 'No fixable findings (missing file paths).');
 
+  if (body.source === 'repo') {
+    if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
+    if (!String(body.repo || '')) return error(400, 'repo required');
+    const auth = await getGithubAuth(c.env, c.user.id);
+    if (!auth) return error(400, 'Connect GitHub first.', { code: 'github_not_connected' });
+  } else if (!body.projectId) {
+    return error(400, 'projectId required');
+  }
+
+  const entries = [...byFile.entries()].slice(0, FIX_ALL_MAX_FILES);
+  const skipped = Math.max(0, byFile.size - entries.length);
+  const jobId = newId();
+  const startedAt = now();
+  await putFixJob(c.env, jobId, { status: 'running', kind: 'all', startedAt, updatedAt: startedAt, filesDone: 0, filesTotal: entries.length });
+  c.ctx.waitUntil(runFixAllJob(c.env, c.user?.id ?? null, jobId, startedAt, entries, apply, skipped, {
+    source: body.source, repo: body.repo, branch: body.branch, projectId: body.projectId,
+  }));
+  return json({ jobId, status: 'running', filesTotal: entries.length });
+}
+
+async function fixOneFile(
+  env: Ctx['env'], file: string, fs: FixTarget[], apply: boolean,
+  repoCtx: { token: string; repo: string; branch: string } | null,
+  project: { id: string } | null, projectFiles: { path: string; content: string }[] | null,
+): Promise<{ file: string; findings: number; applied: boolean; error?: string }> {
+  try {
+    let content = '';
+    if (repoCtx) {
+      const rf = await getRepoFile(repoCtx.token, repoCtx.repo, repoCtx.branch, file);
+      if (!rf) return { file, findings: fs.length, applied: false, error: 'not found in repo' };
+      content = rf.content;
+    } else {
+      const ff = projectFiles!.find((x) => x.path === file);
+      if (!ff) return { file, findings: fs.length, applied: false, error: 'not found in project' };
+      content = ff.content;
+    }
+    const out = await aiFixCore(env, file, content, fs);
+    if (!out) return { file, findings: fs.length, applied: false, error: 'AI fix failed' };
+    let applied = false;
+    if (apply) {
+      if (repoCtx) {
+        await putRepoFile(repoCtx.token, repoCtx.repo, repoCtx.branch, file, out.fixed, `Yield Security: auto-fix ${fs.length} finding${fs.length > 1 ? 's' : ''} in ${file}`);
+        applied = true;
+      } else if (project) {
+        await upsertFile(env, project.id, file, out.fixed);
+        if (file === 'index.html') await setProjectCode(env, project.id, out.fixed);
+        applied = true;
+      }
+    }
+    return { file, findings: fs.length, applied };
+  } catch (e: any) {
+    return { file, findings: fs.length, applied: false, error: String(e?.message || e).slice(0, 200) };
+  }
+}
+
+async function runFixAllJob(
+  env: Ctx['env'], userId: string | null, jobId: string, startedAt: number,
+  entries: [string, FixTarget[]][], apply: boolean, skipped: number,
+  src: { source?: string; repo?: string; branch?: string; projectId?: string },
+): Promise<void> {
   let repoCtx: { token: string; repo: string; branch: string } | null = null;
   let project: { id: string } | null = null;
   let projectFiles: { path: string; content: string }[] | null = null;
-  if (body.source === 'repo') {
-    if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
-    const repo = String(body.repo || '');
-    const auth = await getGithubAuth(c.env, c.user.id);
-    if (!auth) return error(400, 'Connect GitHub first.', { code: 'github_not_connected' });
-    const token = await decryptToken(c.env, auth.tokenEnc);
-    repoCtx = { token, repo, branch: String(body.branch || 'main') };
-  } else {
-    const p = await getProject(c.env, String(body.projectId || ''));
-    if (!p) return error(404, 'Project not found');
-    if (c.user && p.user_id !== c.user.id) return error(403, 'Not your project');
-    project = { id: p.id };
-    projectFiles = await getProjectFiles(c.env, p);
+  try {
+    if (src.source === 'repo') {
+      const auth = userId ? await getGithubAuth(env, userId) : null;
+      if (!auth) throw new Error('Connect GitHub first.');
+      const token = await decryptToken(env, auth.tokenEnc);
+      repoCtx = { token, repo: String(src.repo), branch: String(src.branch || 'main') };
+    } else {
+      const p = await getProject(env, String(src.projectId || ''));
+      if (!p) throw new Error('Project not found.');
+      project = { id: p.id };
+      projectFiles = await getProjectFiles(env, p);
+    }
+  } catch (e: any) {
+    await putFixJob(env, jobId, { status: 'error', kind: 'all', startedAt, updatedAt: now(), error: String(e?.message || e).slice(0, 300) });
+    return;
   }
 
-  const entries = [...byFile.entries()];
-  const skipped = Math.max(0, entries.length - FIX_ALL_MAX_FILES);
   const results: { file: string; findings: number; applied: boolean; error?: string }[] = [];
-  for (const [file, fs] of entries.slice(0, FIX_ALL_MAX_FILES)) {
-    try {
-      let content = '';
-      if (repoCtx) {
-        const rf = await getRepoFile(repoCtx.token, repoCtx.repo, repoCtx.branch, file);
-        if (!rf) { results.push({ file, findings: fs.length, applied: false, error: 'not found in repo' }); continue; }
-        content = rf.content;
-      } else {
-        const ff = projectFiles!.find((x) => x.path === file);
-        if (!ff) { results.push({ file, findings: fs.length, applied: false, error: 'not found in project' }); continue; }
-        content = ff.content;
-      }
-      const out = await aiFixCore(c.env, file, content, fs);
-      if (!out) { results.push({ file, findings: fs.length, applied: false, error: 'AI fix failed' }); continue; }
-      let applied = false;
-      if (apply) {
-        if (repoCtx) {
-          await putRepoFile(repoCtx.token, repoCtx.repo, repoCtx.branch, file, out.fixed, `Yield Security: auto-fix ${fs.length} finding${fs.length > 1 ? 's' : ''} in ${file}`);
-          applied = true;
-        } else if (project) {
-          await upsertFile(c.env, project.id, file, out.fixed);
-          if (file === 'index.html') await setProjectCode(c.env, project.id, out.fixed);
-          applied = true;
-        }
-      }
-      results.push({ file, findings: fs.length, applied });
-    } catch (e: any) {
-      results.push({ file, findings: fs.length, applied: false, error: String(e?.message || e).slice(0, 200) });
-    }
+  for (const [file, fs] of entries) {
+    results.push(await fixOneFile(env, file, fs, apply, repoCtx, project, projectFiles));
+    await putFixJob(env, jobId, { status: 'running', kind: 'all', startedAt, updatedAt: now(), filesDone: results.length, filesTotal: entries.length });
   }
-  return json({ results, filesFixed: results.filter((r) => r.applied).length, skipped });
+  await putFixJob(env, jobId, {
+    status: 'done', kind: 'all', startedAt, updatedAt: now(), filesDone: results.length, filesTotal: entries.length,
+    result: { results, filesFixed: results.filter((r) => r.applied).length, skipped },
+  });
 }
 
 // Auto-fix critical/high findings on a monitored repo and commit directly (bounded, best-effort).

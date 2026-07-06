@@ -1002,11 +1002,39 @@ async function subscribe(){ if(S.loginRequired){ location.href='/login?redirect=
 async function doIgnore(f,btn){ btn.disabled=true; btn.textContent='…';
   await api('/api/security/ignores',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:S.sourceKey,type:f.type,file:f.location.file,line:f.location.line})});
   S.findings=S.findings.filter(x=>x!==f); toast('Ignored — excluded from your score'); (S.view==='findings'?renderFindings:()=>scanDone(S.result))(); }
-async function doFix(f,btn){ if(S.tier!=='pro'&&!S.unlimited){ subscribe(); return; } btn.disabled=true; btn.innerHTML=`${I('sparkle',14)} Generating…`;
+
+// AI fixes run as a background job on the server (see /api/security/fix-status) — a slow
+// model call + a real commit shouldn't block the tab. Poll to completion; every callback
+// checks the triggering element is still on the page before touching it, since the user
+// is free to navigate elsewhere while a fix keeps working in the background.
+function pollFixJob(jobId,opts){
+  const {onProgress,onFinish,onFail,intervalMs=1500}=opts||{};
+  const tick=async()=>{
+    const job=await api('/api/security/fix-status?id='+encodeURIComponent(jobId));
+    if(!job.ok){ if(onFail) onFail(job.error||'Lost track of the fix job.'); return; }
+    if(job.status==='done'){ if(onFinish) onFinish(job.result); return; }
+    if(job.status==='error'){ if(onFail) onFail(job.error||'Fix failed.'); return; }
+    if(onProgress) onProgress(job);
+    setTimeout(tick,intervalMs);
+  };
+  tick();
+}
+async function doFix(f,btn){ if(S.tier!=='pro'&&!S.unlimited){ subscribe(); return; }
+  btn.disabled=true; btn.innerHTML=`${I('sparkle',14)} Generating…`;
   const r=await api('/api/security/fix',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...S.src,file:f.location.file,line:f.location.line,finding:f})});
-  btn.disabled=false; btn.innerHTML=`${I('sparkle',14)} AI Fix`;
-  if(r.fixedContent) fixModal(f,r.fixedContent,{...S.src,file:f.location.file,line:f.location.line,finding:f}); else alert(r.error||'Could not generate a fix.'); }
-// Fix every fixable finding at once — writes + commits one file at a time, no per-finding review.
+  if(!r.jobId){ btn.disabled=false; btn.innerHTML=`${I('sparkle',14)} AI Fix`; alert(r.error||'Could not start the fix.'); return; }
+  toast('Generating the fix in the background — keep browsing, we’ll notify you.');
+  pollFixJob(r.jobId,{
+    onFinish:(result)=>{
+      if(document.contains(btn)){ btn.disabled=false; btn.innerHTML=`${I('sparkle',14)} AI Fix`; }
+      if(result&&result.fixedContent) fixModal(f,result.fixedContent,{...S.src,file:f.location.file,line:f.location.line,finding:f});
+      else toast('Could not generate a fix.');
+    },
+    onFail:(msg)=>{ if(document.contains(btn)){ btn.disabled=false; btn.innerHTML=`${I('sparkle',14)} AI Fix`; } toast(msg||'Could not generate a fix.'); },
+  });
+}
+// Fix every fixable finding at once — writes + commits one file at a time, no per-finding
+// review. Kicks off as a background job so the tab isn't blocked for however long N files take.
 async function doFixAll(btn,onDone){
   if(S.tier!=='pro'&&!S.unlimited){ subscribe(); return; }
   if(!S.src){ alert('Run a scan first.'); return; }
@@ -1014,17 +1042,25 @@ async function doFixAll(btn,onDone){
   if(!fixable.length) return;
   const dest=S.src.source==='repo'?`${S.src.repo}@${S.src.branch||'main'} (a real commit)`:'your project';
   if(!confirm(`AI-fix ${fixable.length} finding(s) and commit the corrected files to ${dest}?`)) return;
-  const t=btn.innerHTML; btn.disabled=true; btn.innerHTML=`${I('sparkle',14)} Fixing & committing…`;
+  const t=btn.innerHTML; btn.disabled=true; btn.innerHTML=`${I('sparkle',14)} Starting…`;
   const r=await api('/api/security/fix-all',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...S.src,findings:fixable,apply:true})});
-  btn.disabled=false; btn.innerHTML=t;
-  if(!r.results){ alert(r.error||'Bulk fix failed.'); return; }
-  const fixedFiles=new Set(r.results.filter(x=>x.applied).map(x=>x.file));
-  const failed=r.results.filter(x=>!x.applied).length;
-  if(fixedFiles.size) S.findings=S.findings.filter(f=>!fixedFiles.has(f.location?.file));
-  if(fixedFiles.size) toast(`Fixed & committed ${fixedFiles.size} file${fixedFiles.size>1?'s':''}${r.skipped?` (${r.skipped} skipped — too many files, run again)`:''}`);
-  if(failed && !fixedFiles.size) toast(`Couldn't auto-fix ${failed} file${failed>1?'s':''} — try them individually`);
-  if(S.result) S.result.findings=S.findings;
-  (onDone||(()=>{}))();
+  if(!r.jobId){ btn.disabled=false; btn.innerHTML=t; alert(r.error||'Bulk fix failed to start.'); return; }
+  toast(`Fixing ${r.filesTotal||fixable.length} file(s) in the background — feel free to keep browsing.`);
+  pollFixJob(r.jobId,{
+    onProgress:(job)=>{ if(document.contains(btn)) btn.innerHTML=`${I('sparkle',14)} Fixing ${job.filesDone||0}/${job.filesTotal||'?'}…`; },
+    onFinish:(result)=>{
+      if(document.contains(btn)){ btn.disabled=false; btn.innerHTML=t; }
+      if(!result){ toast('Bulk fix finished with no result.'); return; }
+      const fixedFiles=new Set((result.results||[]).filter(x=>x.applied).map(x=>x.file));
+      const failed=(result.results||[]).filter(x=>!x.applied).length;
+      if(fixedFiles.size) S.findings=S.findings.filter(f=>!fixedFiles.has(f.location?.file));
+      if(fixedFiles.size) toast(`Fixed & committed ${fixedFiles.size} file${fixedFiles.size>1?'s':''}${result.skipped?` (${result.skipped} skipped — too many files, run again)`:''}`);
+      if(failed&&!fixedFiles.size) toast(`Couldn't auto-fix ${failed} file${failed>1?'s':''} — try them individually`);
+      if(S.result) S.result.findings=S.findings;
+      (onDone||(()=>{}))();
+    },
+    onFail:(msg)=>{ if(document.contains(btn)){ btn.disabled=false; btn.innerHTML=t; } toast(msg||'Bulk fix failed.'); },
+  });
 }
 function fixModal(f,fixed,payload){
   const m=document.createElement('div'); m.className='fix-modal';
@@ -1034,8 +1070,17 @@ function fixModal(f,fixed,payload){
   document.body.appendChild(m); const close=()=>m.remove();
   $('#fxX',m).onclick=close; m.onclick=e=>{if(e.target===m)close()};
   $('#fxCopy',m).onclick=()=>{navigator.clipboard?.writeText(fixed); $('#fxCopy',m).textContent='Copied';};
-  $('#fxApply',m).onclick=async()=>{ const b=$('#fxApply',m); b.disabled=true; b.textContent='Applying…'; const r=await api('/api/security/fix',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...payload,apply:true})});
-    if(r.applied){ b.textContent='✓ Applied'; S.findings=S.findings.filter(x=>x!==f); toast('Fix applied'); setTimeout(close,800); } else { b.disabled=false; b.textContent='Apply fix →'; alert(r.applyError||r.error||'Could not apply — copy the code instead.'); } };
+  $('#fxApply',m).onclick=async()=>{ const b=$('#fxApply',m); b.disabled=true; b.textContent='Applying…';
+    const r=await api('/api/security/fix',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...payload,apply:true})});
+    if(!r.jobId){ b.disabled=false; b.textContent='Apply fix →'; alert(r.error||'Could not start applying the fix.'); return; }
+    pollFixJob(r.jobId,{
+      onFinish:(result)=>{
+        if(result&&result.applied){ if(document.contains(b)) b.textContent='✓ Applied'; S.findings=S.findings.filter(x=>x!==f); toast('Fix applied'); setTimeout(close,800); }
+        else { if(document.contains(b)){ b.disabled=false; b.textContent='Apply fix →'; } alert((result&&result.applyError)||'Could not apply — copy the code instead.'); }
+      },
+      onFail:(msg)=>{ if(document.contains(b)){ b.disabled=false; b.textContent='Apply fix →'; } alert(msg||'Could not apply — copy the code instead.'); },
+    });
+  };
 }
 function download(name,text,mime){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:mime})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 function exportAs(fmt){ const stamp=new Date().toISOString().slice(0,10), fs=S.findings||[];

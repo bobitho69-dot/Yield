@@ -974,52 +974,90 @@ function recountSummary(list) {
     if (k === 'CRITICAL') s.critical++; else if (k === 'HIGH') s.high++; else if (k === 'MEDIUM') s.medium++; else s.low++; }
   return s;
 }
+// AI fixes run as a background job on the server (see /api/security/fix-status) — a slow
+// model call + saving the file shouldn't freeze the builder. Poll to completion; every
+// callback re-checks the button is still on the page (the Security tab re-renders on
+// every click, and the user is free to switch tabs or projects) before touching it.
+function pollFixJob(jobId, opts) {
+  const { onProgress, onFinish, onFail, intervalMs = 1500 } = opts || {};
+  const tick = async () => {
+    const r = await fetch('/api/security/fix-status?id=' + encodeURIComponent(jobId)).then((x) => x.json()).catch(() => null);
+    if (!r || !r.jobId) { if (onFail) onFail((r && r.error) || 'Lost track of the fix job.'); return; }
+    if (r.status === 'done') { if (onFinish) onFinish(r.result); return; }
+    if (r.status === 'error') { if (onFail) onFail(r.error || 'Fix failed.'); return; }
+    if (onProgress) onProgress(r);
+    setTimeout(tick, intervalMs);
+  };
+  tick();
+}
 // AI-fix ONE finding in the current Yield project: rewrite the file, save it to the project
 // (upsert + preview), and drop the finding. This is the "fix it through Yield" path.
 async function projectFix(idx, btn) {
   const a = state.audit; if (!a || !state.projectId) return;
   const f = a.findings[idx]; if (!f || !isFixable(f)) return;
-  const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'Fixing…';
-  try {
-    const r = await fetch('/api/security/fix', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ source: 'project', projectId: state.projectId, file: f.location.file, line: f.location.line, finding: f, apply: true }) })
-      .then((x) => x.json()).catch(() => ({}));
-    if (r.applied) {
-      a.findings = a.findings.filter((x) => x !== f); a.summary = recountSummary(a.findings);
-      await loadFiles(); refreshPreview();
-      toast(`Fixed ${f.location.file} — app updated. Re-scan to refresh the score.`);
-      renderSecurityBadge(); renderSecurityPane();
-    } else if (r.code === 'security_required') {
-      btn.disabled = false; btn.innerHTML = orig;
-      const st = $('#secStatus'); if (st) st.innerHTML = `AI auto-fix is part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`;
-    } else { btn.disabled = false; btn.innerHTML = orig; toast(r.applyError || r.error || 'Could not generate a fix.'); }
-  } catch (e) { btn.disabled = false; btn.innerHTML = orig; toast('Fix failed: ' + String(e)); }
+  const projectIdAtStart = state.projectId;
+  const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'Starting…';
+  const r = await fetch('/api/security/fix', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: 'project', projectId: state.projectId, file: f.location.file, line: f.location.line, finding: f, apply: true }) })
+    .then((x) => x.json()).catch(() => ({}));
+  if (!r.jobId) {
+    btn.disabled = false; btn.innerHTML = orig;
+    if (r.code === 'security_required') { const st = $('#secStatus'); if (st) st.innerHTML = `AI auto-fix is part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`; }
+    else toast(r.error || 'Could not start the fix.');
+    return;
+  }
+  toast(`Fixing ${f.location.file} in the background — keep building, we’ll update you.`);
+  pollFixJob(r.jobId, {
+    onFinish: (result) => {
+      if (document.contains(btn)) { btn.disabled = false; btn.innerHTML = orig; }
+      if (state.projectId !== projectIdAtStart) return; // user switched projects — don't touch the wrong one
+      if (result && result.applied) {
+        a.findings = a.findings.filter((x) => x !== f); a.summary = recountSummary(a.findings);
+        loadFiles().then(refreshPreview);
+        toast(`Fixed ${f.location.file} — app updated. Re-scan to refresh the score.`);
+        renderSecurityBadge(); if (!$('#securityTab').classList.contains('hidden')) renderSecurityPane();
+      } else { toast((result && result.applyError) || 'Could not generate a fix.'); }
+    },
+    onFail: (msg) => { if (document.contains(btn)) { btn.disabled = false; btn.innerHTML = orig; } toast('Fix failed: ' + msg); },
+  });
 }
-// AI-fix EVERY fixable finding at once — one AI rewrite + save per file — then reload the app.
+// AI-fix EVERY fixable finding at once — one AI rewrite + save per file — then reload the
+// app. Kicks off as a background job so the tab isn't frozen for however long N files take.
 async function projectFixAll(btn) {
   const a = state.audit; if (!a || !state.projectId) return;
   const fixable = a.findings.filter(isFixable);
   if (!fixable.length) return;
   if (!confirm(`AI-fix ${fixable.length} finding(s) and update your app's files automatically?`)) return;
-  const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'Fixing all…';
-  const st = $('#secStatus'); if (st) st.innerHTML = `<span class="spin"></span> Fixing & saving ${fixable.length} finding(s)…`;
-  try {
-    const r = await fetch('/api/security/fix-all', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ source: 'project', projectId: state.projectId, findings: fixable, apply: true }) })
-      .then((x) => x.json()).catch(() => ({}));
-    if (r.results) {
-      const fixedFiles = new Set(r.results.filter((x) => x.applied).map((x) => x.file));
-      if (fixedFiles.size) {
-        a.findings = a.findings.filter((f) => !fixedFiles.has(f.location && f.location.file)); a.summary = recountSummary(a.findings);
-        await loadFiles(); refreshPreview();
-        toast(`Fixed ${fixedFiles.size} file(s) — app updated. Re-scan to refresh the score.`);
-      } else { toast('Could not auto-fix these — try them individually.'); }
-      renderSecurityBadge(); renderSecurityPane();
-    } else if (r.code === 'security_required') {
-      btn.disabled = false; btn.innerHTML = orig;
-      if (st) st.innerHTML = `AI auto-fix is part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`;
-    } else { btn.disabled = false; btn.innerHTML = orig; if (st) st.textContent = r.error || 'Bulk fix failed.'; }
-  } catch (e) { btn.disabled = false; btn.innerHTML = orig; if (st) st.textContent = 'Fix failed: ' + String(e); }
+  const projectIdAtStart = state.projectId;
+  const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'Starting…';
+  const st0 = $('#secStatus'); if (st0) st0.innerHTML = `<span class="spin"></span> Starting fix for ${fixable.length} finding(s)…`;
+  const r = await fetch('/api/security/fix-all', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: 'project', projectId: state.projectId, findings: fixable, apply: true }) })
+    .then((x) => x.json()).catch(() => ({}));
+  if (!r.jobId) {
+    btn.disabled = false; btn.innerHTML = orig;
+    if (r.code === 'security_required') { if (st0) st0.innerHTML = `AI auto-fix is part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`; }
+    else if (st0) st0.textContent = r.error || 'Bulk fix failed to start.';
+    return;
+  }
+  toast(`Fixing ${r.filesTotal || fixable.length} file(s) in the background — keep building, we’ll update you.`);
+  pollFixJob(r.jobId, {
+    onProgress: (job) => { const st = $('#secStatus'); if (st && document.contains(st)) st.innerHTML = `<span class="spin"></span> Fixing ${job.filesDone || 0}/${job.filesTotal || fixable.length} file(s)…`; },
+    onFinish: (result) => {
+      if (document.contains(btn)) { btn.disabled = false; btn.innerHTML = orig; }
+      if (state.projectId !== projectIdAtStart) return; // user switched projects — don't touch the wrong one
+      if (result && result.results) {
+        const fixedFiles = new Set(result.results.filter((x) => x.applied).map((x) => x.file));
+        if (fixedFiles.size) {
+          a.findings = a.findings.filter((f) => !fixedFiles.has(f.location && f.location.file)); a.summary = recountSummary(a.findings);
+          loadFiles().then(refreshPreview);
+          toast(`Fixed ${fixedFiles.size} file(s) — app updated. Re-scan to refresh the score.`);
+        } else { toast('Could not auto-fix these — try them individually.'); }
+        renderSecurityBadge(); if (!$('#securityTab').classList.contains('hidden')) renderSecurityPane();
+      } else { toast('Bulk fix finished with no result.'); }
+    },
+    onFail: (msg) => { if (document.contains(btn)) { btn.disabled = false; btn.innerHTML = orig; } const st = $('#secStatus'); if (st && document.contains(st)) st.textContent = 'Fix failed: ' + msg; else toast('Fix failed: ' + msg); },
+  });
 }
 
 // Run a scan over the current files. "basic" is instant + local; deep/compliance stream

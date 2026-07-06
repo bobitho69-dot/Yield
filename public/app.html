@@ -58,16 +58,16 @@
             <div id="modelPanel" class="model-panel hidden"></div>
           </div>
           <select id="thinkingSel" class="think-sel" title="How hard the AI thinks before coding (higher = better, slower)">
-            <option value="low">🧠 Fast</option>
-            <option value="medium">🧠 Balanced</option>
-            <option value="high">🧠 Max</option>
+            <option value="low">Fast</option>
+            <option value="medium">Balanced</option>
+            <option value="high">Max</option>
           </select>
-          <button id="promptMaxBtn" type="button" class="pmax-btn" aria-pressed="false" title="Prompt Max — auto-improve your prompt before building">⚡ Prompt Max</button>
-          <button id="attachBtn" type="button" class="attach-btn" title="Attach images or documents — Yield will read them">📎 Attach</button>
+          <button id="promptMaxBtn" type="button" class="pmax-btn" aria-pressed="false" title="Prompt Max — auto-improve your prompt before building"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg> Prompt Max</button>
+          <button id="attachBtn" type="button" class="attach-btn" title="Attach images or documents — Yield will read them"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.05 12.25 20.2a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 0 1 4.24 4.24l-9.2 9.19a1 1 0 0 1-1.41-1.41l8.48-8.49"/></svg> Attach</button>
           <input id="fileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.markdown,.csv,.json,.html,.htm,.css,.js,.ts,.tsx,.jsx,.svg,.log,.yml,.yaml,text/*" hidden>
           <span id="autoPick" class="auto-pick"></span>
           <div class="row-spacer"></div>
-          <button id="histBtn" type="button" class="btn ghost sm" title="Prompt history (saved to your GitHub)">📜 History</button>
+          <button id="histBtn" type="button" class="btn ghost sm" title="Prompt history (saved to your GitHub)"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg> History</button>
           <button id="newBtn" type="button" class="btn ghost sm" title="New project">＋ New</button>
         </div>
         <div id="attachments" class="attachments hidden"></div>
@@ -90,7 +90,7 @@
         <button class="tab" data-tab="settings">Settings</button>
         <div class="tab-spacer"></div>
         <select id="pageSel" class="btn ghost sm hidden" title="Preview a page"></select>
-        <button id="selectBtn" class="btn ghost sm" title="Click an element in the preview to edit it">🎯 Select</button>
+        <button id="selectBtn" class="btn ghost sm" title="Click an element in the preview to edit it"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg> Select</button>
         <button id="refreshBtn" class="btn ghost sm">↻ Refresh</button>
         <button id="openBtn" class="btn ghost sm">↗ Open</button>
       </div>

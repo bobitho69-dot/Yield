@@ -185,9 +185,14 @@ a { color: inherit; text-decoration: none; }
 .empty-chat { margin: auto; text-align: center; color: var(--muted); padding: 1rem; }
 .empty-chat h2 { color: var(--text); }
 .examples { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin-top: 1rem; }
-.example { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: .45rem .8rem; font-size: .82rem; cursor: pointer; transition: .15s; }
+.example { display: inline-flex; align-items: center; gap: .45rem; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: .45rem .8rem; font-size: .82rem; cursor: pointer; transition: .15s; }
 .example:hover { border-color: var(--brand); transform: translateY(-1px); }
-.ex-emoji { margin-right: .15rem; }
+.ex-emoji { display: inline-flex; color: var(--brand-2); }
+/* stroke-icon alignment inside builder chrome (icons replace emoji) */
+.ic-svg { flex: 0 0 auto; vertical-align: -.15em; }
+.pmax-btn, .attach-btn { display: inline-flex; align-items: center; gap: .35rem; }
+.pmax-btn.on .ic-svg, .example:hover .ex-emoji { color: currentColor; }
+.lc-head { display: flex; align-items: center; gap: .35rem; }
 .msg { padding: .75rem .9rem; border-radius: 10px; font-size: .92rem; line-height: 1.5; max-width: 90%; white-space: pre-wrap; }
 .msg.user { background: #20283a; align-self: flex-end; }
 .msg.ai { background: var(--panel); border: 1px solid var(--line); align-self: flex-start; }
@@ -403,7 +408,8 @@ a { color: inherit; text-decoration: none; }
 /* ---------- Account ---------- */
 .acct-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.4rem; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.4rem; }
-.panel h3 { margin: 0 0 1rem; }
+.panel h3 { margin: 0 0 1rem; display: flex; align-items: center; gap: .5rem; }
+.panel h3 .ic-svg { color: var(--brand-2); }
 .kv { display: flex; justify-content: space-between; padding: .5rem 0; border-bottom: 1px solid var(--line); }
 .kv:last-child { border-bottom: none; }
 .kv span:first-child { color: var(--muted); }

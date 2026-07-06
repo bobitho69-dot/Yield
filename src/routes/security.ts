@@ -25,7 +25,7 @@ import { notifyScan, postSlack, type IntegrationConfig } from '../lib/integratio
 import type { AuditFinding } from '../lib/audit';
 import { computeAudit, scansUsedToday } from './audit';
 import { chat } from '../lib/nvidia';
-import { resolveModel } from '../config/models';
+import { resolveModel, keyForModel } from '../config/models';
 
 const LEVELS: AuditLevel[] = ['basic', 'detailed', 'compliance'];
 
@@ -254,12 +254,18 @@ async function aiFixCore(env: Ctx['env'], path: string, content: string, finding
   const plural = findings.length > 1;
   const list = findings.map((f) => `- ${f.type}${f.cwe ? ` (${f.cwe})` : ''} near line ${f.line}: ${f.description || ''}`).join('\n');
   const sys = `You are a senior security engineer. The given file "${path}" contains the following ${plural ? 'vulnerabilities' : 'vulnerability'}:\n${list}\nReturn the COMPLETE corrected contents of the file that fixes ${plural ? 'ALL of the above' : 'this vulnerability'} while preserving all other behavior, structure, and style. Output ONLY the full file content — no markdown fences, no commentary.`;
-  const key = env.YIELDNVIDIAAIKEY || env.NVIDIA_API_KEY;
-  for (const id of ['nemotron-3-ultra', 'glm-5.1', 'deepseek-v4-flash']) {
+  const auditKey = env.YIELDNVIDIAAIKEY || env.NVIDIA_API_KEY;
+  // Best security/coder models first — Claude Sonnet 5 & Fable 5 lead — then strong fallbacks.
+  // Try each until one returns a usable rewrite. (GLM 5.1's upstream id is gone, so it's dropped.)
+  for (const id of ['claude-sonnet-5-free', 'nemotron-3-ultra', 'deepseek-v4-pro', 'claude-fable-5-free', 'deepseek-v4-flash']) {
     try {
       const m = resolveModel(id);
+      // Non-NVIDIA models (ZenMux Claude, etc.) use their own provider key; NVIDIA ones use the audit key + backup.
+      const custom = !!m.provider.baseUrl;
       const { text } = await chat({
-        baseUrl: env.NVIDIA_CHAT_BASE, apiKey: key, apiKeyBackup: env.NVIDIA_API_KEY_BACKUP || undefined,
+        baseUrl: m.provider.baseUrl || env.NVIDIA_CHAT_BASE,
+        apiKey: custom ? keyForModel(env, m) : auditKey,
+        apiKeyBackup: custom ? undefined : (env.NVIDIA_API_KEY_BACKUP || undefined),
         model: m.modelId, messages: [{ role: 'system', content: sys }, { role: 'user', content: content.slice(0, 40000) }],
         temperature: 0.1, max_tokens: 9000, timeoutMs: 120000,
       });

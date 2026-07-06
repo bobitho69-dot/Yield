@@ -8,12 +8,25 @@
 
 import type { Env } from '../types';
 import { chat } from './nvidia';
-import { resolveModel } from '../config/models';
+import { resolveModel, keyForModel, CODER_MODELS } from '../config/models';
 import type { AuditFinding, AuditInput, AuditLevel, Severity } from './audit';
 
-// The top models the audit runs through, in order (best reasoning first). Models whose id
-// doesn't resolve on the account simply error and are skipped — the ensemble still completes.
-export const AUDIT_MODELS = ['nemotron-3-ultra', 'deepseek-v4-pro', 'qwen3.5-397b', 'kimi-k2.6', 'glm-5.1'];
+// The audit runs the code through EVERY coder model, one at a time, and merges their
+// findings — more models means more coverage (different models catch different issues).
+// This preferred order puts the strongest security/coder reasoners first (Claude Sonnet 5
+// and Fable 5 lead — our best cyber-security coders); any model not listed here still runs,
+// appended after. Models whose id doesn't resolve / whose key is unset simply error and are
+// skipped — the ensemble still completes. Derived from CODER_MODELS so new models auto-join.
+const AUDIT_PREFERRED = [
+  'claude-sonnet-5-free', 'claude-fable-5-free',
+  'nemotron-3-ultra', 'deepseek-v4-pro', 'qwen3.5-397b', 'qwen3-coder',
+  'kimi-k2.6', 'glm-5.1', 'qwen3.5-122b', 'minimax-m3',
+  'deepseek-v4-flash', 'step-3.7-flash', 'gemma-4-31b', 'laguna-m1', 'glm-4.7-flash-free',
+];
+export const AUDIT_MODELS: string[] = [
+  ...AUDIT_PREFERRED.filter((id) => CODER_MODELS.some((m) => m.id === id)),
+  ...CODER_MODELS.map((m) => m.id).filter((id) => !AUDIT_PREFERRED.includes(id)),
+];
 
 // The dedicated audit key, falling back to the shared NVIDIA key until it's created.
 function auditKey(env: Env): string {
@@ -104,10 +117,14 @@ function coerce(raw: any, model: string, files: AuditInput[]): AuditFinding | nu
 async function runModel(env: Env, modelId: string, level: AuditLevel, code: string, files: AuditInput[], signal?: AbortSignal): Promise<AuditFinding[]> {
   try {
     const m = resolveModel(modelId);
+    // NVIDIA-hosted models use the dedicated audit key (falls back to the shared NVIDIA key
+    // + backup). Models on another provider (ZenMux / OpenRouter — e.g. Claude Sonnet 5 &
+    // Fable 5, GLM 4.7) use THAT provider's key (ZEMUZAPI / OPENROUTER_API_KEY) via keyForModel.
+    const custom = !!m.provider.baseUrl;
     const baseUrl = m.provider.baseUrl || env.NVIDIA_CHAT_BASE;
-    const key = m.provider.baseUrl ? (env.OPENROUTER_API_KEY || auditKey(env)) : auditKey(env);
+    const key = custom ? keyForModel(env, m) : auditKey(env);
     const { text } = await chat({
-      baseUrl, apiKey: key, apiKeyBackup: m.provider.baseUrl ? undefined : (env.NVIDIA_API_KEY_BACKUP || undefined),
+      baseUrl, apiKey: key, apiKeyBackup: custom ? undefined : (env.NVIDIA_API_KEY_BACKUP || undefined),
       model: m.modelId,
       messages: [
         { role: 'system', content: auditSystem(level) },

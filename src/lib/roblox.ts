@@ -19,7 +19,13 @@ const VALID_CLASS = new Set(['Script', 'LocalScript', 'ModuleScript']);
 const SEGMENT_RE = /^[A-Za-z0-9_ .-]{1,80}$/;
 
 export function sanitizeScriptPath(raw: string): string | null {
-  const path = (raw || '').trim().replace(/^\/+|\/+$/g, '');
+  // Bound the input BEFORE any regex/split touches it — an untrusted caller (the
+  // plugin, or a hand-crafted API request) could otherwise hand us an enormous
+  // string (e.g. megabytes of "/") and make the trim/replace/split below do
+  // needless work over it. A real path is never anywhere near this long (8
+  // segments x 80 chars is the actual cap below).
+  if (!raw || raw.length > 600) return null;
+  const path = raw.trim().replace(/^\/+|\/+$/g, '');
   if (!path) return null;
   const segs = path.split('/').map((s) => s.trim()).filter(Boolean);
   if (segs.length < 2 || segs.length > 8) return null; // need Service/.../Name, cap depth
@@ -176,21 +182,24 @@ function cleanSource(s: string): string {
 const PAIR_TTL = 600; // 10 minutes to redeem a pairing code
 const PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I — easy to type in Studio
 
+// Unbiased pick from `alphabet` via rejection sampling: reduce a random byte modulo
+// alphabet.length only when it falls in the largest range evenly divisible by that
+// length, discarding (and redrawing) the few high values that would otherwise skew
+// toward the earlier letters. (A plain `byte % alphabet.length` is what static
+// analyzers flag as "biased" — this is the standard fix, and works for any
+// alphabet length, not just a power of two.)
+function unbiasedPick(alphabet: string): string {
+  const limit = 256 - (256 % alphabet.length);
+  let byte: number;
+  do {
+    byte = crypto.getRandomValues(new Uint8Array(1))[0];
+  } while (byte >= limit);
+  return alphabet[byte % alphabet.length];
+}
+
 export async function createPairCode(env: Env, projectId: string): Promise<{ code: string; expiresAt: number }> {
-  const targetLength = 8;
-  const alphabetLen = PAIR_ALPHABET.length;
-  const limit = Math.floor(256 / alphabetLen) * alphabetLen; // rejection-sampling cutoff
   let code = '';
-
-  while (code.length < targetLength) {
-    const bytes = crypto.getRandomValues(new Uint8Array(targetLength - code.length));
-    for (const b of bytes) {
-      if (b >= limit) continue;
-      code += PAIR_ALPHABET[b % alphabetLen];
-      if (code.length >= targetLength) break;
-    }
-  }
-
+  for (let i = 0; i < 8; i++) code += unbiasedPick(PAIR_ALPHABET);
   const expiresAt = now() + PAIR_TTL;
   await env.KV.put(`roblox_pair:${code}`, JSON.stringify({ projectId }), { expirationTtl: PAIR_TTL });
   return { code, expiresAt };

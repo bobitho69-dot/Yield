@@ -5,16 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Not found — Yield</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .nf-wrap { min-height: 100vh; display: grid; place-items: center; padding: 2rem; text-align: center; }
+    .nf-brand { display: inline-flex; align-items: center; gap: .5rem; margin-bottom: 1.6rem; font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; }
+    .nf-brand .logo { color: var(--brand); }
+    .nf-num { font-family: var(--font-display); font-weight: 700; font-size: clamp(5rem, 16vw, 8rem); line-height: 1; letter-spacing: -.03em; margin: 0; }
+    .nf-title { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; margin: .6rem 0 0; }
+    .nf-sub { color: var(--muted); max-width: 420px; margin: .8rem auto 1.6rem; line-height: 1.55; }
+  </style>
 </head>
-<body>
-  <div class="auth-wrap">
-    <div class="auth-card">
-      <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
-      <h1>404</h1>
-      <p class="sub muted">That page wandered off. Let's get you building instead.</p>
-      <div class="auth-btns">
-        <a class="btn primary" href="/app">Open the builder</a>
-        <a class="btn ghost" href="/">Back home</a>
+<body class="landing">
+  <div class="nf-wrap">
+    <div>
+      <a class="nf-brand" href="/"><span class="logo">◆</span> Yield</a>
+      <h1 class="nf-num">404</h1>
+      <p class="nf-title">This page took a different route.</p>
+      <p class="nf-sub">The page you were after doesn’t exist — or it moved. Let’s get you back to building.</p>
+      <div class="hero-cta" style="justify-content:center">
+        <a class="btn primary lg" href="/">← Back to Yield</a>
+        <a class="btn ghost" href="/app">Open the builder</a>
       </div>
     </div>
   </div>

@@ -102,12 +102,15 @@ CREATE TABLE IF NOT EXISTS security_monitors (
   branch       TEXT NOT NULL DEFAULT 'main',
   hook_id      INTEGER,                        -- GitHub webhook id (for cleanup)
   enabled      INTEGER NOT NULL DEFAULT 1,
+  auto_fix     INTEGER NOT NULL DEFAULT 0,     -- 1 = AI-fix + commit critical/high findings automatically
   last_scan_at INTEGER,
   last_score   INTEGER,
   created_at   INTEGER NOT NULL,
   UNIQUE (user_id, repo)
 );
 CREATE INDEX IF NOT EXISTS idx_monitors_repo ON security_monitors(repo);
+-- Upgrading an existing DB (schema already loaded before auto_fix existed)? Run once:
+--   ALTER TABLE security_monitors ADD COLUMN auto_fix INTEGER NOT NULL DEFAULT 0;
 
 -- Outbound integrations (Slack / Jira / GitHub PR comments) per user.
 CREATE TABLE IF NOT EXISTS security_integrations (

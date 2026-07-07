@@ -10,15 +10,13 @@
   <header class="nav">
     <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
     <nav class="nav-links">
-      <a href="/dashboard">Projects</a>
-      <a href="/security">🛡 Security</a>
-      <a href="/roblox">🎮 Roblox</a>
-      <a class="active" href="/settings">Settings</a>
-      <a href="/account">Account</a>
-    </nav>
-    <div class="nav-actions">
+      <a class="toplink" href="/dashboard">Projects</a>
+      <a class="toplink" href="/security">Security</a>
+      <a class="toplink" href="/roblox">Roblox</a>
+      <a class="toplink" href="/settings">Settings</a>
+      <a class="toplink" href="/account">Account</a>
       <a class="btn primary sm" href="/app">＋ New app</a>
-    </div>
+    </nav>
   </header>
 
   <div class="page">
@@ -28,13 +26,13 @@
     <div id="main" class="hidden">
       <!-- Auth & Account -->
       <div class="panel" style="margin-bottom:1.4rem">
-        <h3>👤 Account &amp; Auth</h3>
+        <h3><svg class="ic-svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Account &amp; Auth</h3>
         <div id="authPanel"></div>
       </div>
 
       <!-- Agents -->
       <div class="panel" style="margin-bottom:1.4rem">
-        <h3>⚡ AI Agents</h3>
+        <h3><svg class="ic-svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg> AI Agents</h3>
         <p class="muted" style="margin-top:-.4rem">Reusable AIs powered by your available models. Apps you build can call them at <code>/api/agents/&lt;id&gt;/run</code>.</p>
         <div id="agentList"></div>
         <details style="margin-top:1rem">
@@ -53,7 +51,7 @@
 
       <!-- Backend & secrets -->
       <div class="panel">
-        <h3>🔑 Backend &amp; secrets</h3>
+        <h3><svg class="ic-svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m11.4 11.6 9.6-9.6"/><path d="m15.5 7.5 3 3 3.5-3.5-3-3"/></svg> Backend &amp; secrets</h3>
         <p class="muted" style="margin-top:-.4rem">Yield never stores your secrets. Your app's backend &amp; API keys live in your own free Cloudflare Worker, connected to your GitHub — Yield writes the code, you add the secret values in Cloudflare.</p>
         <ol class="muted" style="line-height:1.8;margin:.4rem 0 0 1.1rem">
           <li><b>Store your code</b> — connect GitHub (above).</li>

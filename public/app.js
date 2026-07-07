@@ -163,7 +163,7 @@ function startBuildWatch() {
   const myToken = state.buildToken;       // fence to the project being watched
   const watchedId = state.projectId;
   state.working = true; updateComposer();
-  const note = addBubble('ai', '<div class="meta">background build</div>⏳ Still building in the background — this updates automatically.');
+  const note = addBubble('ai', '<div class="meta">background build</div>Still building in the background — this updates automatically.');
   let polls = 0;
   const stop = () => { clearInterval(buildWatchTimer); buildWatchTimer = null; };
   const finish = async (msg) => {
@@ -273,12 +273,12 @@ function renderBanner(s) {
   if (!state.authEnabled) { b.classList.add('hidden'); return; } // no gating in testing mode
   if (s.highUsage && (!state.user || state.user.plan !== 'priority')) {
     b.className = 'banner warn';
-    b.innerHTML = '⚡ <b>High Usage Time</b> — free generation is paused to keep Yield free to host. Priority members ($20/mo) keep full access. <a href="#" id="bannerUpgrade" style="text-decoration:underline">Upgrade →</a>';
+    b.innerHTML = '<b>High Usage Time</b> — free generation is paused to keep Yield free to host. Priority members ($20/mo) keep full access. <a href="#" id="bannerUpgrade" style="text-decoration:underline">Upgrade →</a>';
     b.classList.remove('hidden');
     $('#bannerUpgrade')?.addEventListener('click', (e) => { e.preventDefault(); upgrade(); });
   } else if (s.highUsage && state.user?.plan === 'priority') {
     b.className = 'banner info';
-    b.textContent = '⚡ High Usage Time — thanks for being a Priority member. You have full access.';
+    b.textContent = 'High Usage Time — thanks for being a Priority member. You have full access.';
     b.classList.remove('hidden');
   } else {
     b.classList.add('hidden');
@@ -311,20 +311,41 @@ function fmt(s) {
   return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
 }
 
+// Inline stroke-icon set (currentColor) — replaces emoji so the builder reads as a real app.
+const ICONS = {
+  layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h6"/>',
+  message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  cart: '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>',
+  chart: '<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="5"/><rect x="12" y="8" width="3" height="9"/><rect x="17" y="5" width="3" height="12"/>',
+  note: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/>',
+  gamepad: '<path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/><rect x="2" y="6" width="20" height="12" rx="4"/>',
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  paperclip: '<path d="M21.4 11.05 12.25 20.2a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 0 1 4.24 4.24l-9.2 9.19a1 1 0 0 1-1.41-1.41l8.48-8.49"/>',
+  history: '<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>',
+  crosshair: '<circle cx="12" cy="12" r="9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  cpu: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>',
+  eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
+};
+function ic(name, size = 15) { return `<svg class="ic-svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`; }
+
 const EXAMPLES = [
-  ['📋', 'Project tracker', 'A kanban project tracker with draggable cards, columns, labels, and data saved to the database'],
-  ['💬', 'AI chatbot', 'A sleek AI chatbot app with message bubbles and a typing indicator, powered by an AI agent that answers questions'],
-  ['🛒', 'Storefront', 'A modern product storefront with a responsive grid, a slide-out cart, and a checkout summary'],
-  ['📊', 'Dashboard', 'An analytics dashboard with KPI cards, charts, a sidebar, and a clean modern design'],
-  ['📝', 'Notes app', 'A beautiful notes app with tags, search, markdown, and notes saved to the database'],
-  ['🎮', 'Game', 'A polished browser game: 2048 with smooth tile animations, a score, and a best score'],
+  ['layout', 'Project tracker', 'A kanban project tracker with draggable cards, columns, labels, and data saved to the database'],
+  ['message', 'AI chatbot', 'A sleek AI chatbot app with message bubbles and a typing indicator, powered by an AI agent that answers questions'],
+  ['cart', 'Storefront', 'A modern product storefront with a responsive grid, a slide-out cart, and a checkout summary'],
+  ['chart', 'Dashboard', 'An analytics dashboard with KPI cards, charts, a sidebar, and a clean modern design'],
+  ['note', 'Notes app', 'A beautiful notes app with tags, search, markdown, and notes saved to the database'],
+  ['gamepad', 'Game', 'A polished browser game: 2048 with smooth tile animations, a score, and a best score'],
 ];
 function renderEmptyChat() {
   const m = $('#messages');
   m.innerHTML = `<div class="empty-chat">
     <h2>What do you want to build?</h2>
     <p>Describe an app, or start from an example:</p>
-    <div class="examples">${EXAMPLES.map((e, i) => `<button class="example" data-i="${i}"><span class="ex-emoji">${e[0]}</span> ${esc(e[1])}</button>`).join('')}</div>
+    <div class="examples">${EXAMPLES.map((e, i) => `<button class="example" data-i="${i}"><span class="ex-emoji">${ic(e[0])}</span> ${esc(e[1])}</button>`).join('')}</div>
   </div>`;
   m.querySelectorAll('.example').forEach((b) => b.addEventListener('click', () => {
     const e = EXAMPLES[+b.dataset.i];
@@ -394,7 +415,7 @@ async function consumeStream(res, opts = {}) {
     if (!t) {
       t = document.createElement('details');
       t.className = 'think';
-      t.innerHTML = '<summary>💭 Thinking…</summary><div class="think-body"></div>';
+      t.innerHTML = `<summary>${ic('cpu',13)} Thinking…</summary><div class="think-body"></div>`;
       aiBubble.insertBefore(t, aiBubble.querySelector('.body'));
     }
     return t;
@@ -408,7 +429,7 @@ async function consumeStream(res, opts = {}) {
       rp = document.createElement('details');
       rp.className = 'research';
       rp.open = true;
-      rp.innerHTML = '<summary>🔬 Helper AIs (research)</summary><div class="rs-body"></div>';
+      rp.innerHTML = `<summary>${ic('search',13)} Helper AIs (research)</summary><div class="rs-body"></div>`;
       aiBubble.insertBefore(rp, aiBubble.querySelector('.body'));
     }
     return rp;
@@ -419,7 +440,7 @@ async function consumeStream(res, opts = {}) {
     if (!sec) {
       const wrap = document.createElement('div');
       wrap.className = 'rs-item';
-      wrap.innerHTML = `<div class="rs-head">🔬 ${esc(p.name)} <span class="rs-state">researching…</span></div><div class="rs-find"></div>`;
+      wrap.innerHTML = `<div class="rs-head">${ic('search',13)} ${esc(p.name)} <span class="rs-state">researching…</span></div><div class="rs-find"></div>`;
       rp.querySelector('.rs-body').appendChild(wrap);
       sec = researchSecs[p.name] = { state: wrap.querySelector('.rs-state'), find: wrap.querySelector('.rs-find') };
     }
@@ -437,12 +458,12 @@ async function consumeStream(res, opts = {}) {
       lc = document.createElement('details');
       lc.className = 'livecode';
       lc.open = true;
-      lc.innerHTML = '<summary>👁 Code <span class="lc-who"></span></summary><div class="lc-roster"></div><div class="lc-body"></div>';
+      lc.innerHTML = `<summary>${ic('eye',13)} Code <span class="lc-who"></span></summary><div class="lc-roster"></div><div class="lc-body"></div>`;
       aiBubble.appendChild(lc); // keep the live code box at the BOTTOM of the message
     }
     return lc;
   };
-  // Roster: mark each agent/worker as working (⏳), done (✅) or failed (⚠️). Created
+  // Roster: mark each agent/worker as working, done or failed. Created
   // as soon as an agent is launched, so launched agents show as working immediately —
   // even before they emit any code, and even if they end up producing nothing. Each
   // chip shows the agent name AND the model it's running on ("Name · Model").
@@ -463,7 +484,7 @@ async function consumeStream(res, opts = {}) {
     if (status === 'start' && (chip.classList.contains('done') || chip.classList.contains('fail'))) return;
     chip.classList.toggle('done', status === 'done');
     chip.classList.toggle('fail', status === 'fail');
-    const icon = status === 'done' ? '✅' : status === 'fail' ? '⚠️' : '⏳';
+    const icon = status === 'done' ? '<span style="color:var(--brand-2)">✓</span>' : status === 'fail' ? '<span style="color:#f0566d">✗</span>' : '<span class="dots">⋯</span>';
     chip.textContent = `${icon} ${name}${m ? ' · ' + m : ''}${detail ? ' · ' + detail : ''}`;
   };
   const appendCode = (p) => {
@@ -477,7 +498,7 @@ async function consumeStream(res, opts = {}) {
       const wrap = document.createElement('div');
       wrap.className = 'lc-file';
       const mdl = workerModels[who] ? ` <span class="lc-model">· ${esc(workerModels[who])}</span>` : '';
-      wrap.innerHTML = `<div class="lc-head">🤖 ${esc(who)}${mdl} · <span class="lc-path">${esc(p.path || '')}</span></div><pre class="lc-pre"></pre>`;
+      wrap.innerHTML = `<div class="lc-head">${ic('cpu', 13)} ${esc(who)}${mdl} · <span class="lc-path">${esc(p.path || '')}</span></div><pre class="lc-pre"></pre>`;
       lc.querySelector('.lc-body').appendChild(wrap);
       sec = codeSecs[key] = { pre: wrap.querySelector('.lc-pre'), text: '' };
     }
@@ -523,7 +544,7 @@ async function consumeStream(res, opts = {}) {
           // Clarifying question with clickable choices — click sends it as the next prompt.
           const el = document.createElement('div');
           el.className = 'ask-card';
-          el.innerHTML = `<div class="ask-q">🤔 ${esc(payload.question)}</div>` +
+          el.innerHTML = `<div class="ask-q">${esc(payload.question)}</div>` +
             (Array.isArray(payload.options) && payload.options.length
               ? `<div class="ask-opts">${payload.options.map((o) => `<button class="ask-opt">${esc(o)}</button>`).join('')}</div>`
               : '<div class="ask-hint">Type your answer below.</div>');
@@ -582,16 +603,16 @@ async function consumeStream(res, opts = {}) {
           if (live()) state.pendingSecrets = Array.isArray(payload.secretsNeeded) ? payload.secretsNeeded : [];
           const agentNames = payload.agents ? Object.keys(payload.agents) : [];
           let extra = '';
-          if (agentNames.length) extra += `<div class="meta">⚡ created agent(s): ${agentNames.map(esc).join(', ')}</div>`;
+          if (agentNames.length) extra += `<div class="meta">created agent(s): ${agentNames.map(esc).join(', ')}</div>`;
           setBody(fmt(chatAcc || (payload.hasCode ? 'Updated your app.' : 'Done.')) + extra);
-          const ts = aiBubble.querySelector('.think summary'); if (ts) ts.textContent = '💭 Thinking';
+          const ts = aiBubble.querySelector('.think summary'); if (ts) ts.innerHTML = `${ic('cpu',13)} Thinking`;
           const lc = aiBubble.querySelector('.livecode');
           if (lc) {
             // Flip any still-"working" chips to done now that the build is over.
             lc.querySelectorAll('.lc-chip').forEach((chip) => {
               if (!chip.classList.contains('done') && !chip.classList.contains('fail')) setWorker(chip.dataset.who, 'done');
             });
-            lc.open = false; const s = lc.querySelector('summary'); if (s) s.innerHTML = '👁 Code';
+            lc.open = false; const s = lc.querySelector('summary'); if (s) s.innerHTML = `${ic('eye',13)} Code`;
           }
           const rp = aiBubble.querySelector('.research');
           if (rp) rp.open = false;
@@ -743,7 +764,7 @@ function attChipHtml(a) {
   if (a.kind === 'image' && a.dataUrl) {
     return `<span class="att-thumb" title="${esc(a.name || 'image')}"><img src="${esc(a.dataUrl)}" alt=""></span>`;
   }
-  return `<span class="att-thumb att-doc" title="${esc(a.name || 'document')}">📄 ${esc((a.name || 'document').slice(0, 24))}</span>`;
+  return `<span class="att-thumb att-doc" title="${esc(a.name || 'document')}">${ic('file',12)} ${esc((a.name || 'document').slice(0, 24))}</span>`;
 }
 
 // Render the pending-attachments strip above the input (with remove buttons).
@@ -755,7 +776,7 @@ function renderAttachments() {
   el.innerHTML = state.attachments.map((a, i) => {
     const inner = a.kind === 'image' && a.dataUrl
       ? `<img src="${esc(a.dataUrl)}" alt="">`
-      : `<span class="att-ico">📄</span><span class="att-name">${esc((a.name || 'document').slice(0, 24))}</span>`;
+      : `<span class="att-ico">${ic('file',13)}</span><span class="att-name">${esc((a.name || 'document').slice(0, 24))}</span>`;
     return `<span class="att-pill ${a.kind === 'image' ? 'is-img' : 'is-doc'}">${inner}<button type="button" class="att-x" data-i="${i}" title="Remove" aria-label="Remove">✕</button></span>`;
   }).join('');
   el.querySelectorAll('.att-x').forEach((b) => b.addEventListener('click', () => {
@@ -856,7 +877,7 @@ function renderSelChip() {
   if (!c) return;
   if (!state.selected) { c.classList.add('hidden'); c.innerHTML = ''; return; }
   c.classList.remove('hidden');
-  c.innerHTML = `🎯 Editing <b>${esc(state.selected.label)}</b>${state.selected.text ? ' — “' + esc(state.selected.text.slice(0, 40)) + '”' : ''} <button id="selClear" title="Clear selection">✕</button>`;
+  c.innerHTML = `${ic('crosshair', 14)} Editing <b>${esc(state.selected.label)}</b>${state.selected.text ? ' — “' + esc(state.selected.text.slice(0, 40)) + '”' : ''} <button id="selClear" title="Clear selection">✕</button>`;
   $('#selClear').onclick = clearSelection;
 }
 function clearSelection() { state.selected = null; renderSelChip(); }
@@ -868,7 +889,7 @@ function switchTab(name) {
   if (name === 'security') renderSecurityPane();
 }
 
-// ---------- Security audit (🛡 tab) ----------
+// ---------- Security audit tab ----------
 function scoreClass(s) { return s >= 85 ? 'ok' : s >= 60 ? 'warn' : s >= 40 ? 'bad' : 'crit'; }
 function sevClass(sev) { return ({ CRITICAL: 'crit', HIGH: 'bad', MEDIUM: 'warn', LOW: 'low' })[sev] || 'low'; }
 
@@ -882,21 +903,27 @@ function renderSecurityBadge() {
   b.textContent = a.codeHealthScore;
 }
 
-function findingCard(f) {
+function isFixable(f) { return !!(f.location && f.location.file && f.location.file.indexOf('.') > -1); }
+function findingCard(f, idx) {
   const loc = f.location ? `${esc(f.location.file || '')}:${f.location.line || 0}` : '';
   const ex = f.example && (f.example.vulnerable || f.example.safe)
     ? `<div class="fnd-ex"><div class="ex-bad"><span>✗ vulnerable</span><pre>${esc(f.example.vulnerable || '')}</pre></div><div class="ex-ok"><span>✓ safe</span><pre>${esc(f.example.safe || '')}</pre></div></div>`
     : '';
+  // Per-finding AI auto-fix — only in the final (non-streaming) render, and only when the
+  // finding points at a real file we can rewrite in this Yield project.
+  const canFix = idx != null && isFixable(f);
+  const actions = canFix ? `<div class="fnd-actions"><button class="btn primary sm" data-projfix="${idx}">✦ AI Fix &amp; apply</button></div>` : '';
   return `<div class="fnd ${sevClass(f.severity)}">
     <div class="fnd-head"><span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span>
       <b>${esc((f.type || '').replace(/_/g, ' '))}</b>
       <span class="fnd-cwe">${esc(f.cwe || '')}</span>
-      ${f.source === 'ai' ? `<span class="fnd-ai" title="Found by ${esc(f.model || 'AI')}">🤖 ${esc(f.model || 'AI')}</span>` : '<span class="fnd-pat">pattern</span>'}
+      ${f.source === 'ai' ? `<span class="fnd-ai" title="Found by ${esc(f.model || 'AI')}">✦ ${esc(f.model || 'AI')}</span>` : '<span class="fnd-pat">pattern</span>'}
       <span class="fnd-loc">${loc}</span></div>
     <div class="fnd-owasp">${esc(f.owasp || '')}</div>
     <div class="fnd-desc">${esc(f.description || '')}</div>
     ${f.fix ? `<div class="fnd-fix"><b>Fix:</b> ${esc(f.fix)}</div>` : ''}
     ${ex}
+    ${actions}
   </div>`;
 }
 
@@ -906,6 +933,7 @@ function renderSecurityPane() {
   const hasFiles = state.files && state.files.length;
   const sum = a ? a.summary : null;
   const score = a ? a.codeHealthScore : null;
+  const fixableN = a ? a.findings.filter(isFixable).length : 0;
   pane.innerHTML = `
     <div class="sec-top">
       <div class="sec-score ${a ? scoreClass(score) : ''}">
@@ -918,22 +946,118 @@ function renderSecurityPane() {
           <span class="sev warn">${sum.medium} medium</span>
           <span class="sev low">${sum.low} low</span>` : '<span class="muted">No scan yet.</span>'}
         <div class="sec-actions">
-          <button class="btn ghost sm" data-scan="basic" ${!hasFiles ? 'disabled' : ''}>⚡ Quick scan</button>
-          <button class="btn ghost sm" data-scan="detailed" ${!hasFiles ? 'disabled' : ''}>🔒 Deep scan (all models)</button>
-          <button class="btn ghost sm" data-scan="compliance" ${!hasFiles ? 'disabled' : ''}>🔒 Compliance (GDPR/PCI)</button>
+          <button class="btn ghost sm" data-scan="basic" ${!hasFiles ? 'disabled' : ''}>Quick scan</button>
+          <button class="btn ghost sm" data-scan="detailed" ${!hasFiles ? 'disabled' : ''}>Deep scan (all models)</button>
+          <button class="btn ghost sm" data-scan="compliance" ${!hasFiles ? 'disabled' : ''}>Compliance (GDPR/PCI)</button>
+          ${fixableN ? `<button class="btn primary sm" id="secFixAll">✦ Fix all &amp; apply (${fixableN})</button>` : ''}
         </div>
       </div>
     </div>
     <div id="secStatus" class="sec-status"></div>
     <div id="secFindings" class="sec-findings">${
-      a ? (a.findings.length ? a.findings.map(findingCard).join('') : '<div class="sec-clean">✓ No vulnerabilities found. Nice and clean.</div>')
+      a ? (a.findings.length ? a.findings.map((f, i) => findingCard(f, i)).join('') : '<div class="sec-clean">✓ No vulnerabilities found. Nice and clean.</div>')
         : (hasFiles ? '<div class="muted">Run a scan to audit this app for security vulnerabilities.</div>' : '<div class="muted">Build an app first, then audit it here.</div>')
     }</div>
     <div id="secTrend" class="sec-trend"></div>
-    <div class="sec-upsell">🛡 Want to scan your whole codebase? <a href="/security" target="_blank">Yield Security</a> scans your GitHub repos &amp; Yield projects with every top AI model — <a href="/security" target="_blank">learn more →</a></div>
-    <div class="sec-privacy">🔒 ${esc(a ? a.privacyNotice : 'Code is analyzed and discarded immediately. Only vulnerability metadata is retained.')}</div>`;
+    <div class="sec-upsell">Want to scan your whole codebase? <a href="/security" target="_blank">Yield Security</a> scans your GitHub repos &amp; Yield projects with every top AI model — and can auto-fix &amp; commit for you — <a href="/security" target="_blank">learn more →</a></div>
+    <div class="sec-privacy">${esc(a ? a.privacyNotice : 'Code is analyzed and discarded immediately. Only vulnerability metadata is retained.')}</div>`;
   pane.querySelectorAll('[data-scan]').forEach((b) => b.addEventListener('click', () => runScan(b.dataset.scan)));
+  pane.querySelectorAll('[data-projfix]').forEach((b) => b.addEventListener('click', () => projectFix(+b.dataset.projfix, b)));
+  const fa = $('#secFixAll'); if (fa) fa.addEventListener('click', () => projectFixAll(fa));
   loadAuditTrend();
+}
+
+// Recompute the severity summary after findings are fixed/removed (score needs a rescan).
+function recountSummary(list) {
+  const s = { critical: 0, high: 0, medium: 0, low: 0, total: list.length };
+  for (const f of list) { const k = f.severity;
+    if (k === 'CRITICAL') s.critical++; else if (k === 'HIGH') s.high++; else if (k === 'MEDIUM') s.medium++; else s.low++; }
+  return s;
+}
+// AI fixes run as a background job on the server (see /api/security/fix-status) — a slow
+// model call + saving the file shouldn't freeze the builder. Poll to completion; every
+// callback re-checks the button is still on the page (the Security tab re-renders on
+// every click, and the user is free to switch tabs or projects) before touching it.
+function pollFixJob(jobId, opts) {
+  const { onProgress, onFinish, onFail, intervalMs = 1500 } = opts || {};
+  const tick = async () => {
+    const r = await fetch('/api/security/fix-status?id=' + encodeURIComponent(jobId)).then((x) => x.json()).catch(() => null);
+    if (!r || !r.jobId) { if (onFail) onFail((r && r.error) || 'Lost track of the fix job.'); return; }
+    if (r.status === 'done') { if (onFinish) onFinish(r.result); return; }
+    if (r.status === 'error') { if (onFail) onFail(r.error || 'Fix failed.'); return; }
+    if (onProgress) onProgress(r);
+    setTimeout(tick, intervalMs);
+  };
+  tick();
+}
+// AI-fix ONE finding in the current Yield project: rewrite the file, save it to the project
+// (upsert + preview), and drop the finding. This is the "fix it through Yield" path.
+async function projectFix(idx, btn) {
+  const a = state.audit; if (!a || !state.projectId) return;
+  const f = a.findings[idx]; if (!f || !isFixable(f)) return;
+  const projectIdAtStart = state.projectId;
+  const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'Starting…';
+  const r = await fetch('/api/security/fix', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: 'project', projectId: state.projectId, file: f.location.file, line: f.location.line, finding: f, apply: true }) })
+    .then((x) => x.json()).catch(() => ({}));
+  if (!r.jobId) {
+    btn.disabled = false; btn.innerHTML = orig;
+    if (r.code === 'security_required') { const st = $('#secStatus'); if (st) st.innerHTML = `AI auto-fix is part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`; }
+    else toast(r.error || 'Could not start the fix.');
+    return;
+  }
+  toast(`Fixing ${f.location.file} in the background — keep building, we’ll update you.`);
+  pollFixJob(r.jobId, {
+    onFinish: (result) => {
+      if (document.contains(btn)) { btn.disabled = false; btn.innerHTML = orig; }
+      if (state.projectId !== projectIdAtStart) return; // user switched projects — don't touch the wrong one
+      if (result && result.applied) {
+        a.findings = a.findings.filter((x) => x !== f); a.summary = recountSummary(a.findings);
+        loadFiles().then(refreshPreview);
+        toast(`Fixed ${f.location.file} — app updated. Re-scan to refresh the score.`);
+        renderSecurityBadge(); if (!$('#securityTab').classList.contains('hidden')) renderSecurityPane();
+      } else { toast((result && result.applyError) || 'Could not generate a fix.'); }
+    },
+    onFail: (msg) => { if (document.contains(btn)) { btn.disabled = false; btn.innerHTML = orig; } toast('Fix failed: ' + msg); },
+  });
+}
+// AI-fix EVERY fixable finding at once — one AI rewrite + save per file — then reload the
+// app. Kicks off as a background job so the tab isn't frozen for however long N files take.
+async function projectFixAll(btn) {
+  const a = state.audit; if (!a || !state.projectId) return;
+  const fixable = a.findings.filter(isFixable);
+  if (!fixable.length) return;
+  if (!confirm(`AI-fix ${fixable.length} finding(s) and update your app's files automatically?`)) return;
+  const projectIdAtStart = state.projectId;
+  const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'Starting…';
+  const st0 = $('#secStatus'); if (st0) st0.innerHTML = `<span class="spin"></span> Starting fix for ${fixable.length} finding(s)…`;
+  const r = await fetch('/api/security/fix-all', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: 'project', projectId: state.projectId, findings: fixable, apply: true }) })
+    .then((x) => x.json()).catch(() => ({}));
+  if (!r.jobId) {
+    btn.disabled = false; btn.innerHTML = orig;
+    if (r.code === 'security_required') { if (st0) st0.innerHTML = `AI auto-fix is part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`; }
+    else if (st0) st0.textContent = r.error || 'Bulk fix failed to start.';
+    return;
+  }
+  toast(`Fixing ${r.filesTotal || fixable.length} file(s) in the background — keep building, we’ll update you.`);
+  pollFixJob(r.jobId, {
+    onProgress: (job) => { const st = $('#secStatus'); if (st && document.contains(st)) st.innerHTML = `<span class="spin"></span> Fixing ${job.filesDone || 0}/${job.filesTotal || fixable.length} file(s)…`; },
+    onFinish: (result) => {
+      if (document.contains(btn)) { btn.disabled = false; btn.innerHTML = orig; }
+      if (state.projectId !== projectIdAtStart) return; // user switched projects — don't touch the wrong one
+      if (result && result.results) {
+        const fixedFiles = new Set(result.results.filter((x) => x.applied).map((x) => x.file));
+        if (fixedFiles.size) {
+          a.findings = a.findings.filter((f) => !fixedFiles.has(f.location && f.location.file)); a.summary = recountSummary(a.findings);
+          loadFiles().then(refreshPreview);
+          toast(`Fixed ${fixedFiles.size} file(s) — app updated. Re-scan to refresh the score.`);
+        } else { toast('Could not auto-fix these — try them individually.'); }
+        renderSecurityBadge(); if (!$('#securityTab').classList.contains('hidden')) renderSecurityPane();
+      } else { toast('Bulk fix finished with no result.'); }
+    },
+    onFail: (msg) => { if (document.contains(btn)) { btn.disabled = false; btn.innerHTML = orig; } const st = $('#secStatus'); if (st && document.contains(st)) st.textContent = 'Fix failed: ' + msg; else toast('Fix failed: ' + msg); },
+  });
 }
 
 // Run a scan over the current files. "basic" is instant + local; deep/compliance stream
@@ -943,7 +1067,7 @@ async function runScan(level) {
   state.auditScanning = true;
   const status = $('#secStatus'); const list = $('#secFindings');
   const found = [];
-  const render = () => { if (list) list.innerHTML = found.length ? found.map(findingCard).join('') : '<div class="muted">Scanning…</div>'; };
+  const render = () => { if (list) list.innerHTML = found.length ? found.map((f) => findingCard(f)).join('') : '<div class="muted">Scanning…</div>'; };
   if (status) status.innerHTML = `<span class="spin"></span> ${level === 'basic' ? 'Scanning…' : 'Running through all top models, one at a time…'}`;
   render();
   try {
@@ -954,7 +1078,7 @@ async function runScan(level) {
     if (!res.ok || !res.body || !res.headers.get('content-type')?.includes('text/event-stream')) {
       const err = await res.json().catch(() => ({}));
       if (err.code === 'security_required') {
-        if (status) status.innerHTML = `🔒 Deep AI scans &amp; whole-repo scanning are part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`;
+        if (status) status.innerHTML = `Deep AI scans &amp; whole-repo scanning are part of <b>Yield Security</b>. <a href="/security" target="_blank" style="color:var(--brand-2);text-decoration:underline">Unlock it →</a>`;
       } else if (status) status.textContent = err.error || `Scan failed (${res.status})`;
       return;
     }
@@ -1049,7 +1173,7 @@ async function promptForSecrets() {
           method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: s.name, value: val }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        addBubble('ai', `<div class="meta">secret saved</div>🔒 <b>${esc(s.name)}</b> saved &amp; available to this app.`);
+        addBubble('ai', `<div class="meta">secret saved</div><b>${esc(s.name)}</b> saved &amp; available to this app.`);
       } catch {
         addBubble('ai', `<div class="meta">error</div>⚠ Couldn't save secret <b>${esc(s.name)}</b> — please try again.`);
       }
@@ -1239,12 +1363,12 @@ async function openHistory() {
   const dialog = $('#histDialog');
   const body = $('#histBody');
   if (!state.projectId) {
-    body.innerHTML = `<h3>📜 Prompt history</h3>
+    body.innerHTML = `<h3>${ic('history', 16)} Prompt history</h3>
       <p class="gh-sub">Start building — every prompt and reply gets saved here with a timestamp, and mirrored to your GitHub at <span class="endpoint">.yield/prompts.txt</span>.</p>`;
     dialog.showModal();
     return;
   }
-  body.innerHTML = `<h3>📜 Prompt history</h3>
+  body.innerHTML = `<h3>${ic('history', 16)} Prompt history</h3>
     <p class="gh-sub">Timestamped record of this app's chat — also saved to your repo at <span class="endpoint">.yield/prompts.txt</span>. Click <b>↻ Reuse</b> to send a past prompt again.</p>
     <div id="histList" class="hist-list"><span class="gh-sub">Loading…</span></div>
     <div class="gh-section"><a class="btn ghost sm" id="histDownload" download="prompts.txt">⬇ Download prompts.txt</a></div>`;
@@ -1254,7 +1378,7 @@ async function openHistory() {
   const list = $('#histList');
   if (!histEntries.length) { list.innerHTML = '<span class="gh-sub">No prompts yet.</span>'; return; }
   list.innerHTML = histEntries.map((e, i) => {
-    const who = e.role === 'user' ? '👤 You' : `🤖 Yield${e.model ? ' · ' + esc(e.model) : ''}`;
+    const who = e.role === 'user' ? `${ic('user', 13)} You` : `${ic('cpu', 13)} Yield${e.model ? ' · ' + esc(e.model) : ''}`;
     const flag = e.flagged ? ' ⚠' : '';
     const reuse = e.role === 'user' && !e.flagged ? `<button class="btn ghost sm" data-reuse="${i}">↻ Reuse</button>` : '';
     return `<div class="hist-item">
@@ -1388,7 +1512,7 @@ function wireEvents() {
     let text = typed || 'Build an app based on the attached file(s).', label = null;
     if (state.selected) {
       text = `Edit this specific element in the app and return the updated file(s) in full.\nElement: ${state.selected.label}\nIts current HTML: ${state.selected.html}\nChange requested: ${typed}`;
-      label = `🎯 ${state.selected.label}: ${typed}`;
+      label = `${state.selected.label}: ${typed}`;
       clearSelection();
     }
     // Attachments are one-shot: capture them for this message, then clear the strip.

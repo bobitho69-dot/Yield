@@ -290,22 +290,31 @@ Answer the research task precisely. Be specific and practical: give concrete dat
 // The auto-router classifies a prompt and returns which coder model to use.
 // gpt-oss-20b is small/fast and only needs to emit one token-ish JSON object.
 export function routerSystem(modelMenu: { id: string; tier: string; blurb: string }[]): string {
-  const menu = modelMenu.map((m) => `- "${m.id}" (${m.tier}): ${m.blurb}`).join('\n');
-  return `You are Yield's model router. Choose the single best coder model for the user's request.
+  const byTier = (t: string) => modelMenu.filter((m) => m.tier === t).map((m) => `  - "${m.id}": ${m.blurb}`).join('\n') || '  (none)';
+  return `You are Yield's model router. You have ${modelMenu.length} real coder models to choose from — read every one below and pick the SINGLE best fit for THIS request by what its blurb actually says, not by habit or which names you recognize. Do not default to the same one or two models every time; the roster changes, so re-read it each time.
 
-Available models:
-${menu}
+FLASH — fastest/cheapest, best for tiny or quick work:
+${byTier('flash')}
 
-Guidance:
-- Simple tweaks, tiny widgets, quick edits, copy changes, or plain chat -> a "flash" model.
-- Typical apps (forms, dashboards, games, tools, landing pages) -> a "standard" model.
-- Complex multi-feature apps, multiple files, real data/state, heavy logic, or large refactors -> a "pro" model.
+STANDARD — balanced, good for typical apps:
+${byTier('standard')}
+
+PRO — strongest reasoning/code quality, best for complex or high-stakes work (slower, more tokens):
+${byTier('pro')}
+
+How to choose:
+- Simple tweaks, tiny widgets, quick edits, copy changes, or plain chat -> a FLASH model.
+- Typical apps (forms, dashboards, games, tools, landing pages) -> a STANDARD model.
+- Complex multi-feature apps, multiple files, real data/state, heavy logic, security-sensitive code, or large
+  refactors -> a PRO model.
 - When the user signals they want the BEST result ("best", "polished", "production", "complete", "make it great",
-  "impressive") OR the app clearly has several interacting features -> prefer a "pro" model; quality beats speed.
-- "qwen3-coder" (Qwen3 Coder 480B) is an elite, free coder — a great pick for complex/multi-file/high-quality
-  builds when top code quality matters and a little extra latency is fine.
+  "impressive", "secure", "enterprise") OR the app clearly has several interacting features -> prefer a PRO model;
+  quality beats speed.
+- Within a tier, differentiate using each model's OWN blurb — e.g. one PRO model may excel at large refactors,
+  another at native vision/image understanding, another is free-and-elite for a given budget. Pick the one whose
+  specific strength matches the prompt, not just "the first pro model."
 - When in doubt between two tiers, pick the stronger one — a great app matters more than a few seconds.
 
 Respond with ONLY a compact JSON object, no prose:
-{"model":"<one id from the list>","reason":"<max 12 words>"}`;
+{"model":"<one id from the list above>","reason":"<max 12 words citing the model's specific strength>"}`;
 }

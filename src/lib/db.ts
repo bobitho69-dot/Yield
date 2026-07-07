@@ -309,17 +309,17 @@ export async function removeAuditIgnore(env: Env, source: string, type: string, 
 // --- Continuous monitoring (scan-on-push + scheduled re-scans) ------------------
 export interface MonitorRow {
   id: string; user_id: string; repo: string; branch: string; hook_id: number | null;
-  enabled: number; last_scan_at: number | null; last_score: number | null; created_at: number;
+  enabled: number; auto_fix: number; last_scan_at: number | null; last_score: number | null; created_at: number;
   github_token_enc?: string | null; github_login?: string | null; // joined from users
 }
-export async function addMonitor(env: Env, m: { user_id: string; repo: string; branch: string; hook_id: number | null }): Promise<string> {
+export async function addMonitor(env: Env, m: { user_id: string; repo: string; branch: string; hook_id: number | null; auto_fix?: boolean }): Promise<string> {
   const id = newId();
-  await env.DB.prepare('INSERT INTO security_monitors (id,user_id,repo,branch,hook_id,enabled,created_at) VALUES (?,?,?,?,?,1,?)')
-    .bind(id, m.user_id, m.repo, m.branch, m.hook_id ?? null, now()).run();
+  await env.DB.prepare('INSERT INTO security_monitors (id,user_id,repo,branch,hook_id,enabled,auto_fix,created_at) VALUES (?,?,?,?,?,1,?,?)')
+    .bind(id, m.user_id, m.repo, m.branch, m.hook_id ?? null, m.auto_fix ? 1 : 0, now()).run();
   return id;
 }
 export function listMonitors(env: Env, userId: string): Promise<{ results: MonitorRow[] }> {
-  return env.DB.prepare('SELECT id,user_id,repo,branch,hook_id,enabled,last_scan_at,last_score,created_at FROM security_monitors WHERE user_id=? ORDER BY created_at DESC').bind(userId).all<MonitorRow>();
+  return env.DB.prepare('SELECT id,user_id,repo,branch,hook_id,enabled,auto_fix,last_scan_at,last_score,created_at FROM security_monitors WHERE user_id=? ORDER BY created_at DESC').bind(userId).all<MonitorRow>();
 }
 export function getMonitorByRepo(env: Env, repo: string): Promise<MonitorRow | null> {
   return env.DB.prepare('SELECT m.*, u.github_token_enc, u.github_login FROM security_monitors m JOIN users u ON u.id=m.user_id WHERE m.repo=? AND m.enabled=1 LIMIT 1').bind(repo).first<MonitorRow>();
@@ -335,6 +335,9 @@ export async function removeMonitor(env: Env, userId: string, repo: string): Pro
 }
 export async function touchMonitor(env: Env, repo: string, score: number): Promise<void> {
   await env.DB.prepare('UPDATE security_monitors SET last_scan_at=?, last_score=? WHERE repo=?').bind(now(), score, repo).run();
+}
+export async function setMonitorAutoFix(env: Env, userId: string, repo: string, autoFix: boolean): Promise<void> {
+  await env.DB.prepare('UPDATE security_monitors SET auto_fix=? WHERE user_id=? AND repo=?').bind(autoFix ? 1 : 0, userId, repo).run();
 }
 
 // --- Integration config (Slack / Jira / GitHub PR comments) ---------------------

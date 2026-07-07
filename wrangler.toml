@@ -13,6 +13,16 @@ compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
+# --- Observability -------------------------------------------------------------
+# Kept in the config (not just the dashboard) so every deploy — and local dev —
+# applies the same logging/tracing settings and nothing drifts between deployments.
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+
 # --- Static frontend (chat UI, editor, preview shell) --------------------------
 [assets]
 directory = "./public"

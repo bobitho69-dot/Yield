@@ -5,10 +5,11 @@
 
 import type { Ctx } from '../types';
 import { json } from '../lib/response';
-import { CODER_MODELS, endpointFor, pickerModels } from '../config/models';
+import { CODER_MODELS, ROUTER_MODEL, endpointFor, pickerModels, visionEndpoint } from '../config/models';
 import { getUsageState, usageSnapshot } from '../lib/usage';
 import { enabledProviders } from '../lib/auth';
 import { chat } from '../lib/nvidia';
+import { checkPrompt } from '../lib/jailbreak';
 
 export function handleModels(): Response {
   return json({ models: pickerModels() });
@@ -36,15 +37,31 @@ function classifyProbe(e: any): string {
   if (status === 429) return 'rate_limited';                // out of rate budget
   if (status === 402) return 'rate_limited';                // credits/payment required
   if (status === 404) return 'unavailable';                 // model id not found
+  if (status === 410) return 'unavailable';                 // model deprecated/removed upstream
   if (status && status >= 500) return 'degraded';
   return 'down';
 }
 
-interface ModelHealth { id: string; label: string; status: string; latencyMs: number }
+interface ModelHealth { id: string; label: string; status: string; latencyMs: number; group: 'coder' | 'utility' }
 
-// Probe each AI individually with a tiny 1-token request so the status page can show
-// every model on its own line. Cached in the edge Cache API for 5 min (NOT KV) so
-// repeated /status views don't re-probe — at most one probe-set per 5 minutes.
+// Probe one chat-completions AI with a tiny 1-token request.
+async function probeChat(id: string, label: string, group: 'coder' | 'utility', ep: { baseUrl: string; apiKey: string; apiKeyBackup?: string; modelId: string }): Promise<ModelHealth> {
+  const t0 = Date.now();
+  try {
+    await chat({
+      baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId,
+      messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, temperature: 0, timeoutMs: 8000,
+    });
+    return { id, label, status: 'operational', latencyMs: Date.now() - t0, group };
+  } catch (e: any) {
+    return { id, label, status: classifyProbe(e), latencyMs: Date.now() - t0, group };
+  }
+}
+
+// Probe EVERY AI the platform uses — the coder models plus the utility AIs (the Auto
+// router, the image-understanding vision model, and the jailbreak guard) — so the status
+// page shows all of them. Cached in the edge Cache API for 5 min (NOT KV) so repeated
+// /status views don't re-probe — at most one probe-set per 5 minutes.
 async function probeModels(c: Ctx): Promise<ModelHealth[]> {
   const cache = caches.default;
   const cacheKey = new Request('https://yield.internal/__health_models');
@@ -53,19 +70,24 @@ async function probeModels(c: Ctx): Promise<ModelHealth[]> {
     if (hit) return await hit.json();
   } catch { /* probe fresh */ }
 
-  const results = await Promise.all(CODER_MODELS.map(async (m): Promise<ModelHealth> => {
-    const ep = endpointFor(c.env, m);
+  const coders = CODER_MODELS.map((m) => probeChat(m.id, m.label, 'coder', endpointFor(c.env, m)));
+
+  // Utility AIs: the Auto router + the vision (image-understanding) model share the chat
+  // probe; the jailbreak guard has its own classify API, so probe it via checkPrompt.
+  const router = probeChat(ROUTER_MODEL.id, 'Auto router', 'utility', endpointFor(c.env, ROUTER_MODEL));
+  const vision = probeChat('vision', 'Vision · image understanding', 'utility', visionEndpoint(c.env));
+  const guard = (async (): Promise<ModelHealth> => {
     const t0 = Date.now();
     try {
-      await chat({
-        baseUrl: ep.baseUrl, apiKey: ep.apiKey, model: ep.modelId,
-        messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, temperature: 0, timeoutMs: 8000,
-      });
-      return { id: m.id, label: m.label, status: 'operational', latencyMs: Date.now() - t0 };
+      const r = await checkPrompt(c.env, 'hello');
+      const status = r.source === 'nemoguard' ? 'operational' : r.source === 'unavailable' ? 'unavailable' : 'operational';
+      return { id: 'nemoguard', label: 'Jailbreak guard', status, latencyMs: Date.now() - t0, group: 'utility' };
     } catch (e: any) {
-      return { id: m.id, label: m.label, status: classifyProbe(e), latencyMs: Date.now() - t0 };
+      return { id: 'nemoguard', label: 'Jailbreak guard', status: classifyProbe(e), latencyMs: Date.now() - t0, group: 'utility' };
     }
-  }));
+  })();
+
+  const results = await Promise.all([...coders, router, vision, guard]);
 
   try {
     await cache.put(cacheKey, new Response(JSON.stringify(results), {

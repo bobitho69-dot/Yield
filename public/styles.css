@@ -46,12 +46,25 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------- Landing ---------- */
 .landing { background: radial-gradient(1200px 600px at 70% -10%, #1a1633 0%, var(--bg) 55%); }
-.nav { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 6vw; }
-.brand { font-weight: 800; font-size: 1.25rem; letter-spacing: -.02em; }
+/* Global navbar — matches the "NavBar" component in the Yield design system Figma:
+   brand pinned left · links centered in the middle · actions pinned right, on a
+   near-black bar with a thin bottom border. */
+.nav { display: flex; align-items: center; gap: 28px; padding: 14px clamp(20px, 6vw, 48px); background: #0a0c11; border-bottom: 1px solid #232a39; }
+.brand { font-weight: 800; font-size: 1.19rem; letter-spacing: -.02em; flex: 0 0 auto; }
 .brand.sm { font-size: 1.05rem; }
-.nav-links { display: flex; align-items: center; gap: 1.4rem; }
-.nav-links a:not(.btn) { color: var(--muted); font-size: .92rem; }
+/* Centered middle section (the plain nav links). */
+.nav-links { display: flex; flex: 1 1 0; min-width: 0; align-items: center; justify-content: center; gap: 1.6rem; flex-wrap: wrap; }
+.nav-links a:not(.btn) { color: var(--muted); font-size: .86rem; font-weight: 500; white-space: nowrap; }
 .nav-links a:not(.btn):hover { color: var(--text); }
+.nav-links a.active { color: var(--text); }
+/* Right-pinned actions (Sign in / Start building / New app / auth). */
+.nav-actions { display: flex; flex: 0 0 auto; align-items: center; gap: .6rem; }
+.nav-actions a:not(.btn) { color: var(--muted); font-size: .86rem; font-weight: 500; }
+.nav-actions a:not(.btn):hover { color: var(--text); }
+@media (max-width: 780px) {
+  .nav { flex-wrap: wrap; gap: 12px 20px; }
+  .nav-links { order: 3; flex-basis: 100%; justify-content: flex-start; gap: 1rem; }
+}
 
 .hero { text-align: center; padding: 4rem 6vw 2rem; }
 .pill { display: inline-block; font-size: .8rem; color: var(--brand-2); background: #0e2a26; border: 1px solid #18443c; padding: .35rem .8rem; border-radius: 999px; margin-bottom: 1.5rem; }

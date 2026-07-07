@@ -7,11 +7,9 @@
 <meta name="description" content="Yield Roblox — chat with an AI to write Roblox Luau scripts and design 3D maps with free community models, synced live into Roblox Studio by a companion plugin.">
 <link rel="stylesheet" href="/styles.css">
 <style>
-  /* Same top nav (.topbar/.toplink) every other page uses (app.html, dashboard.html) —
-     this page just adds its own sidebar + workspace below it. */
+  /* Uses the shared global .nav (from styles.css, matching the Figma design system);
+     this page just adds its own sidebar + tabbed workspace below it. */
   body.rbx-app { height:100vh; overflow:hidden; display:flex; flex-direction:column; }
-  .rbx-topbar .brand { display:flex; align-items:center; gap:.4rem; font-weight:800; text-decoration:none; color:var(--text); margin-right:.6rem; }
-  .rbx-topbar .toplink.active { color:var(--text); font-weight:600; }
   .app { display:grid; grid-template-columns:260px 1fr; flex:1; min-height:0; overflow:hidden; }
   /* Sidebar */
   .sb { background:#0e1119; border-right:1px solid var(--line); display:flex; flex-direction:column; padding:1rem .8rem; gap:.2rem; overflow-y:auto; min-height:0; }
@@ -124,16 +122,19 @@
 </style>
 </head>
 <body class="rbx-app">
-  <!-- Global top nav — identical structure to app.html / dashboard.html -->
-  <header class="topbar rbx-topbar">
+  <!-- Global navbar — the shared .nav component (matches the Figma design system) -->
+  <header class="nav">
     <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
-    <a class="toplink" href="/dashboard">Projects</a>
-    <a class="toplink" href="/security" title="Yield Security — scan your repos & projects for vulnerabilities">🛡 Security</a>
-    <a class="toplink active" href="/roblox" title="Yield Roblox — AI-build Roblox games synced to Studio">🎮 Roblox</a>
-    <a class="toplink" href="/settings">Settings</a>
-    <a class="toplink" id="donateLink" href="/donate" title="Support Yield">💜 Donate</a>
-    <div class="top-actions" style="margin-left:auto">
-      <div id="authArea"></div>
+    <nav class="nav-links">
+      <a href="/dashboard">Projects</a>
+      <a href="/security">🛡 Security</a>
+      <a class="active" href="/roblox">🎮 Roblox</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/account">Account</a>
+    </nav>
+    <div class="nav-actions">
+      <a class="btn primary sm" href="/app">＋ New app</a>
+      <span id="authArea"></span>
     </div>
   </header>
   <div class="app">

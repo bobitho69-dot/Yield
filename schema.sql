@@ -220,6 +220,10 @@ CREATE TABLE IF NOT EXISTS roblox_projects (
   roblox_api_key_enc  TEXT,
   roblox_creator_type TEXT,                  -- 'User' | 'Group'
   roblox_creator_id   TEXT,
+  -- Remembered map-design preferences (pre-filled into the Map tab, and always
+  -- given to the map AI so a project's look stays consistent across regenerations).
+  map_style           TEXT,                  -- e.g. 'smooth-realistic' | 'pixel-voxel' | 'low-poly-cartoon' | free text
+  map_palette         TEXT,                  -- free text / hex list describing the preferred color palette
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL
 );

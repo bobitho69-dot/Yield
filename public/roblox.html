@@ -176,13 +176,38 @@
           <section id="tab-map" style="display:none">
             <div class="panel">
               <h2 style="margin-top:0">Design a map</h2>
-              <p style="color:var(--muted);font-size:.88rem;margin-top:-.4rem">Describe a place and the AI lays out terrain, blocked-out structures, and free-model props (trees, buildings, furniture — matched from your <a href="#" data-tab-link="assets" style="color:var(--brand-2)">asset library</a>). It's queued for the plugin to build next sync.</p>
+              <p style="color:var(--muted);font-size:.88rem;margin-top:-.4rem">Describe a place and the AI builds it big and richly detailed — favoring real inserted meshes (trees, buildings, furniture, props — matched from your <a href="#" data-tab-link="assets" style="color:var(--brand-2)">asset library</a>) over blocky placeholders wherever it can. It's queued for the plugin to build next sync.</p>
               <div class="field">
                 <label>Map description</label>
-                <textarea id="mapPrompt" rows="3" placeholder="e.g. a small medieval village with a market square, a few houses, and a forest around the edge"></textarea>
+                <textarea id="mapPrompt" rows="3" placeholder="e.g. a small medieval village with a market square, several distinct houses, and a forest around the edge"></textarea>
               </div>
+              <div class="row2">
+                <div class="field">
+                  <label>Art style</label>
+                  <select id="mapStyle">
+                    <option value="">Let the AI decide</option>
+                    <option value="smooth, realistic">Smooth / realistic</option>
+                    <option value="low-poly, cartoon">Low-poly / cartoon</option>
+                    <option value="pixel, voxel, blocky">Pixel art / voxel</option>
+                    <option value="medieval fantasy">Medieval fantasy</option>
+                    <option value="sci-fi, futuristic">Sci-fi / futuristic</option>
+                    <option value="modern, urban">Modern / urban</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Color palette</label>
+                  <input id="mapPalette" placeholder="e.g. warm autumn oranges and browns, or #8B4513, #556B2F">
+                </div>
+              </div>
+              <label style="display:flex;align-items:center;gap:.5rem;font-size:.84rem;color:var(--muted);margin-bottom:1rem">
+                <input type="checkbox" id="mapClear" style="width:auto"> Clear the existing map first (unchecked adds onto what's already built)
+              </label>
               <button class="btn primary" id="genMapBtn">Generate map</button>
               <div id="mapResult"></div>
+            </div>
+            <div class="panel">
+              <h2 style="margin-top:0">Recent maps</h2>
+              <div id="mapsHistory" style="color:var(--muted);font-size:.8rem">Loading…</div>
             </div>
           </section>
 
@@ -197,6 +222,15 @@
               <div class="field"><label>Tags (comma-separated — helps the AI match it)</label><input id="assetTagsInput" placeholder="tree, pine, nature, forest"></div>
               <button class="btn ghost sm" id="addAssetBtn">＋ Pin asset</button>
               <div class="asset-grid" id="assetGrid"></div>
+            </div>
+            <div class="panel">
+              <h2 style="margin-top:0">Generate a custom 3D model</h2>
+              <p style="color:var(--muted);font-size:.88rem;margin-top:-.4rem" id="modelGenHint">Describe a prop and the 3D-model AI generates a real mesh, uploads it to your Roblox account, and pins it here — needs a connected Roblox Open Cloud API key with a creator id (below).</p>
+              <div class="composer" style="margin-bottom:.4rem">
+                <textarea id="modelGenPrompt" rows="1" placeholder="e.g. a weathered stone gargoyle statue"></textarea>
+                <button class="btn primary sm" id="modelGenBtn">Generate</button>
+              </div>
+              <div id="modelGenResult"></div>
             </div>
             <div class="panel">
               <h2 style="margin-top:0">Search the marketplace</h2>
@@ -235,6 +269,7 @@
                 <div class="step"><span class="sn">3</span><p>Allow the HTTP request and script-injection permission prompts Studio shows the first time — that's expected. Your project will then sync automatically.</p></div>
               </div>
               <button class="btn primary" id="pairBtn">Generate pairing code</button>
+              <button class="btn ghost sm" id="disconnectPluginBtn" style="display:none;margin-left:.5rem">Disconnect plugin</button>
             </div>
             <div class="panel">
               <h2 style="margin-top:0">Sync activity</h2>
@@ -287,7 +322,7 @@ async function api(path, opts) {
   try {
     const models = await fetch('/api/models').then((r) => r.json());
     const sel = $('#modelSel');
-    (models.models || models || []).forEach?.((m) => { if (!m.id) return; const o = document.createElement('option'); o.value = m.id; o.textContent = m.label || m.id; sel.appendChild(o); });
+    (models.models || []).forEach((m) => { if (!m.id || m.id === 'auto') return; const o = document.createElement('option'); o.value = m.id; o.textContent = m.label || m.id; sel.appendChild(o); });
   } catch { /* auto-only fallback is fine */ }
 
   await loadProjects();
@@ -329,7 +364,9 @@ async function createProject() {
 $('#deleteProjectBtn').onclick = async () => {
   if (!state.currentId) return;
   if (!confirm('Delete this Roblox project? This cannot be undone.')) return;
-  await api('/api/roblox/projects/' + state.currentId, { method: 'DELETE' });
+  try {
+    await api('/api/roblox/projects/' + state.currentId, { method: 'DELETE' });
+  } catch (e) { toast(e.message); return; }
   state.projects = state.projects.filter((p) => p.id !== state.currentId);
   state.currentId = null; state.current = null;
   renderProjectList();
@@ -358,6 +395,8 @@ async function selectProject(id) {
   renderMessages();
   renderScripts();
   renderAssets();
+  $('#mapStyle').value = data.project.map_style || '';
+  $('#mapPalette').value = data.project.map_palette || '';
   setTab(state.tab);
   history.replaceState(null, '', '/roblox?project=' + id);
 }
@@ -387,6 +426,7 @@ function setTab(tab) {
   $$('#tabBar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   ['build', 'map', 'assets', 'sync'].forEach((t) => { $('#tab-' + t).style.display = t === tab ? '' : 'none'; });
   if (tab === 'sync') { loadSyncStatus(); loadOps(); startOpsPoll(); } else stopOpsPoll();
+  if (tab === 'map') loadMapsHistory();
 }
 function startOpsPoll() { stopOpsPoll(); state.opsPoll = setInterval(loadOps, 8000); }
 function stopOpsPoll() { if (state.opsPoll) { clearInterval(state.opsPoll); state.opsPoll = null; } }
@@ -398,7 +438,7 @@ function renderMessages() {
   (state.current.messages || []).forEach((msg) => {
     const div = document.createElement('div');
     div.className = 'msg ' + (msg.role === 'user' ? 'user' : 'ai');
-    div.innerHTML = `<div class="meta">${msg.role === 'user' ? 'you' : (msg.model || 'yield')}</div><div class="bubble">${esc(msg.content)}</div>`;
+    div.innerHTML = `<div class="meta">${msg.role === 'user' ? 'you' : esc(msg.model || 'yield')}</div><div class="bubble">${esc(msg.content)}</div>`;
     m.appendChild(div);
   });
   m.scrollTop = m.scrollHeight;
@@ -499,6 +539,15 @@ async function sendPrompt(overrideText) {
         else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; }
         else if (ev === 'chat') { chatAcc += payload; chatSpan.textContent = chatAcc; m.scrollTop = m.scrollHeight; }
         else if (ev === 'code') { appendCode(payload); }
+        else if (ev === 'image') {
+          if (payload.url) {
+            const fig = document.createElement('figure');
+            fig.style.margin = '.6rem 0 0';
+            fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" loading="lazy">` +
+              (payload.prompt ? `<figcaption style="font-size:.72rem;color:var(--muted);margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : '');
+            aiDiv.appendChild(fig); m.scrollTop = m.scrollHeight;
+          }
+        }
         else if (ev === 'ask') {
           const el = document.createElement('div'); el.className = 'ask-card';
           el.innerHTML = `<div class="ask-q">🤔 ${esc(payload.question)}</div>` + (payload.options && payload.options.length ? `<div class="ask-opts">${payload.options.map((o) => `<button class="ask-opt">${esc(o)}</button>`).join('')}</div>` : '');
@@ -537,7 +586,9 @@ $('#editorClose').onclick = () => $('#editorModal').classList.remove('show');
 $('#editorModal').addEventListener('click', (e) => { if (e.target === $('#editorModal')) $('#editorModal').classList.remove('show'); });
 $('#editorSave').onclick = async () => {
   const ta = $('#editorSource');
-  await api('/api/roblox/projects/' + state.currentId + '/files', { method: 'PUT', body: JSON.stringify({ path: ta.dataset.path, className: ta.dataset.cls, source: ta.value }) });
+  try {
+    await api('/api/roblox/projects/' + state.currentId + '/files', { method: 'PUT', body: JSON.stringify({ path: ta.dataset.path, className: ta.dataset.cls, source: ta.value }) });
+  } catch (e) { toast(e.message); return; }
   const f = state.current.files.find((x) => x.path === ta.dataset.path);
   if (f) f.source = ta.value;
   toast('Saved — will apply on next plugin sync.');
@@ -546,7 +597,9 @@ $('#editorSave').onclick = async () => {
 $('#editorDelete').onclick = async () => {
   const ta = $('#editorSource');
   if (!confirm('Delete ' + ta.dataset.path + '? This removes it from your place on next sync.')) return;
-  await api('/api/roblox/projects/' + state.currentId + '/files?path=' + encodeURIComponent(ta.dataset.path), { method: 'DELETE' });
+  try {
+    await api('/api/roblox/projects/' + state.currentId + '/files?path=' + encodeURIComponent(ta.dataset.path), { method: 'DELETE' });
+  } catch (e) { toast(e.message); return; }
   state.current.files = state.current.files.filter((x) => x.path !== ta.dataset.path);
   renderScripts();
   $('#editorModal').classList.remove('show');
@@ -560,16 +613,35 @@ $('#genMapBtn').onclick = async () => {
   const btn = $('#genMapBtn'); btn.disabled = true; btn.textContent = 'Designing…';
   const box = $('#mapResult'); box.innerHTML = '';
   try {
-    const r = await api('/api/roblox/projects/' + state.currentId + '/map', { method: 'POST', body: JSON.stringify({ prompt }) });
-    let html = `<div class="result-box ok">Queued: ${r.partCount} part(s), ${r.modelCount} model(s). Will build on the plugin's next sync.</div>`;
+    const r = await api('/api/roblox/projects/' + state.currentId + '/map', {
+      method: 'POST',
+      body: JSON.stringify({ prompt, style: $('#mapStyle').value, palette: $('#mapPalette').value.trim(), clear: $('#mapClear').checked }),
+    });
+    let html = `<div class="result-box ok">Queued: ${r.partCount} part(s), ${r.modelCount} model(s)${r.clear ? ' (replacing the previous map)' : ' (added onto the existing map)'}. Will build on the plugin's next sync.</div>`;
     if (r.unresolved && r.unresolved.length) {
       html += `<div class="result-box warn">${esc(r.unresolvedHelp || '')}<br><br>Needs a model: ${r.unresolved.map(esc).join(', ')}</div>`;
     }
     box.innerHTML = html;
+    // A generation always makes the NEXT one additive by default (only the very
+    // first map for a project defaults to a clean slate).
+    $('#mapClear').checked = false;
+    loadMapsHistory();
   } catch (e) {
     box.innerHTML = `<div class="result-box warn">${esc(e.message)}</div>`;
   } finally { btn.disabled = false; btn.textContent = 'Generate map'; }
 };
+
+async function loadMapsHistory() {
+  if (!state.currentId) return;
+  const el = $('#mapsHistory');
+  try {
+    const { maps } = await api('/api/roblox/projects/' + state.currentId + '/maps');
+    $('#mapClear').checked = maps.length === 0; // first map for this project -> clean slate by default
+    el.innerHTML = maps.length
+      ? maps.map((m) => `<div style="padding:.5rem 0;border-bottom:1px solid var(--line)"><div style="color:var(--text);font-size:.85rem">${esc(m.prompt)}</div><div style="font-size:.72rem;color:var(--muted)">${m.partCount} part(s), ${m.modelCount} model(s) · ${ago(m.created_at)}</div></div>`).join('')
+      : 'No maps generated yet for this project.';
+  } catch { el.textContent = 'Could not load map history.'; }
+}
 
 // ---------- Assets tab ----------
 function renderAssets() {
@@ -588,31 +660,58 @@ function renderAssets() {
   $$('[data-del]', el).forEach((b) => b.addEventListener('click', () => deleteAsset(b.dataset.del)));
 }
 
+// Pins an asset both server-side and locally (no full-project refetch needed — the
+// caller already has everything the assets list needs).
+async function pinAsset(assetId, name, tags) {
+  await api('/api/roblox/projects/' + state.currentId + '/assets', { method: 'POST', body: JSON.stringify({ assetId, name, tags: tags || '' }) });
+  const existing = state.current.assets.find((a) => a.asset_id === String(assetId).match(/\d{3,20}/)?.[0]);
+  if (existing) { existing.name = name; existing.tags = tags || existing.tags; }
+  else state.current.assets.unshift({ asset_id: String(assetId).match(/\d{3,20}/)?.[0] || assetId, name, tags: tags || '', created_at: Date.now() / 1000 });
+  renderAssets();
+}
+
 $('#addAssetBtn').onclick = async () => {
   const assetId = $('#assetIdInput').value.trim();
-  const name = $('#assetNameInput').value.trim();
+  const name = $('#assetNameInput').value.trim() || ('Asset ' + assetId);
   const tags = $('#assetTagsInput').value.trim();
   if (!assetId) return toast('Enter an asset id or URL.');
   try {
-    await api('/api/roblox/projects/' + state.currentId + '/assets', { method: 'POST', body: JSON.stringify({ assetId, name, tags }) });
+    await pinAsset(assetId, name, tags);
     $('#assetIdInput').value = ''; $('#assetNameInput').value = ''; $('#assetTagsInput').value = '';
-    const fresh = await api('/api/roblox/projects/' + state.currentId);
-    state.current.assets = fresh.assets;
-    renderAssets();
     toast('Pinned.');
   } catch (e) { toast(e.message); }
 };
 
 async function deleteAsset(assetId) {
-  await api('/api/roblox/projects/' + state.currentId + '/assets/' + encodeURIComponent(assetId), { method: 'DELETE' });
+  try {
+    await api('/api/roblox/projects/' + state.currentId + '/assets/' + encodeURIComponent(assetId), { method: 'DELETE' });
+  } catch (e) { toast(e.message); return; }
   state.current.assets = state.current.assets.filter((a) => a.asset_id !== assetId);
   renderAssets();
 }
 
 async function insertAsset(assetId, name) {
-  await api('/api/roblox/projects/' + state.currentId + '/insert-asset', { method: 'POST', body: JSON.stringify({ assetId, name }) });
-  toast('Queued — will insert on next plugin sync.');
+  try {
+    await api('/api/roblox/projects/' + state.currentId + '/insert-asset', { method: 'POST', body: JSON.stringify({ assetId, name }) });
+    toast('Queued — will insert on next plugin sync.');
+  } catch (e) { toast(e.message); }
 }
+
+$('#modelGenBtn').onclick = async () => {
+  const prompt = $('#modelGenPrompt').value.trim();
+  if (!prompt || !state.currentId) return;
+  const btn = $('#modelGenBtn'); btn.disabled = true; btn.textContent = 'Generating…';
+  const box = $('#modelGenResult'); box.innerHTML = '<div style="color:var(--muted);font-size:.8rem;margin-top:.4rem">Generating a 3D model and uploading it to Roblox — this can take a minute…</div>';
+  try {
+    const r = await api('/api/roblox/projects/' + state.currentId + '/generate-model', { method: 'POST', body: JSON.stringify({ prompt }) });
+    box.innerHTML = `<div class="result-box ok">Generated and pinned "${esc(r.name)}" (asset #${esc(r.assetId)}).</div>`;
+    state.current.assets.unshift({ asset_id: r.assetId, name: r.name, tags: 'ai-generated', created_at: Date.now() / 1000 });
+    renderAssets();
+    $('#modelGenPrompt').value = '';
+  } catch (e) {
+    box.innerHTML = `<div class="result-box warn">${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; btn.textContent = 'Generate'; }
+};
 
 $('#searchBtn').onclick = async () => {
   const query = $('#searchQuery').value.trim();
@@ -633,9 +732,7 @@ $('#searchBtn').onclick = async () => {
         <div class="a-actions"><button class="btn primary sm" data-pin="${esc(m.assetId)}" data-name="${esc(m.name)}">＋ Pin</button></div>
       </div>`).join('');
     $$('[data-pin]', box).forEach((b) => b.addEventListener('click', async () => {
-      await api('/api/roblox/projects/' + state.currentId + '/assets', { method: 'POST', body: JSON.stringify({ assetId: b.dataset.pin, name: b.dataset.name }) });
-      const fresh = await api('/api/roblox/projects/' + state.currentId);
-      state.current.assets = fresh.assets; renderAssets(); toast('Pinned.');
+      try { await pinAsset(b.dataset.pin, b.dataset.name, ''); toast('Pinned.'); } catch (e) { toast(e.message); }
     }));
   } catch (e) { box.innerHTML = `<div class="result-box warn">${esc(e.message)}</div>`; }
 };
@@ -643,14 +740,18 @@ $('#searchBtn').onclick = async () => {
 $('#connectKeyBtn').onclick = async () => {
   const apiKey = $('#robloxKeyInput').value.trim();
   if (!apiKey) return toast('Paste an API key first.');
-  await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey, creatorType: $('#creatorTypeInput').value, creatorId: $('#creatorIdInput').value.trim() }) });
+  try {
+    await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey, creatorType: $('#creatorTypeInput').value, creatorId: $('#creatorIdInput').value.trim() }) });
+  } catch (e) { toast(e.message); return; }
   $('#robloxKeyInput').value = '';
   state.current.project.robloxKeyConnected = true;
   $('#searchHint').textContent = 'Marketplace search is live for this project.';
   toast('Roblox key connected.');
 };
 $('#disconnectKeyBtn').onclick = async () => {
-  await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey: '' }) });
+  try {
+    await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey: '' }) });
+  } catch (e) { toast(e.message); return; }
   state.current.project.robloxKeyConnected = false;
   $('#searchHint').textContent = 'Connect your own Roblox Open Cloud API key to search free models directly from Yield.';
   toast('Disconnected.');
@@ -666,13 +767,26 @@ $('#pairBtn').onclick = async () => {
   try {
     const r = await api('/api/roblox/projects/' + state.currentId + '/pair', { method: 'POST' });
     $('#pairCodeArea').innerHTML = `<div class="pair-code">${esc(r.code)}</div><p style="text-align:center;color:var(--muted);font-size:.8rem">Expires in 10 minutes — paste it into the Yield panel in Roblox Studio.</p>`;
-  } finally { btn.disabled = false; }
+  } catch (e) { toast(e.message); } finally { btn.disabled = false; }
+};
+$('#disconnectPluginBtn').onclick = async () => {
+  if (!confirm('Disconnect the Studio plugin from this project? It will need a new pairing code to reconnect.')) return;
+  try {
+    await api('/api/roblox/projects/' + state.currentId + '/unpair', { method: 'POST' });
+    toast('Disconnected.');
+    loadOps();
+  } catch (e) { toast(e.message); }
 };
 async function loadOps() {
   if (!state.currentId || state.tab !== 'sync') return;
   const r = await api('/api/roblox/projects/' + state.currentId + '/ops').catch(() => null);
   if (!r) return;
   $('#pairStatus').innerHTML = `<span class="pair-badge ${r.paired ? 'on' : ''}">${r.paired ? '● Plugin connected' : '○ Plugin not connected'}${r.placeName ? ' · ' + esc(r.placeName) : ''}${r.lastSeenAt ? ' · last seen ' + ago(r.lastSeenAt) : ''}</span>`;
+  $('#disconnectPluginBtn').style.display = r.paired ? '' : 'none';
+  // Keep the sidebar's connection dot in sync — it's otherwise only set once at
+  // loadProjects() and would go stale the moment pairing status changes here.
+  const proj = state.projects.find((p) => p.id === state.currentId);
+  if (proj && proj.paired !== (r.paired ? 1 : 0)) { proj.paired = r.paired ? 1 : 0; renderProjectList(); }
   const tbody = $('#opsTable tbody');
   if (!r.ops.length) { tbody.innerHTML = ''; $('#opsEmpty').style.display = ''; $('#opsTable').style.display = 'none'; return; }
   $('#opsEmpty').style.display = 'none'; $('#opsTable').style.display = '';

@@ -560,6 +560,8 @@ export interface RobloxProjectRow {
   roblox_api_key_enc: string | null;
   roblox_creator_type: string | null;
   roblox_creator_id: string | null;
+  map_style: string | null;
+  map_palette: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -618,6 +620,14 @@ export async function setRobloxApiKey(env: Env, id: string, encOrNull: string | 
     .run();
 }
 
+// Remembered map art-direction preferences — pre-filled into the Map tab and always
+// given to the map AI so a project's look stays consistent across regenerations.
+export async function setRobloxMapPrefs(env: Env, id: string, style: string | null, palette: string | null): Promise<void> {
+  await env.DB.prepare('UPDATE roblox_projects SET map_style=COALESCE(?,map_style), map_palette=COALESCE(?,map_palette), updated_at=? WHERE id=?')
+    .bind(style, palette, now(), id)
+    .run();
+}
+
 // --- Roblox files (one row per Script/LocalScript/ModuleScript instance) ------
 export interface RobloxFileRow {
   path: string;
@@ -640,6 +650,20 @@ export async function upsertRobloxFile(env: Env, projectId: string, path: string
   )
     .bind(newId(), projectId, path, className, source, now())
     .run();
+}
+
+// Batched variant of upsertRobloxFile — one D1 round-trip for N files instead of N
+// (used when a generation or a plugin snapshot writes many scripts at once).
+export async function upsertRobloxFiles(env: Env, projectId: string, files: { path: string; className: string; source: string }[]): Promise<void> {
+  if (!files.length) return;
+  const t = now();
+  const stmts = files.map((f) =>
+    env.DB.prepare(
+      `INSERT INTO roblox_files (id,project_id,path,class_name,source,updated_at) VALUES (?,?,?,?,?,?)
+       ON CONFLICT(project_id,path) DO UPDATE SET class_name=excluded.class_name, source=excluded.source, updated_at=excluded.updated_at`,
+    ).bind(newId(), projectId, f.path, f.className, f.source, t),
+  );
+  await env.DB.batch(stmts);
 }
 
 export async function deleteRobloxFile(env: Env, projectId: string, path: string): Promise<void> {

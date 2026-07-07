@@ -130,6 +130,10 @@ local MATERIAL_LOOKUP = {
 	slate = Enum.Material.Slate,
 	marble = Enum.Material.Marble,
 	granite = Enum.Material.Granite,
+	rock = Enum.Material.Rock,
+	snow = Enum.Material.Snow,
+	mud = Enum.Material.Mud,
+	asphalt = Enum.Material.Asphalt,
 }
 
 local function materialFromName(name)
@@ -342,6 +346,14 @@ local function applyUpsertScript(op)
 
 	local existing = parent:FindFirstChild(scriptName)
 	if existing and existing.ClassName ~= className then
+		-- A class mismatch is normally safe to replace (e.g. a Script that should now
+		-- be a LocalScript) -- EXCEPT when the existing instance is a Folder with its
+		-- own children (almost always another script's container, e.g. this path's
+		-- last segment happens to collide with an earlier Folder segment). Destroying
+		-- that would silently wipe everything nested under it, so refuse instead.
+		if existing:IsA("Folder") and #existing:GetChildren() > 0 then
+			error(("Refusing to overwrite non-empty Folder '%s' at %s with a %s -- rename one of them"):format(scriptName, op.path, className))
+		end
 		existing:Destroy()
 		existing = nil
 	end
@@ -568,6 +580,17 @@ local function performSync()
 		return
 	end
 
+	-- apiRequest returns (true, {}) for an empty body, but a literal JSON "null"
+	-- response would decode to Lua nil -- guard before indexing it below.
+	if type(body) ~= "table" then
+		logActivity("Sync failed: unexpected empty response from Yield")
+		if setStatusLabel then
+			setStatusLabel("Connected - last sync failed, will retry")
+		end
+		isSyncing = false
+		return
+	end
+
 	if type(body.project) == "table" and body.project.title and body.project.title ~= projectTitle then
 		projectTitle = body.project.title
 		plugin:SetSetting("yield_project_title", projectTitle)
@@ -629,7 +652,15 @@ local function startAutoSyncLoop(widget)
 	autoSyncRunning = true
 	task.spawn(function()
 		while autoSyncRunning and token and widget.Enabled do
-			performSync()
+			-- pcall-wrapped so ANY uncaught error inside performSync (not just the
+			-- per-op pcalls it already has) can't kill this coroutine and leave
+			-- autoSyncRunning stuck true forever (which would silently block every
+			-- future "Sync now" / auto-sync attempt until Studio restarts).
+			local ok, err = pcall(performSync)
+			if not ok then
+				isSyncing = false
+				logActivity("Auto-sync error: " .. tostring(err))
+			end
 			task.wait(20)
 		end
 		autoSyncRunning = false
@@ -644,13 +675,19 @@ end
 -- PUSH SNAPSHOT (send existing scripts in the place up to Yield)
 -- ============================================================
 
+-- Matches Yield's VALID_ROOTS exactly (src/lib/roblox.ts) -- every service an AI
+-- or manual edit is allowed to write a script into is also scanned here, so a
+-- script placed under e.g. Workspace or Lighting doesn't silently never push back.
 local PUSH_ROOTS = {
+	"Workspace",
 	"ServerScriptService",
+	"ServerStorage",
 	"ReplicatedStorage",
 	"StarterPlayerScripts",
 	"StarterGui",
 	"StarterPack",
-	"ServerStorage",
+	"StarterCharacterScripts",
+	"Lighting",
 }
 
 local SCRIPT_CLASS_NAMES = {
@@ -1098,7 +1135,11 @@ end)
 syncButton.MouseButton1Click:Connect(function()
 	task.spawn(function()
 		syncButton.Text = "Syncing..."
-		performSync()
+		local ok, err = pcall(performSync)
+		if not ok then
+			isSyncing = false
+			logActivity("Sync error: " .. tostring(err))
+		end
 		syncButton.Text = "Sync now"
 	end)
 end)
@@ -1106,7 +1147,10 @@ end)
 pushButton.MouseButton1Click:Connect(function()
 	task.spawn(function()
 		pushButton.Text = "Pushing..."
-		pushSnapshot()
+		local ok, err = pcall(pushSnapshot)
+		if not ok then
+			logActivity("Push error: " .. tostring(err))
+		end
 		pushButton.Text = "Push code"
 	end)
 end)

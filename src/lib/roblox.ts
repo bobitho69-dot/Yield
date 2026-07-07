@@ -43,8 +43,11 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
   const SCRIPT = /^={2,}\s*script:\s*([^|=]+?)\s*\|\s*([A-Za-z]+)\s*={2,}\s*$/i;
   const SUMMARY = /^={2,}\s*(?:summary|recap|done|notes)\s*={2,}\s*$/i;
   const ASK = /^={2,}\s*ask:\s*(.+)$/i;
+  // "=== concept: a swamp mood board ===" — show a generated concept-art image in
+  // chat (reuses the same image-gen infra the web builder uses).
+  const CONCEPT = /^={2,}\s*concept:\s*(.+?)\s*={2,}\s*$/i;
   const REASON_OPEN = /<(think|thinking|reasoning|tool_call)>/i;
-  const STRUCTURAL = /^\s*(?:={2,}\s*(?:script|summary|recap|done|notes|ask)\b|```)/i;
+  const STRUCTURAL = /^\s*(?:={2,}\s*(?:script|summary|recap|done|notes|ask|concept)\b|```)/i;
 
   let buf = '';
   let mode: 'chat' | 'script' = 'chat';
@@ -54,7 +57,7 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
   let asked = false;
   let lastStatus = '';
   const chatLines: string[] = [];
-  const thinkLines: string[] = [];
+  const imagePrompts: string[] = [];
   const scripts: { path: string; className: string; lines: string[] }[] = [];
   let cur: { path: string; className: string; lines: string[] } | null = null;
 
@@ -62,9 +65,9 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
     if (reasonClose) {
       if (!STRUCTURAL.test(line)) {
         const close = line.toLowerCase().indexOf(reasonClose);
-        if (close === -1) { thinkLines.push(line); await send('thinking', line + '\n'); return; }
+        if (close === -1) { await send('thinking', line + '\n'); return; }
         const before = line.slice(0, close);
-        if (before.trim()) { thinkLines.push(before); await send('thinking', before + '\n'); }
+        if (before.trim()) await send('thinking', before + '\n');
         const after = line.slice(close + reasonClose.length);
         reasonClose = null;
         if (after.trim()) await handleLine(after);
@@ -97,6 +100,11 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
       const parts = raw.split('|').map((s) => s.trim()).filter(Boolean);
       const question = parts[0] || '';
       if (question) { asked = true; await send('ask', { question, options: parts.slice(1, 6) }); }
+      return;
+    }
+    if ((m = line.match(CONCEPT))) {
+      const p = m[1].trim();
+      if (p && imagePrompts.length < 4) imagePrompts.push(p);
       return;
     }
     if (SUMMARY.test(line)) { mode = 'chat'; fenceOpen = false; cur = null; await send('status', { stage: 'Wrapping up…' }); return; }
@@ -136,7 +144,7 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
     reset() {
       buf = ''; mode = 'chat'; reasonClose = null; fenceOpen = false; lastStatus = ''; asked = false;
       cur = null;
-      scripts.length = 0; chatLines.length = 0; thinkLines.length = 0;
+      scripts.length = 0; chatLines.length = 0; imagePrompts.length = 0;
     },
     get produced() {
       return scripts.some((f) => f.lines.some((l) => l.trim())) || chatLines.some((l) => l.trim());
@@ -150,7 +158,7 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
       const out: RobloxScriptOut[] = scripts
         .map((s) => ({ path: s.path, className: s.className, source: cleanSource(s.lines.join('\n')) }))
         .filter((s) => sanitizeScriptPath(s.path) && s.source.trim());
-      return { chat: chat || (out.length ? 'Here you go.' : ''), scripts: out, asked };
+      return { chat: chat || (out.length ? 'Here you go.' : ''), scripts: out, asked, images: imagePrompts.slice(0, 4) };
     },
   };
 }
@@ -256,10 +264,19 @@ function matchAsset(role: string, tags: string[], library: PinnedAsset[]): Pinne
   return bestScore > 0 ? best : null;
 }
 
+// Total resolved model instances across a whole map — generous enough for an
+// "extravagant" scene (forests, crowds of props, full villages) while still
+// bounding one sync payload/build pass to something the plugin can apply quickly.
+const MAX_MODEL_PLACEMENTS = 400;
+
 function resolveModels(raw: unknown, library: PinnedAsset[]): { placements: ResolvedModelPlacement[]; unresolved: string[] } {
   const placements: ResolvedModelPlacement[] = [];
+  // Every role the AI asked for that didn't end up with at least one placement —
+  // either no pinned asset matched it, or the total-placement budget ran out first.
+  // Both are surfaced identically: the user needs to either pin/search a model for
+  // it, or (for a budget cutoff) accept a smaller scene / split it into two builds.
   const unresolved: string[] = [];
-  const arr = Array.isArray(raw) ? (raw as RawModelRole[]).slice(0, 25) : [];
+  const arr = Array.isArray(raw) ? (raw as RawModelRole[]).slice(0, 40) : [];
   let total = 0;
   for (const m of arr) {
     const role = String(m.role || '').slice(0, 120);
@@ -269,12 +286,17 @@ function resolveModels(raw: unknown, library: PinnedAsset[]): { placements: Reso
     const base = vec3(m.position, [0, 0, 0], -5000, 5000);
     const rotation = vec3(m.rotation, [0, 0, 0], -360, 360);
     const scale = num(m.scale, 1, 0.1, 10);
-    const count = Math.max(1, Math.min(20, Math.round(m.count || 1)));
-    for (let i = 0; i < count && total < 150; i++, total++) {
+    const count = Math.max(1, Math.min(30, Math.round(m.count || 1)));
+    let placedForRole = 0;
+    for (let i = 0; i < count && total < MAX_MODEL_PLACEMENTS; i++, total++, placedForRole++) {
       // Spread repeats along X so a "row of trees" doesn't stack on one point.
       const position = count > 1 ? [base[0] + i * 12, base[1], base[2]] : base;
       placements.push({ assetId: asset.asset_id, name: asset.name, position, rotation, scale });
     }
+    // Matched a real asset, but the scene-wide budget was already exhausted before
+    // any (or all) of this role's copies could be placed — don't let it disappear
+    // silently, the AI asked for it and it's not there.
+    if (placedForRole === 0 && role) unresolved.push(role);
   }
   return { placements, unresolved };
 }
@@ -288,9 +310,11 @@ export interface SanitizedMapSpec {
 }
 
 /** Clamp/validate an AI-produced map spec and resolve its model "roles" against the
- *  project's pinned asset library. Never throws — a malformed field is just dropped. */
-export function sanitizeMapSpec(raw: any, library: PinnedAsset[]): { spec: SanitizedMapSpec; unresolved: string[] } {
-  const spec: SanitizedMapSpec = { clear: true, parts: [], models: [] };
+ *  project's pinned asset library. Never throws — a malformed field is just dropped.
+ *  `clear` controls whether the plugin wipes the previous YieldMap-tagged build first
+ *  (true for a fresh/first build, false to add onto what's already there). */
+export function sanitizeMapSpec(raw: any, library: PinnedAsset[], clear: boolean): { spec: SanitizedMapSpec; unresolved: string[] } {
+  const spec: SanitizedMapSpec = { clear, parts: [], models: [] };
 
   if (raw?.baseplate) {
     const size = raw.baseplate.size;
@@ -301,7 +325,7 @@ export function sanitizeMapSpec(raw: any, library: PinnedAsset[]): { spec: Sanit
     };
   }
 
-  const parts = Array.isArray(raw?.parts) ? raw.parts.slice(0, 60) : [];
+  const parts = Array.isArray(raw?.parts) ? raw.parts.slice(0, 80) : [];
   for (const p of parts) {
     if (!p || typeof p !== 'object') continue;
     spec.parts.push({
@@ -360,5 +384,95 @@ export async function searchFreeModels(apiKey: string, query: string): Promise<R
       .slice(0, 12);
   } catch {
     return [];
+  }
+}
+
+// --- Custom 3D-model upload (Roblox Open Cloud Assets API) ----------------------
+// Turns a generated .glb (from the AI 3D-model endpoint, src/routes/media.ts's
+// generate3dModel/TRELLIS) into a real, insertable Roblox asset in the user's own
+// account, so map generation can place genuinely custom props — not just free
+// catalog models — when a Roblox Open Cloud key is connected. VERIFY the exact
+// path/shape at create.roblox.com/docs/reference/cloud/assets if Roblox changes
+// this surface; best-effort like every other external-API call in this file —
+// returns null on any failure rather than throwing.
+export interface RobloxCreator { type: 'User' | 'Group'; id: string }
+
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// The AI 3D-model endpoint returns either a data: URL (inline base64) or a plain
+// provider URL — normalize either into raw bytes + a MIME type.
+async function materializeBytes(urlOrDataUrl: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
+  if (urlOrDataUrl.startsWith('data:')) {
+    const m = urlOrDataUrl.match(/^data:([^;]+);base64,([\s\S]*)$/);
+    if (!m) return null;
+    return { bytes: b64ToBytes(m[2]), mime: m[1] || 'model/gltf-binary' };
+  }
+  try {
+    const r = await fetch(urlOrDataUrl);
+    if (!r.ok) return null;
+    return { bytes: new Uint8Array(await r.arrayBuffer()), mime: r.headers.get('content-type') || 'model/gltf-binary' };
+  } catch {
+    return null;
+  }
+}
+
+function buildMultipart(boundary: string, requestJson: string, fileBytes: Uint8Array, filename: string, fileMime: string): Uint8Array {
+  const enc = new TextEncoder();
+  const head1 = enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="request"\r\n\r\n${requestJson}\r\n--${boundary}\r\nContent-Disposition: form-data; name="fileContent"; filename="${filename}"\r\nContent-Type: ${fileMime}\r\n\r\n`);
+  const tail = enc.encode(`\r\n--${boundary}--\r\n`);
+  const out = new Uint8Array(head1.length + fileBytes.length + tail.length);
+  out.set(head1, 0);
+  out.set(fileBytes, head1.length);
+  out.set(tail, head1.length + fileBytes.length);
+  return out;
+}
+
+/** Upload a 3D model (.glb bytes) to Roblox as a new asset the account owns, polling
+ *  the Open Cloud operation until it resolves. Returns the new numeric asset id, or
+ *  null on any failure (unsupported format, quota, network, timeout). */
+export async function uploadRobloxModelAsset(
+  apiKey: string, creator: RobloxCreator, glbUrlOrDataUrl: string, displayName: string, description: string,
+): Promise<string | null> {
+  const file = await materializeBytes(glbUrlOrDataUrl);
+  if (!file) return null;
+  try {
+    const boundary = `yield${crypto.randomUUID().replace(/-/g, '')}`;
+    const requestJson = JSON.stringify({
+      assetType: 'Model',
+      displayName: displayName.slice(0, 50) || 'Yield AI model',
+      description: description.slice(0, 1000),
+      creationContext: { creator: creator.type === 'Group' ? { groupId: Number(creator.id) } : { userId: Number(creator.id) } },
+    });
+    const body = buildMultipart(boundary, requestJson, file.bytes, 'model.glb', file.mime || 'model/gltf-binary');
+    const createRes = await fetch('https://apis.roblox.com/assets/v1/assets', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'content-type': `multipart/form-data; boundary=${boundary}` },
+      body,
+    });
+    if (!createRes.ok) return null;
+    const op: any = await createRes.json().catch(() => null);
+    if (!op) return null;
+    if (op.done && op.response?.assetId) return String(op.response.assetId);
+    const opPath: string | undefined = op.path;
+    if (!opPath) return null;
+
+    // The upload is processed asynchronously — poll briefly (Open Cloud asset
+    // processing is typically seconds, not minutes, for a small mesh).
+    for (let i = 0; i < 8; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      const pr = await fetch(`https://apis.roblox.com/assets/v1/${opPath.replace(/^\/+/, '')}`, { headers: { 'x-api-key': apiKey, accept: 'application/json' } });
+      if (!pr.ok) continue;
+      const pd: any = await pr.json().catch(() => null);
+      if (pd?.done && pd.response?.assetId) return String(pd.response.assetId);
+      if (pd?.done) return null; // done with an error, not a result
+    }
+    return null;
+  } catch {
+    return null;
   }
 }

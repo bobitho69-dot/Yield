@@ -198,3 +198,94 @@ CREATE TABLE IF NOT EXISTS app_data (
   updated_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_app_data ON app_data(project_id, entity);
+
+-- ── Yield Roblox (AI-built Roblox games, synced to a Roblox Studio plugin) ─────
+-- The plugin never talks to the web session — it authenticates with a bearer token
+-- minted at pairing time and looked up in KV (roblox_token:<token> -> {projectId}),
+-- same pattern as web sessions (KV-backed opaque tokens). This table holds only
+-- non-secret pairing status; the token itself is never persisted in D1.
+CREATE TABLE IF NOT EXISTS roblox_projects (
+  id                  TEXT PRIMARY KEY,
+  user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title               TEXT NOT NULL DEFAULT 'Untitled game',
+  model               TEXT,                  -- last coder model id used
+  paired              INTEGER NOT NULL DEFAULT 0,
+  place_name          TEXT,                  -- reported by the plugin
+  place_id            TEXT,
+  paired_at           INTEGER,
+  last_seen_at        INTEGER,               -- last plugin pull/snapshot
+  -- Optional: the user's own Roblox Open Cloud API key (AES-GCM encrypted), enabling
+  -- live free-model marketplace search. Without it, the asset library is manual-only
+  -- (paste an asset id) and map generation still works with procedural parts.
+  roblox_api_key_enc  TEXT,
+  roblox_creator_type TEXT,                  -- 'User' | 'Group'
+  roblox_creator_id   TEXT,
+  created_at          INTEGER NOT NULL,
+  updated_at          INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_roblox_projects_user ON roblox_projects(user_id, updated_at DESC);
+
+-- One row per Roblox Instance the AI (or the plugin's "push") has written — mirrors
+-- the web builder's `files` table, but path segments are a DataModel hierarchy
+-- (e.g. "ServerScriptService/Combat/DamageHandler") and class_name picks the
+-- Script/LocalScript/ModuleScript the plugin creates.
+CREATE TABLE IF NOT EXISTS roblox_files (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES roblox_projects(id) ON DELETE CASCADE,
+  path        TEXT NOT NULL,
+  class_name  TEXT NOT NULL DEFAULT 'Script', -- Script | LocalScript | ModuleScript
+  source      TEXT NOT NULL DEFAULT '',
+  updated_at  INTEGER NOT NULL,
+  UNIQUE (project_id, path)
+);
+CREATE INDEX IF NOT EXISTS idx_roblox_files_project ON roblox_files(project_id);
+
+-- Chat history per Roblox project (mirrors `messages`).
+CREATE TABLE IF NOT EXISTS roblox_messages (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES roblox_projects(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL,                 -- 'user' | 'assistant'
+  content     TEXT NOT NULL,
+  model       TEXT,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_roblox_messages_project ON roblox_messages(project_id, created_at);
+
+-- Outbox: operations queued for the Studio plugin to pull + apply next time it polls
+-- (upsert/delete a script, build a generated map, insert one pinned model). Rows are
+-- kept after being applied (capped) so the web UI can show a sync activity log.
+CREATE TABLE IF NOT EXISTS roblox_ops (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES roblox_projects(id) ON DELETE CASCADE,
+  op          TEXT NOT NULL,                 -- JSON: {type, ...payload}
+  status      TEXT NOT NULL DEFAULT 'pending', -- pending | applied | failed
+  detail      TEXT,                          -- plugin-reported result/error
+  created_at  INTEGER NOT NULL,
+  applied_at  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_roblox_ops_project ON roblox_ops(project_id, status, created_at);
+
+-- User's free-model library per project: pasted manually (always works, no API key
+-- needed — grab any asset id off roblox.com) or added from a connected marketplace
+-- search. The map generator matches AI-proposed prop "roles" against these by tag.
+CREATE TABLE IF NOT EXISTS roblox_assets (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES roblox_projects(id) ON DELETE CASCADE,
+  asset_id    TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  tags        TEXT,                          -- comma-separated, for AI role matching
+  created_at  INTEGER NOT NULL,
+  UNIQUE (project_id, asset_id)
+);
+CREATE INDEX IF NOT EXISTS idx_roblox_assets_project ON roblox_assets(project_id);
+
+-- Generated map layouts (kept for history / re-apply); `spec` is the resolved JSON
+-- (asset roles already matched to real asset ids) that was queued as a build_map op.
+CREATE TABLE IF NOT EXISTS roblox_maps (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES roblox_projects(id) ON DELETE CASCADE,
+  prompt      TEXT NOT NULL,
+  spec        TEXT NOT NULL,                 -- JSON
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_roblox_maps_project ON roblox_maps(project_id, created_at DESC);

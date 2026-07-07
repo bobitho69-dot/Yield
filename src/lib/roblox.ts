@@ -177,9 +177,20 @@ const PAIR_TTL = 600; // 10 minutes to redeem a pairing code
 const PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I — easy to type in Studio
 
 export async function createPairCode(env: Env, projectId: string): Promise<{ code: string; expiresAt: number }> {
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  const targetLength = 8;
+  const alphabetLen = PAIR_ALPHABET.length;
+  const limit = Math.floor(256 / alphabetLen) * alphabetLen; // rejection-sampling cutoff
   let code = '';
-  for (const b of bytes) code += PAIR_ALPHABET[b % PAIR_ALPHABET.length];
+
+  while (code.length < targetLength) {
+    const bytes = crypto.getRandomValues(new Uint8Array(targetLength - code.length));
+    for (const b of bytes) {
+      if (b >= limit) continue;
+      code += PAIR_ALPHABET[b % alphabetLen];
+      if (code.length >= targetLength) break;
+    }
+  }
+
   const expiresAt = now() + PAIR_TTL;
   await env.KV.put(`roblox_pair:${code}`, JSON.stringify({ projectId }), { expirationTtl: PAIR_TTL });
   return { code, expiresAt };

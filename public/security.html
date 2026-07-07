@@ -12,8 +12,11 @@
   .app { display:grid; grid-template-columns:248px 1fr; height:100vh; overflow:hidden; }
   /* Sidebar */
   .sb { background:#0e1119; border-right:1px solid var(--line); display:flex; flex-direction:column; padding:1rem .8rem; gap:.2rem; overflow-y:auto; min-height:0; }
-  .sb-brand { display:flex; align-items:center; gap:.5rem; font-weight:800; font-size:1.05rem; padding:.3rem .5rem 1rem; letter-spacing:-.01em; }
-  .sb-brand .sh { width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:grid;place-items:center;font-size:.9rem; }
+  .sb-brand { display:flex; align-items:center; gap:.55rem; padding:.3rem .5rem 1rem; }
+  .sec-mark { color:var(--brand-2); flex:0 0 auto; }
+  .sec-word-wrap { display:flex; flex-direction:column; line-height:1.14; min-width:0; }
+  .sec-word { font-family:var(--font-display,inherit); font-weight:700; font-size:1.05rem; letter-spacing:-.01em; }
+  .sec-by { font-size:.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; font-weight:600; }
   .sb-sec { font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:.9rem .6rem .3rem; }
   .sb-item { display:flex; align-items:center; gap:.6rem; padding:.5rem .6rem; border-radius:9px; color:var(--muted); font-size:.9rem; font-weight:500; cursor:pointer; transition:.12s; }
   .sb-item:hover { background:var(--panel-2); color:var(--text); }
@@ -22,7 +25,7 @@
   .sb-item .lock { margin-left:auto; font-size:.7rem; opacity:.7; }
   .sb-foot { margin-top:auto; display:flex; flex-direction:column; gap:.2rem; padding-top:.8rem; border-top:1px solid var(--line); }
   .tier-chip { font-size:.7rem; font-weight:800; padding:.2rem .55rem; border-radius:999px; align-self:flex-start; margin:.2rem .5rem .4rem; }
-  .tier-chip.pro { background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff; }
+  .tier-chip.pro { background:var(--brand-2); color:#04231d; }
   .tier-chip.free { background:#222a3a; color:var(--muted); }
   /* Main */
   .main { display:flex; flex-direction:column; min-width:0; min-height:0; }
@@ -30,7 +33,7 @@
   .topbar h1 { font-size:1.25rem; margin:0; letter-spacing:-.01em; }
   .topbar .sub { color:var(--muted); font-size:.82rem; }
   .top-actions { margin-left:auto; display:flex; gap:.5rem; align-items:center; }
-  .content { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:1.8rem 2rem 3rem; scroll-behavior:smooth; background:radial-gradient(1100px 500px at 80% -8%, #14122a 0%, transparent 55%); }
+  .content { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:1.8rem 2rem 3rem; scroll-behavior:smooth; background:var(--bg); }
   .content > * { max-width:1320px; margin-left:auto; margin-right:auto; }
   .content::-webkit-scrollbar{width:11px} .content::-webkit-scrollbar-thumb{background:#2a3242;border-radius:6px;border:3px solid var(--bg)} .content::-webkit-scrollbar-track{background:transparent}
   /* KPI cards */
@@ -61,7 +64,7 @@
   /* trend chart + usage */
   .lchart{width:100%;height:auto;display:block} .lc-ax{fill:var(--muted);font-size:10px}
   .spark polyline{stroke-linecap:round}
-  .usage{display:flex;align-items:center;gap:.7rem} .ubar{flex:1;max-width:240px;height:8px;border-radius:4px;background:var(--panel-2);overflow:hidden} .ubar i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2));transition:width .6s}
+  .usage{display:flex;align-items:center;gap:.7rem} .ubar{flex:1;max-width:240px;height:8px;border-radius:4px;background:var(--panel-2);overflow:hidden} .ubar i{display:block;height:100%;background:var(--brand-2);transition:width .6s}
   /* skeleton loaders */
   .skel{height:88px;border-radius:14px;border:1px solid var(--line);margin-bottom:1rem;background:linear-gradient(90deg,var(--panel) 25%,var(--panel-2) 37%,var(--panel) 63%);background-size:400% 100%;animation:shimmer 1.4s ease infinite}
   .kpis .skel{height:96px;margin:0}
@@ -112,7 +115,8 @@
   .icard .st{font-size:.72rem;padding:.1rem .45rem;border-radius:999px;margin-left:auto}
   .icard .st.on{background:rgba(62,207,142,.16);color:var(--ok)} .icard .st.off{background:#222a3a;color:var(--muted)}
   .icard input{width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:7px;padding:.45rem .6rem;color:var(--text);font-family:inherit;font-size:.83rem;margin-top:.5rem}
-  .icard label.chk{display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--muted);margin-top:.6rem}
+  label.chk{display:inline-flex;align-items:center;gap:.4rem;font-size:.82rem;color:var(--muted);cursor:pointer}
+  .icard label.chk{margin-top:.6rem}
   .empty{text-align:center;color:var(--muted);padding:2.4rem 1rem}
   .empty .big{font-size:2.8rem;margin-bottom:.6rem}
   .empty h2{color:var(--text);margin:.2rem 0 .4rem} .empty p{max-width:520px;margin:.2rem auto 1.1rem;line-height:1.55}
@@ -130,7 +134,7 @@
   .gs.done .gs-n{background:var(--ok)}
   .gs b{font-size:.9rem} .gs p{margin:.25rem 0 .6rem;font-size:.78rem;color:var(--muted);line-height:1.4}
   /* how it works */
-  .how-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+  .how-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem}
   .how{background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:1rem}
   .how-ic{font-size:1.6rem;margin-bottom:.4rem} .how b{font-size:.9rem} .how p{margin:.3rem 0 0;font-size:.8rem;color:var(--muted);line-height:1.45}
   /* repo list */
@@ -204,15 +208,15 @@
     --bg:#0a0c11; --bg-2:#0f131b; --panel:#141823; --panel-2:#1a1f2b; --panel-3:#212838;
     --line:#222836; --line-2:#2d3445; --line-top:rgba(255,255,255,.05);
     --r-chip:6px; --r-sm:9px; --r:12px; --r-lg:14px; --r-xl:18px;
-    --grad-brand:linear-gradient(135deg,#8a6bff,#00d4b4);
-    --grad-crit:linear-gradient(135deg,#f0566d,#c33147);
+    --grad-brand:var(--brand-2);
+    --grad-crit:var(--crit);
     --shadow-lift:0 14px 34px -12px rgba(0,0,0,.7);
     --crit-bg:rgba(240,86,109,.13); --high-bg:rgba(245,158,87,.13); --med-bg:rgba(232,194,74,.13); --low-bg:rgba(111,155,209,.13); --ok-bg:rgba(62,207,142,.13);
   }
   /* tabular numerals on every metric so nothing jitters */
   .k-num,.fs-num,.fs-pill b,.ring text,.gauge-num,.delta,.ti-n,.sc-chip,.ff-cnt,.cov-n,.don-num,.kpi .k-sub b{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
-  /* matte panels by default; the glass-edge is reserved for raised/interactive surfaces */
-  .kpi,.hero-card,.src-card{background:linear-gradient(180deg,#171c28,#141823);box-shadow:inset 0 1px 0 var(--line-top),0 1px 2px rgba(0,0,0,.35)}
+  /* flat matte panels — no glass-edge gradient wallpaper */
+  .kpi,.hero-card,.src-card{background:var(--panel);box-shadow:inset 0 1px 0 var(--line-top),0 1px 2px rgba(0,0,0,.35)}
   .kpi:hover,.src-card:hover{border-color:var(--line-2);box-shadow:inset 0 1px 0 var(--line-top),var(--shadow-lift);transform:translateY(-2px)}
   .kpi,.src-card{transition:transform .16s cubic-bezier(.4,0,.2,1),border-color .16s,box-shadow .16s}
   :focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:8px}
@@ -322,6 +326,27 @@
   .cmd-grid>.panel>.ti-list,.cmd-grid>.panel>.catbars,.cmd-grid>.panel .donut-wrap{margin-top:auto;margin-bottom:auto}
   .cmd-grid .donut-wrap{justify-content:center;flex:1}
   .src-grid{margin-bottom:20px}
+  /* ---- icon system alignment (stroke SVGs replace every emoji) ---- */
+  .ic-svg{display:inline-block;vertical-align:middle;flex:0 0 auto}
+  .sb-item{gap:.65rem} .sb-item .ic{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+  .sb-item:hover .ic,.sb-item.active .ic{color:currentColor}
+  .sb-item.active .ic{color:var(--brand-2)}
+  .sb-item .lock{display:inline-flex;align-items:center}
+  .sec-mark{color:var(--brand-2);display:inline-flex;align-items:center}
+  /* buttons + chips + tags: align icon with label (scoped to this page's style) */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem}
+  .seg{display:inline-flex;align-items:center;gap:.35rem}
+  .fchip{display:inline-flex;align-items:center;gap:.35rem}
+  .src-tag{display:inline-flex;align-items:center;gap:.3rem}
+  .cat-badge .ic-svg{margin:0}
+  .cap-ic{color:var(--brand-2)} .how-ic{color:var(--brand-2);display:flex;align-items:center}
+  .cov-ic{color:var(--muted)}
+  .panel h2 .ic-svg{color:var(--brand-2)}
+  .k-label{display:inline-flex;align-items:center;gap:.4rem}
+  .mkt-feat h3{display:inline-flex;align-items:center;gap:.45rem}
+  .mkt-feat h3 .ic-svg{color:var(--brand-2)}
+  .icard h3 .ic-svg{color:var(--brand-2)}
+  .fd-actions .btn .ic-svg,.top-actions .btn .ic-svg{opacity:.95}
 </style>
 </head>
 <body class="sec-app">
@@ -336,7 +361,8 @@ const ago = t => { if(!t) return ''; const d=Math.floor(Date.now()/1000-t); if(d
 let S = { tier:'none', projects:[], github:{}, level:'detailed', view:'dashboard', findings:[], result:null, src:null, sourceKey:null, overview:null, filter:{sev:'all',q:'',cat:'all',group:'none'} };
 // Scanner category for a finding type.
 const CATS=['SAST','SCA','IaC','Secrets','License'];
-const CAT_ICON={SAST:'🧪',SCA:'📦',IaC:'🐳',Secrets:'🔑',License:'📄'};
+const CAT_ICON={SAST:'flask',SCA:'package',IaC:'container',Secrets:'key',License:'file'};
+const catIco=(c,s=14)=>I(CAT_ICON[c]||'flask',s);
 function catOf(t){ t=t||''; if(t==='DEPENDENCY_VULN')return 'SCA'; if(t==='LICENSE_RISK')return 'License'; if(/SECRET/.test(t))return 'Secrets'; if(/^IAC_|^CONTAINER_/.test(t))return 'IaC'; return 'SAST'; }
 
 function toast(m){ let e=$('#toast'); if(!e){e=document.createElement('div');e.id='toast';e.className='toast';document.body.appendChild(e);} e.textContent=m; e.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>e.classList.remove('show'),3000); }
@@ -438,11 +464,11 @@ function sourceCard(s, monitored){ const key=s.source, name=key.replace(/^(repo|
     <div class="sc-top"><span class="sc-kind">${isRepo?'repo':'project'}</span><span class="sc-name" title="${esc(name)}">${esc(name)}</span><span class="sc-chip" style="background:${col}22;color:${col}">${s.score??'—'}</span></div>
     <div class="sc-mbar">${seg('c',c)}${seg('h',h)}${seg('m',m)}${seg('l',l)||'<i style="width:100%;background:var(--panel-3)"></i>'}</div>
     <div class="sc-spark" data-src="${esc(key)}"></div>
-    <div class="sc-foot"><span class="meta">${t} findings · ${ago(s.last_at)||'—'}</span>${isRepo?(monitored?`<button class="btn ghost sm" data-unmon="${esc(name)}" onclick="event.stopPropagation()">🔕</button>`:`<button class="btn ghost sm" data-mon="${esc(name)}" onclick="event.stopPropagation()">🔔 Monitor</button>`):'<span class="src-tag">project</span>'}</div></div>`; }
+    <div class="sc-foot"><span class="meta">${t} findings · ${ago(s.last_at)||'—'}</span>${isRepo?(monitored?`<button class="btn ghost sm" data-unmon="${esc(name)}" onclick="event.stopPropagation()">${I('belloff',14)}</button>`:`<button class="btn ghost sm" data-mon="${esc(name)}" onclick="event.stopPropagation()">${I('bell',14)} Monitor</button>`):'<span class="src-tag">project</span>'}</div></div>`; }
 
 // ---- FIX FIRST: worst sources, ranked (honest — opens the source's real history) ----
 function fixFirst(sources){ const ranked=sources.filter(s=>(s.total||0)>0).slice().sort((a,b)=>(b.critical||0)-(a.critical||0)||(b.high||0)-(a.high||0)||(a.score||0)-(b.score||0)).slice(0,6);
-  if(!ranked.length) return `<div class="empty" style="padding:1.6rem"><div class="big">✅</div><p>No open critical or high issues across your sources. Nice.</p></div>`;
+  if(!ranked.length) return `<div class="empty" style="padding:1.6rem"><div class="big">${I('checkcircle',40)}</div><p>No open critical or high issues across your sources. Nice.</p></div>`;
   return `<div class="ff-list">${ranked.map((s,i)=>{ const name=s.source.replace(/^(repo|project):/,''), sev=s.critical?'sev-crit':s.high?'sev-high':'';
     return `<div class="ff-row ${sev}" data-open="${esc(s.source)}" tabindex="0"><span class="ff-rank">${i+1}</span>
       <span class="ff-name"><span class="nm" title="${esc(name)}">${esc(name)}</span><span class="sub">${s.source.startsWith('repo:')?'repository':'project'} · health ${s.score??'—'}</span></span>
@@ -451,12 +477,62 @@ function fixFirst(sources){ const ranked=sources.filter(s=>(s.total||0)>0).slice
 
 // ---- COVERAGE: capability wall (lit = scanner active; count = findings seen) ----
 function coverageStrip(topTypes, monitors, scanned){ const {agg}=catAgg(topTypes); const fresh=monitors&&monitors.length?Math.max(...monitors.map(m=>m.last_scan_at||0)):0;
-  return `<div class="cov-grid">${CATS.map(cat=>`<div class="cov-row"><div class="cov-ic">${CAT_ICON[cat]}</div>
+  return `<div class="cov-grid">${CATS.map(cat=>`<div class="cov-row"><div class="cov-ic">${catIco(cat,18)}</div>
     <div class="cov-name">${cat}${scanned?'<span class="st">● active</span>':''}</div>
     <div class="cov-n">${agg[cat]?agg[cat]+' found':(scanned?'clean':'—')}</div></div>`).join('')}</div>
     <div class="cov-foot">${scanned?'<span class="live-dot"></span>':''}${fresh?`Monitored · last scan ${ago(fresh)}`:'5 scanners run on every scan'}</div>`; }
 
 async function api(path, opts){ const r = await fetch(path, opts); const ct=r.headers.get('content-type')||''; const d = ct.includes('json')? await r.json().catch(()=>({})) : {}; return { ok:r.ok, status:r.status, ...d }; }
+
+// ---- Icon system -----------------------------------------------------------
+// One cohesive stroke-icon set (currentColor, 24-grid) replaces every icon-role emoji, so
+// the product reads as a real, hand-built app instead of an AI-generated emoji collage.
+const ICONS = {
+  grid:'<path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>',
+  search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
+  alert:'<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  refresh:'<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>',
+  plug:'<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  shield:'<path d="M12 3.4l6.6 2.6v5.5c0 4.4-2.8 7.9-6.6 9-3.8-1.1-6.6-4.6-6.6-9V6z"/>',
+  shieldcheck:'<path d="M12 3.4l6.6 2.6v5.5c0 4.4-2.8 7.9-6.6 9-3.8-1.1-6.6-4.6-6.6-9V6l6.6-2.6z"/><path d="M9 12.3l2.1 2.1 4-4.3"/>',
+  fix:'<path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4"/><circle cx="12" cy="12" r="3.2"/>',
+  sparkle:'<path d="M12 2.5 13.9 9 20.5 12 13.9 15 12 21.5 10.1 15 3.5 12 10.1 9z"/><path d="M19 4v3M20.5 5.5h-3"/>',
+  bolt:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  bell:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  belloff:'<path d="M8.7 3A6 6 0 0 1 18 8c0 3 .5 4.7 1.3 6"/><path d="M6 8c0 7-3 9-3 9h13"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="m2 2 20 20"/>',
+  github:'<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
+  slack:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  puzzle:'<path d="M15.5 3.5a2.5 2.5 0 0 0-4.9-.6c-.1.4-.5.6-.9.6H8a2 2 0 0 0-2 2v1.7c0 .4-.2.8-.6.9a2.5 2.5 0 0 0 0 4.8c.4.1.6.5.6.9V17a2 2 0 0 0 2 2h1.7c.4 0 .8.2.9.6a2.5 2.5 0 0 0 4.8 0c.1-.4.5-.6.9-.6H20a2 2 0 0 0 2-2v-1.7c0-.4.2-.8.6-.9a2.5 2.5 0 0 0 0-4.8c-.4-.1-.6-.5-.6-.9V6a2 2 0 0 0-2-2h-1.7c-.4 0-.8-.2-.9-.6z"/>',
+  key:'<circle cx="7.5" cy="15.5" r="5.5"/><path d="m11.4 11.6 9.6-9.6"/><path d="m15.5 7.5 3 3 3.5-3.5-3-3"/>',
+  package:'<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/><path d="m7.5 4.3 9 5.1"/>',
+  container:'<path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.7 1.7 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.7 1.7 0 0 0 1.7 0l10.3-6c.5-.3.9-.9.9-1.5Z"/><path d="M10 21.9V14L2.1 9.1"/><path d="m10 14 11.9-6.9"/><path d="M14 19.8v-8.1"/><path d="M18 17.5V9.4"/>',
+  file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/>',
+  cpu:'<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>',
+  lifebuoy:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="m4.9 4.9 4.2 4.2M14.9 9.1l4.2-4.2M14.9 14.9l4.2 4.2M9.1 14.9l-4.2 4.2"/>',
+  trend:'<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+  layers:'<path d="M12.8 2.2a2 2 0 0 0-1.6 0L2.6 6.1a1 1 0 0 0 0 1.8l8.6 3.9a2 2 0 0 0 1.6 0l8.6-3.9a1 1 0 0 0 0-1.8Z"/><path d="m2 12.3 9.2 4.2a2 2 0 0 0 1.6 0l9.2-4.2"/><path d="m2 17.3 9.2 4.2a2 2 0 0 0 1.6 0l9.2-4.2"/>',
+  flask:'<path d="M9 3h6M10 3v6.3L4.6 17a2 2 0 0 0 1.7 3h11.4a2 2 0 0 0 1.7-3L14 9.3V3"/><path d="M6.5 15h11"/>',
+  lock:'<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  checkcircle:'<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4 12 14l-3-3"/>',
+  x:'<path d="M18 6 6 18M6 6l12 12"/>',
+  arrowleft:'<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  inbox:'<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
+  megaphone:'<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+  microscope:'<path d="M6 18h8M3 22h18M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/>',
+  eyeoff:'<path d="M9.9 4.2A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13 13 0 0 1-2 3M6.6 6.6A13 13 0 0 0 2 12s3 8 10 8a9 9 0 0 0 4.4-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m2 2 20 20"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+  external:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.5.5l3-3A5 5 0 0 0 13.5 3.5l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3A5 5 0 0 0 10.5 20.5l1.7-1.7"/>',
+  chevdown:'<path d="m6 9 6 6 6-6"/>',
+  diamond:'<path d="M12 2 22 12 12 22 2 12z"/>',
+};
+function I(name, size=18, extraCls=''){ return `<svg class="ic-svg ${extraCls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`; }
+// Yield Security's own bare shield-check mark (accent teal, no box) — its own app identity.
+function secMark(size=22){ return `<span class="sec-mark">${I('shieldcheck',size)}</span>`; }
 
 // ---------------- boot ----------------
 async function load(){
@@ -469,24 +545,24 @@ async function load(){
 
 // ---------------- app shell ----------------
 const NAV = [
-  { id:'dashboard', ic:'📊', label:'Dashboard' },
-  { id:'scan', ic:'🔍', label:'New scan' },
-  { id:'findings', ic:'⚠️', label:'Findings' },
-  { id:'monitoring', ic:'🔁', label:'Monitoring', pro:true },
-  { id:'integrations', ic:'🔌', label:'Integrations', pro:true },
+  { id:'dashboard', ic:'grid', label:'Dashboard' },
+  { id:'scan', ic:'search', label:'New scan' },
+  { id:'findings', ic:'alert', label:'Findings' },
+  { id:'monitoring', ic:'refresh', label:'Monitoring', pro:true },
+  { id:'integrations', ic:'plug', label:'Integrations', pro:true },
 ];
 function renderApp(){
   const pro = S.tier==='pro';
   document.body.innerHTML = `<div id="root"><div class="app">
     <aside class="sb">
-      <div class="sb-brand"><span class="sh">🛡</span> Yield Security</div>
+      <div class="sb-brand">${secMark(22)}<span class="sec-word-wrap"><span class="sec-word">Security</span><span class="sec-by">by Yield</span></span></div>
       <div class="tier-chip ${pro?'pro':'free'}">${pro?'PRO':'FREE'}${S.unlimited?' · testing':''}</div>
       <div class="sb-sec">Workspace</div>
-      <nav id="nav">${NAV.map(n=>`<a class="sb-item" data-view="${n.id}"><span class="ic">${n.ic}</span>${n.label}${n.pro&&!pro?'<span class="lock">🔒</span>':''}</a>`).join('')}</nav>
+      <nav id="nav">${NAV.map(n=>`<a class="sb-item" data-view="${n.id}"><span class="ic">${I(n.ic,18)}</span>${n.label}${n.pro&&!pro?`<span class="lock">${I('lock',13)}</span>`:''}</a>`).join('')}</nav>
       <div class="sb-foot">
-        <a class="sb-item" data-view="settings"><span class="ic">⚙️</span> Settings</a>
-        <a class="sb-item" href="/app"><span class="ic">←</span> Back to Builder</a>
-        <a class="sb-item" id="acct"><span class="ic">👤</span> ${S.github.login?'@'+esc(S.github.login):'Account'}</a>
+        <a class="sb-item" data-view="settings"><span class="ic">${I('settings',18)}</span> Settings</a>
+        <a class="sb-item" href="/app"><span class="ic" style="color:var(--brand)">◆</span> Yield</a>
+        <a class="sb-item" id="acct"><span class="ic">${I('user',18)}</span> ${S.github.login?'@'+esc(S.github.login):'Account'}</a>
       </div>
     </aside>
     <main class="main">
@@ -508,21 +584,21 @@ function go(view){
 
 // ---------------- shared content ----------------
 const SCANNERS = [
-  ['🧪','SAST','Code vulnerabilities — SQL injection, XSS, auth bypass, weak crypto, command injection, path traversal, secrets.'],
-  ['📦','SCA · live OSV feed','Dependency CVEs from OSV.dev (GitHub Advisories, NVD, PyPA…) across npm, PyPI and Go.'],
-  ['🐳','IaC & containers','Dockerfile, docker-compose and GitHub Actions misconfigurations and risky base images.'],
-  ['📄','License compliance','Flags strong/weak copyleft licenses (AGPL/GPL/LGPL…) across your dependencies.'],
-  ['🤖','AI ensemble','Every top AI model audits your code one at a time and findings are merged (Deep / Compliance).'],
-  ['✨','AI auto-fix','Generate the corrected file for any finding and apply it to your repo or project in one click.'],
+  ['flask','SAST','Code vulnerabilities — SQL injection, XSS, auth bypass, weak crypto, command injection, path traversal, secrets.'],
+  ['package','SCA · live OSV feed','Dependency CVEs from OSV.dev (GitHub Advisories, NVD, PyPA…) across npm, PyPI and Go.'],
+  ['container','IaC & containers','Dockerfile, docker-compose and GitHub Actions misconfigurations and risky base images.'],
+  ['file','License compliance','Flags strong/weak copyleft licenses (AGPL/GPL/LGPL…) across your dependencies.'],
+  ['cpu','AI ensemble','Every top AI model audits your code one at a time and findings are merged (Deep / Compliance).'],
+  ['sparkle','AI auto-fix','Fix one finding or every fixable finding at once — Yield Security writes the corrected files and commits them to your repo or project for you.'],
 ];
-function capCards(){ return `<div class="cap-grid">${SCANNERS.map(s=>`<div class="cap"><div class="cap-ic">${s[0]}</div><div><h3>${s[1]}</h3><p>${s[2]}</p></div></div>`).join('')}</div>`; }
+function capCards(){ return `<div class="cap-grid">${SCANNERS.map(s=>`<div class="cap"><div class="cap-ic">${I(s[0],20)}</div><div><h3>${s[1]}</h3><p>${s[2]}</p></div></div>`).join('')}</div>`; }
 // Aggregate the top finding TYPES (from /overview) into the 5 categories.
 function catAgg(topTypes){ const agg={}; let total=0; (topTypes||[]).forEach(t=>{ const cat=catOf(t.type); agg[cat]=(agg[cat]||0)+(t.cnt||0); total+=(t.cnt||0); }); return {agg,total}; }
 function catBreakdown(topTypes){
   const {agg,total}=catAgg(topTypes);
   if(!total) return `<div class="empty" style="padding:1.4rem"><p class="mono">No findings yet — run a scan to see your category breakdown.</p></div>`;
   return `<div class="catbars">${CATS.filter(c=>agg[c]).map(c=>{ const pct=Math.max(4,Math.round(agg[c]/total*100));
-    return `<div class="catbar" data-cat="${c}"><div class="cb-top"><span class="cat-badge cat-${c}">${CAT_ICON[c]} ${c}</span><b>${agg[c]} <span class="mono">· ${Math.round(agg[c]/total*100)}%</span></b></div><div class="cb-track"><i class="cb-fill cat-fill-${c}" style="width:${pct}%"></i></div></div>`; }).join('')}</div>`;
+    return `<div class="catbar" data-cat="${c}"><div class="cb-top"><span class="cat-badge cat-${c}">${catIco(c)} ${c}</span><b>${agg[c]} <span class="mono">· ${Math.round(agg[c]/total*100)}%</span></b></div><div class="cb-track"><i class="cb-fill cat-fill-${c}" style="width:${pct}%"></i></div></div>`; }).join('')}</div>`;
 }
 function topIssues(topTypes, n=8){
   const list=(topTypes||[]).slice(0,n); if(!list.length) return `<div class="empty" style="padding:1.4rem"><p class="mono">No issues to rank yet — run a scan.</p></div>`;
@@ -531,13 +607,13 @@ function topIssues(topTypes, n=8){
     return `<div class="ti-row" data-type="${esc(t.type||'')}"><span class="ti-name" title="${esc((t.type||'').replace(/_/g,' '))}"><span class="cat-dot cat-${cat}"></span>${esc((t.type||'').replace(/_/g,' '))}</span><div class="ti-track"><i class="ti-fill" style="width:${Math.max(6,Math.round((t.cnt||0)/max*100))}%"></i></div><b class="ti-n">${t.cnt}</b></div>`; }).join('')}</div>`;
 }
 function monitoredPanel(monitors){
-  if(!monitors.length) return `<div class="panel"><h2>🔁 Monitored repositories <span class="right"><button class="btn ghost sm" onclick="go('monitoring')">Set up →</button></span></h2><p class="mono">No repositories are being watched yet. Enable monitoring to scan on every push & PR automatically.</p></div>`;
-  return `<div class="panel"><h2>🔁 Monitored repositories <span class="right">${monitors.length} watched · scan on push</span></h2>
+  if(!monitors.length) return `<div class="panel"><h2>${I('refresh',16)} Monitored repositories <span class="right"><button class="btn ghost sm" onclick="go('monitoring')">Set up →</button></span></h2><p class="mono">No repositories are being watched yet. Enable monitoring to scan on every push & PR automatically.</p></div>`;
+  return `<div class="panel"><h2>${I('refresh',16)} Monitored repositories <span class="right">${monitors.length} watched · scan on push</span></h2>
     <table class="tbl"><thead><tr><th>Repository</th><th>Last score</th><th>Last scan</th><th></th></tr></thead><tbody>
-    ${monitors.map(m=>`<tr><td class="src-name">${esc(m.repo)} <span class="mono">@${esc(m.branch||'main')}</span></td>
+    ${monitors.map(m=>`<tr><td class="src-name">${esc(m.repo)} <span class="mono">@${esc(m.branch||'main')}</span>${m.auto_fix?` <span class="aifix" title="Auto-fix on — commits fixes automatically">${I('sparkle',13)}</span>`:''}</td>
       <td>${m.last_score!=null?`<span class="pill2 ${m.last_score>=70?'LOW':m.last_score>=40?'MEDIUM':'CRITICAL'}">${m.last_score}/100</span>`:'<span class="mono">pending</span>'}</td>
       <td class="mono">${ago(m.last_scan_at)||'—'}</td>
-      <td><button class="btn ghost sm" data-scannow="${esc(m.repo)}" data-branch="${esc(m.branch||'main')}">⚡ Scan now</button></td></tr>`).join('')}
+      <td><button class="btn ghost sm" data-scannow="${esc(m.repo)}" data-branch="${esc(m.branch||'main')}">${I('bolt',14)} Scan now</button></td></tr>`).join('')}
     </tbody></table></div>`;
 }
 
@@ -545,18 +621,18 @@ function monitoredPanel(monitors){
 function gsStep(done,n,t,d,btn){ return `<div class="gs ${done?'done':''}"><div class="gs-n">${done?'✓':n}</div><div><b>${t}</b><p>${d}</p>${done?'':btn}</div></div>`; }
 function renderDashEmpty(c, monitors){
   const gh=S.github.connected, done=gh?1:0, pct=Math.round(done/3*100);
-  c.innerHTML=`<div class="welcome"><h2>👋 Welcome${S.github.login?', @'+esc(S.github.login):''}</h2>
-      <p>Yield Security scans your GitHub repos and Yield projects for real, exploitable vulnerabilities — SAST · SCA · IaC · secrets · licenses — with a live advisory feed, an AI ensemble and one-click AI auto-fix.</p></div>
+  c.innerHTML=`<div class="welcome"><h2>Welcome${S.github.login?', @'+esc(S.github.login):''}</h2>
+      <p>Yield Security scans your GitHub repos and Yield projects for real, exploitable vulnerabilities — SAST · SCA · IaC · secrets · licenses — with a live advisory feed, an AI ensemble and one-click AI auto-fix that commits for you.</p></div>
     <div class="panel"><div class="gs-head">${ring(pct,52)}<div><h2 style="margin:0">Get started · ${done}/3</h2><p class="mono" style="margin:.25rem 0 0">Three steps to your first security posture.</p></div></div>
       <div class="gs-list">
-        ${gsStep(gh,1,'Connect GitHub', gh?`Connected as @${esc(S.github.login||'')}`:'Link GitHub to scan and monitor your repositories.', `<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`)}
-        ${gsStep(false,2,'Run your first scan','Scan a repo or a Yield project — SAST, SCA, IaC and licenses in seconds.', `<button class="btn primary sm" onclick="go('scan')">🔍 New scan</button>`)}
-        ${gsStep(false,3,'Turn on monitoring','Watch a repo so every push & PR is scanned automatically, with a daily re-scan.', `<button class="btn ghost sm" onclick="go('monitoring')">🔁 Monitoring</button>`)}
+        ${gsStep(gh,1,'Connect GitHub', gh?`Connected as @${esc(S.github.login||'')}`:'Link GitHub to scan and monitor your repositories.', `<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">${I('github',14)} Connect GitHub</a>`)}
+        ${gsStep(false,2,'Run your first scan','Scan a repo or a Yield project — SAST, SCA, IaC and licenses in seconds.', `<button class="btn primary sm" onclick="go('scan')">${I('plus',14)} New scan</button>`)}
+        ${gsStep(false,3,'Turn on monitoring','Watch a repo so every push & PR is scanned automatically, with a daily re-scan.', `<button class="btn ghost sm" onclick="go('monitoring')">${I('refresh',14)} Monitoring</button>`)}
       </div></div>
     <div class="band"><span class="bl">Preview</span><span class="hr"></span><span class="bm">your command center, once you scan</span></div>
     <div class="cmd-grid ghosted"><div class="span-4"><div class="skel circle"></div></div><div class="span-8"><div class="skel tile" style="height:160px"></div></div>
       <div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div></div>
-    <div class="panel"><h2>🛡 What we scan</h2>${capCards()}</div>
+    <div class="panel"><h2>${I('shield',16)} What we scan</h2>${capCards()}</div>
     ${monitoredPanel(monitors)}`;
   wireDash();
 }
@@ -568,7 +644,7 @@ async function renderDashboard(){
   const d = await api('/api/security/overview'); S.overview = d;
   const src0 = d.sources||[], monitors = d.monitors||[], trend = d.trend||[];
   $('#vtitle').textContent='Security posture';
-  $('#tact').innerHTML = `<button class="btn primary sm" onclick="go('scan')">＋ New scan</button>`;
+  $('#tact').innerHTML = `<button class="btn primary sm" onclick="go('scan')">${I('plus',14)} New scan</button>`;
   if (!src0.length){ $('#vsub').textContent='Welcome to Yield Security'; renderDashEmpty(c, monitors); return; }
 
   // severity aggregation INCLUDING medium + low (the /overview schema provides them)
@@ -600,29 +676,29 @@ async function renderDashboard(){
         ${coverageStrip(d.topTypes, monitors, true)}
       </div>
       <div class="span-8 panel">
-        <h2>🚑 Fix first <span class="right">${below?`${below} source${below>1?'s':''} below 50`:'worst sources first'}</span></h2>
+        <h2>${I('lifebuoy',16)} Fix first <span class="right">${below?`${below} source${below>1?'s':''} below 50`:'worst sources first'}</span></h2>
         ${fixFirst(src0)}
       </div>
     </div>
 
     <div class="band"><span class="bl">Overview</span><span class="hr"></span><span class="bm">${single?(trend.length>1?'vs last scan':'latest scan'):'across all sources'}</span></div>
     <div class="cmd-grid">
-      ${kpiTile({span:'span-3',label:'⌀ Code health',num:avg,sub:`across ${src0.length} source${src0.length>1?'s':''}`,acc:'acc-brand',delta:dScore,spark:trend.length>1?sparkline(tScore):''})}
+      ${kpiTile({span:'span-3',label:'Code health',num:avg,sub:`across ${src0.length} source${src0.length>1?'s':''}`,acc:'acc-brand',delta:dScore,spark:trend.length>1?sparkline(tScore):''})}
       ${kpiTile({span:'span-3',label:'Open findings',num:sum.t,sub:'across latest scans'})}
       ${kpiTile({span:'span-3',label:'<span class="dot c"></span>Critical',num:sum.c,sub:`${sum.h} high`,acc:'acc-crit',glow:sum.c>0})}
-      ${kpiTile({span:'span-3',label:'🔁 Monitored',num:monitors.length,sub:'scan on push'})}
+      ${kpiTile({span:'span-3',label:`${I('refresh',13)} Monitored`,num:monitors.length,sub:'scan on push'})}
     </div>
 
     <div class="band"><span class="bl">Breakdown</span><span class="hr"></span><span class="bm">${sum.t} open findings</span></div>
     <div class="cmd-grid">
       <div class="span-4 panel"><h2>Severity</h2>${donut(sum.c,sum.h,sum.m,lowAdj)}</div>
-      <div class="span-8 panel trend-wrap-panel"><h2>📈 Recent scan activity <span class="right">${single?'this source':'all sources · newest →'}</span></h2>${lineChart(trend)}</div>
+      <div class="span-8 panel trend-wrap-panel"><h2>${I('trend',16)} Recent scan activity <span class="right">${single?'this source':'all sources · newest →'}</span></h2>${lineChart(trend)}</div>
     </div>
 
     ${(d.topTypes||[]).length?`<div class="band"><span class="bl">Insights</span><span class="hr"></span><span class="bm">most common issue types</span></div>
     <div class="cmd-grid">
-      <div class="span-7 panel"><h2>🔎 Top issue types</h2>${topIssues(d.topTypes,9)}</div>
-      <div class="span-5 panel"><h2>🗂 By category</h2>${catBreakdown(d.topTypes)}</div>
+      <div class="span-7 panel"><h2>${I('search',16)} Top issue types</h2>${topIssues(d.topTypes,9)}</div>
+      <div class="span-5 panel"><h2>${I('layers',16)} By category</h2>${catBreakdown(d.topTypes)}</div>
     </div>`:''}
 
     <div class="band"><span class="bl">Sources</span><span class="hr"></span><span class="bm">${src0.length} scanned · worst first</span></div>
@@ -647,14 +723,14 @@ async function openSource(key){
   $('#tact').innerHTML=`<button class="btn ghost sm" onclick="go('dashboard')">← Dashboard</button>`;
   const c=$('#content'); c.innerHTML=skel(2);
   const h=await api('/api/security/history?source='+encodeURIComponent(key)); const runs=h.runs||[];
-  if(!runs.length){ c.innerHTML=`<div class="empty"><div class="big">📭</div><h2>No scans yet for this source</h2><button class="btn primary" onclick="go('scan')">Scan it →</button></div>`; return; }
+  if(!runs.length){ c.innerHTML=`<div class="empty"><div class="big">${I('inbox',40)}</div><h2>No scans yet for this source</h2><button class="btn primary" onclick="go('scan')">Scan it →</button></div>`; return; }
   const latest=runs[0], series=runs.slice().reverse(), repo=key.startsWith('repo:')?key.slice(5):null, pid=key.startsWith('project:')?key.slice(8):null;
   c.innerHTML=`<div class="grid2">
     <div class="panel" style="display:flex;align-items:center;gap:1.5rem">${ring(latest.score,96)}
       <div style="min-width:0"><div class="mono" style="word-break:break-all">${esc(key)}</div>
         <div style="margin:.6rem 0"><span class="pill2 CRITICAL">${latest.critical||0} crit</span> <span class="pill2 HIGH">${latest.high||0} high</span> <span class="pill2 MEDIUM">${latest.medium||0} med</span> <span class="pill2 LOW">${latest.low||0} low</span></div>
-        <div class="fd-actions">${repo?`<button class="btn primary sm" data-scannow="${esc(repo)}" data-branch="main">⚡ Scan now</button>`:`<button class="btn primary sm" data-scanproj="${esc(pid)}">⚡ Rescan</button>`}</div></div></div>
-    <div class="panel"><h2>📈 Trend</h2>${lineChart(series)}</div></div>
+        <div class="fd-actions">${repo?`<button class="btn primary sm" data-scannow="${esc(repo)}" data-branch="main">${I('bolt',14)} Scan now</button>`:`<button class="btn primary sm" data-scanproj="${esc(pid)}">${I('bolt',14)} Rescan</button>`}</div></div></div>
+    <div class="panel"><h2>${I('trend',16)} Trend</h2>${lineChart(series)}</div></div>
     <div class="panel"><h2>Scan history <span class="right">${runs.length} scans</span></h2>
       <table class="tbl"><thead><tr><th>When</th><th>Level</th><th>Score</th><th>Findings</th></tr></thead><tbody>
       ${runs.map(r=>`<tr><td class="mono">${ago(r.created_at)}</td><td><span class="src-tag">${esc(r.level)}</span></td><td><b style="color:${({ok:'var(--ok)',warn:'var(--med)',bad:'var(--high)',crit:'var(--crit)'})[sc(r.score)]}">${r.score}</b></td><td><span class="pill2 CRITICAL">${r.critical||0}C</span> <span class="pill2 HIGH">${r.high||0}H</span> <span class="mono">${r.total||0} total</span></td></tr>`).join('')}
@@ -672,11 +748,11 @@ async function renderSettings(){
       ${usg.unlimited?'<p class="mono">Unlimited scans (testing mode).</p>':`<div class="usage"><div class="ubar"><i style="width:${Math.min(100,(usg.usedToday/(usg.cap||1))*100)}%"></i></div><span class="mono">${usg.usedToday||0}/${usg.cap||0} scans today</span></div>`}
       <div class="fd-actions" style="margin-top:1.1rem">${pro?(a.hasCustomer?'<button class="btn ghost sm" id="mng">Manage billing</button>':''):'<button class="btn primary sm" onclick="subscribe()">Upgrade to Pro — $19/mo</button>'}</div></div>
     <div class="panel"><h2>Connections</h2>
-      <p style="margin:.2rem 0 .6rem"><b>🐙 GitHub</b> — ${S.github.connected?`connected as <b>@${esc(S.github.login||'')}</b>`:'<span class="mono">not connected</span>'}</p>
-      ${S.github.connected?'':'<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>'}
-      <p style="margin:1rem 0 .5rem"><b>🔌 Integrations</b> — Slack, Jira, PR comments</p>
+      <p style="margin:.2rem 0 .6rem"><b>${I('github',15)} GitHub</b> — ${S.github.connected?`connected as <b>@${esc(S.github.login||'')}</b>`:'<span class="mono">not connected</span>'}</p>
+      ${S.github.connected?'':`<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">${I('github',14)} Connect GitHub</a>`}
+      <p style="margin:1rem 0 .5rem"><b>${I('plug',15)} Integrations</b> — Slack, Jira, PR comments</p>
       <button class="btn ghost sm" onclick="go('integrations')">Configure →</button></div></div>
-    <div class="panel"><h2>🔒 Privacy</h2><p class="mono" style="line-height:1.5">Code is analyzed and discarded immediately. Yield Security stores only finding metadata — type, severity, CWE, file, line, score and timestamp — never your source code.</p></div>`;
+    <div class="panel"><h2>${I('lock',16)} Privacy</h2><p class="mono" style="line-height:1.5">Code is analyzed and discarded immediately. Yield Security stores only finding metadata — type, severity, CWE, file, line, score and timestamp — never your source code.</p></div>`;
   const mng=$('#mng'); if(mng) mng.onclick=async()=>{ const r=await api('/api/billing/portal',{method:'POST'}); if(r.url) location.href=r.url; else alert(r.error||'No billing account yet.'); };
 }
 // Run a scan of a specific repo from anywhere (monitored repo "Scan now").
@@ -697,12 +773,12 @@ function renderScan(){
       <div class="field"><label>Yield project</label><select id="srcSel">${projOpts||'<option disabled>No projects yet</option>'}</select></div>
       <div class="field"><label>…or a GitHub repository</label>
         ${S.github.connected?`<div style="display:flex;gap:.5rem"><select id="repoSel" style="flex:1"><option value="">— load repos —</option></select><button class="btn ghost sm" id="loadRepos">Load</button></div>`
-          :`<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`}</div>
+          :`<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">${I('github',14)} Connect GitHub</a>`}</div>
       <div class="field"><label>Scan depth</label>
         <span class="seg-group">
-          <button class="seg ${S.level==='basic'?'on':''}" data-lvl="basic">⚡ Basic</button>
-          <button class="seg ${S.level==='detailed'?'on':''}" data-lvl="detailed" ${pro?'':'data-lock=1'}>🔬 Deep${pro?'':' 🔒'}</button>
-          <button class="seg ${S.level==='compliance'?'on':''}" data-lvl="compliance" ${pro?'':'data-lock=1'}>📋 Compliance${pro?'':' 🔒'}</button>
+          <button class="seg ${S.level==='basic'?'on':''}" data-lvl="basic">${I('bolt',13)} Basic</button>
+          <button class="seg ${S.level==='detailed'?'on':''}" data-lvl="detailed" ${pro?'':'data-lock=1'}>${I('microscope',13)} Deep${pro?'':` ${I('lock',12)}`}</button>
+          <button class="seg ${S.level==='compliance'?'on':''}" data-lvl="compliance" ${pro?'':'data-lock=1'}>${I('file',13)} Compliance${pro?'':` ${I('lock',12)}`}</button>
         </span>
         <div class="mono" style="margin-top:.5rem">Basic = SAST + SCA + IaC + license (instant). Deep / Compliance add the AI ensemble (every top model).</div>
       </div>
@@ -712,7 +788,7 @@ function renderScan(){
     <div id="sresult"></div>
   </div>`;
   $$('.seg').forEach(b=>b.onclick=()=>{ if(b.dataset.lock){ subscribe(); return; } $$('.seg').forEach(x=>x.classList.toggle('on',x===b)); S.level=b.dataset.lvl; });
-  const lr=$('#loadRepos'); if(lr) lr.onclick=async()=>{ lr.textContent='…'; const {repos}=await api('/api/security/repos'); const sel=$('#repoSel'); sel.innerHTML='<option value="">— pick a repo —</option>'+(repos||[]).map(r=>`<option value="repo:${esc(r.full_name)}" data-branch="${esc(r.default_branch)}">${esc(r.full_name)}${r.private?' 🔒':''}</option>`).join(''); lr.textContent='Load'; };
+  const lr=$('#loadRepos'); if(lr) lr.onclick=async()=>{ lr.textContent='…'; const {repos}=await api('/api/security/repos'); const sel=$('#repoSel'); sel.innerHTML='<option value="">— pick a repo —</option>'+(repos||[]).map(r=>`<option value="repo:${esc(r.full_name)}" data-branch="${esc(r.default_branch)}">${esc(r.full_name)}${r.private?' · private':''}</option>`).join(''); lr.textContent='Load'; };
   $('#scanBtn').onclick=runScan;
 }
 function picked(){ const rs=$('#repoSel'); if(rs&&rs.value) return {source:'repo',repo:rs.value.slice(5),branch:rs.selectedOptions[0]?.dataset.branch||'main',key:rs.value}; const v=$('#srcSel')?.value||''; if(v.startsWith('project:')) return {source:'project',projectId:v.slice(8),key:v}; return null; }
@@ -723,23 +799,27 @@ async function doScan(src){
   $('#sresult').innerHTML='';
   try{
     const res=await fetch('/api/security/scan',{method:'POST',headers:{'content-type':'application/json',accept:'text/event-stream'},body:JSON.stringify({...src,level:S.level,stream:true})});
-    if(!res.ok||!res.body||!res.headers.get('content-type')?.includes('text/event-stream')){ const e=await res.json().catch(()=>({})); st.innerHTML = e.code==='github_not_connected'?`Connect GitHub first. <a href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security" style="color:var(--brand-2)">Connect →</a>`:(e.code==='security_required'?`🔒 ${esc(e.error)} <a href="#" onclick="subscribe();return false" style="color:var(--brand-2)">Upgrade →</a>`:esc(e.error||`Scan failed (${res.status})`)); return; }
+    if(!res.ok||!res.body||!res.headers.get('content-type')?.includes('text/event-stream')){ const e=await res.json().catch(()=>({})); st.innerHTML = e.code==='github_not_connected'?`Connect GitHub first. <a href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security" style="color:var(--brand-2)">Connect →</a>`:(e.code==='security_required'?`${I('lock',13)} ${esc(e.error)} <a href="#" onclick="subscribe();return false" style="color:var(--brand-2)">Upgrade →</a>`:esc(e.error||`Scan failed (${res.status})`)); return; }
     const rd=res.body.pipeThrough(new TextDecoderStream()).getReader(); let buf='';
     for(;;){ const {value,done}=await rd.read(); if(done)break; buf+=value; let i; while((i=buf.indexOf('\n\n'))!==-1){ const fr=buf.slice(0,i); buf=buf.slice(i+2); const ev=/event: (.*)/.exec(fr)?.[1], dt=/data: ([\s\S]*)/.exec(fr)?.[1]; if(!ev||dt==null)continue; let p; try{p=JSON.parse(dt)}catch{continue}
       if(ev==='finding'){ S.findings.push(p); st.querySelector('b')&&(st.innerHTML=`<span class="spin"></span> ${S.findings.length} finding(s)…`); }
-      else if(ev==='progress'&&p.stage==='ai') st.innerHTML=`<span class="spin"></span> 🤖 ${esc(p.model)} (${p.index}/${p.total}) — ${S.findings.length} so far`;
+      else if(ev==='progress'&&p.stage==='ai') st.innerHTML=`<span class="spin"></span> ${I('cpu',14)} ${esc(p.model)} (${p.index}/${p.total}) — ${S.findings.length} so far`;
       else if(ev==='done'){ S.result=p; S.findings=p.findings; scanDone(p); }
       else if(ev==='error') st.textContent=p.message||'Scan error';
     }}
   }catch(e){ st.textContent='Scan interrupted: '+e; }
 }
+function fixableFindings(list){ return (list||[]).filter(f=>f.location?.file&&f.location.file.indexOf('.')>-1); }
 function scanDone(r){
+  const fixableN=fixableFindings(r.findings).length;
   $('#sstatus').innerHTML=`✓ Complete — health ${r.codeHealthScore}/100 · ${r.summary.total} findings · <a href="#" data-exp="sarif">SARIF</a> · <a href="#" data-exp="json">JSON</a> · <a href="#" data-exp="html">Report</a> · <a href="#" onclick="go('findings');return false">Open in Findings →</a>`;
   $$('#sstatus [data-exp]').forEach(a=>a.onclick=e=>{e.preventDefault();exportAs(a.dataset.exp);});
   $('#sresult').innerHTML = `<div class="panel"><div style="display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap">${ring(r.codeHealthScore,80)}
-      <div style="min-width:0"><div class="mono">${esc(S.sourceKey)}</div><div style="margin:.55rem 0"><span class="pill2 CRITICAL">${r.summary.critical} critical</span> <span class="pill2 HIGH">${r.summary.high} high</span> <span class="pill2 MEDIUM">${r.summary.medium} med</span> <span class="pill2 LOW">${r.summary.low} low</span></div></div></div>
+      <div style="min-width:0"><div class="mono">${esc(S.sourceKey)}</div><div style="margin:.55rem 0"><span class="pill2 CRITICAL">${r.summary.critical} critical</span> <span class="pill2 HIGH">${r.summary.high} high</span> <span class="pill2 MEDIUM">${r.summary.medium} med</span> <span class="pill2 LOW">${r.summary.low} low</span></div></div>
+      ${fixableN?`<button class="btn primary sm" id="fixAllBtn" style="margin-left:auto">${I('sparkle',14)} Fix all (${fixableN})</button>`:''}</div>
     ${findingsTable(r.findings.slice(0,40))}`;
   wireFindingRows($('#sresult'));
+  const fab=$('#fixAllBtn'); if(fab) fab.onclick=()=>doFixAll(fab,()=>scanDone(S.result));
 }
 
 // ---------------- findings (table + filters + detail) ----------------
@@ -748,12 +828,12 @@ function findingRowHtml(f, gi){ const cat=catOf(f.type); const fixable=f.locatio
   return `<tr class="clickable frow rail-${f.severity}${fixable?' fixable':''}" data-row="${gi}"><td><span class="pill2 ${f.severity}">${f.severity}</span></td>
     <td><b>${esc((f.type||'').replace(/_/g,' '))}</b> <span class="mono">${esc(f.cwe||'')}</span></td>
     <td class="mono">${esc(f.location?.file||'')}:${f.location?.line||0}</td>
-    <td><span class="cat-badge cat-${cat}">${CAT_ICON[cat]||''} ${cat}</span></td>
-    <td>${fixable?'<span class="aifix" title="AI auto-fixable">✨</span> ':''}${f.source==='ai'?`<span class="src-tag ai">🤖 ${esc(f.model||'AI')}</span>`:'<span class="src-tag">pattern</span>'}</td>
+    <td><span class="cat-badge cat-${cat}">${catIco(cat)} ${cat}</span></td>
+    <td>${fixable?`<span class="aifix" title="AI auto-fixable">${I('sparkle',13)}</span> `:''}${f.source==='ai'?`<span class="src-tag ai">${I('cpu',12)} ${esc(f.model||'AI')}</span>`:'<span class="src-tag">pattern</span>'}</td>
     <td class="mono chev">▾</td></tr>
     <tr class="fdetail" data-detail="${gi}" style="display:none"><td colspan="6"></td></tr>`; }
 function findingsTable(list){
-  if(!list.length) return `<div class="empty"><div class="big">✅</div><h2>No findings</h2><p>Nothing flagged here — nice and clean.</p></div>`;
+  if(!list.length) return `<div class="empty"><div class="big">${I('checkcircle',40)}</div><h2>No findings</h2><p>Nothing flagged here — nice and clean.</p></div>`;
   S._tableList=list;
   return `<div class="panel tbl-panel"><table class="tbl">${FHEAD}<tbody>${list.map((f,i)=>findingRowHtml(f,i)).join('')}</tbody></table></div>`;
 }
@@ -770,15 +850,17 @@ function detailHtml(f,i){
   return `<div class="fd-grid"><div class="fd-desc">${esc(f.description||'')}</div>
     <div class="mono">${esc(f.owasp||'')}</div>
     ${f.fix?`<div class="fd-fix"><b>Fix:</b> ${esc(f.fix)}</div>`:''}${ex}
-    <div class="fd-actions">${fixable?`<button class="btn primary sm" data-fix="${i}">✨ AI Fix</button>`:''}<button class="btn ghost sm" data-ignore="${i}">🙈 Ignore</button></div></div>`;
+    <div class="fd-actions">${fixable?`<button class="btn primary sm" data-fix="${i}">${I('sparkle',14)} AI Fix</button>`:''}<button class="btn ghost sm" data-ignore="${i}">${I('eyeoff',14)} Ignore</button></div></div>`;
 }
 function wireDetail(det,f){ const fx=$('[data-fix]',det); if(fx)fx.onclick=()=>doFix(f,fx); const ig=$('[data-ignore]',det); if(ig)ig.onclick=()=>doIgnore(f,ig); }
 function renderFindings(){
   const c=$('#content'); const all=S.findings||[];
+  const fixableN=S.src?fixableFindings(all).length:0;
   $('#vsub').textContent = S.sourceKey?`${esc(S.sourceKey.replace(/^(repo|project):/,''))} · ${all.length} findings`:`${all.length} findings`;
-  $('#tact').innerHTML = all.length?`<a href="#" class="btn ghost sm" data-exp="sarif">SARIF</a><a href="#" class="btn ghost sm" data-exp="json">JSON</a><a href="#" class="btn ghost sm" data-exp="html">Report</a><button class="btn primary sm" onclick="go('scan')">＋ Scan</button>`:'';
+  $('#tact').innerHTML = all.length?`<a href="#" class="btn ghost sm" data-exp="sarif">SARIF</a><a href="#" class="btn ghost sm" data-exp="json">JSON</a><a href="#" class="btn ghost sm" data-exp="html">Report</a>${fixableN?`<button class="btn primary sm" id="fixAllBtn">${I('sparkle',14)} Fix all (${fixableN})</button>`:''}<button class="btn primary sm" onclick="go('scan')">${I('plus',14)} Scan</button>`:'';
   $$('#tact [data-exp]').forEach(a=>a.onclick=e=>{e.preventDefault();exportAs(a.dataset.exp);});
-  if(!all.length){ c.innerHTML=`<div class="empty"><div class="big">⚠️</div><h2>No findings to show yet</h2><p>Run a scan and your vulnerabilities appear here as a filterable, groupable list — expand any row for the fix and one-click AI auto-fix.</p><button class="btn primary" onclick="go('scan')">🔍 New scan →</button></div><div class="panel"><h2>🛡 What we look for</h2>${capCards()}</div>`; return; }
+  const fab=$('#fixAllBtn'); if(fab) fab.onclick=()=>doFixAll(fab,renderFindings);
+  if(!all.length){ c.innerHTML=`<div class="empty"><div class="big">${I('alert',40)}</div><h2>No findings to show yet</h2><p>Run a scan and your vulnerabilities appear here as a filterable, groupable list — expand any row for the fix and one-click AI auto-fix.</p><button class="btn primary" onclick="go('scan')">${I('plus',14)} New scan →</button></div><div class="panel"><h2>${I('shield',16)} What we look for</h2>${capCards()}</div>`; return; }
   const sevC=s=>all.filter(f=>f.severity===s).length, catC=cat=>all.filter(f=>catOf(f.type)===cat).length;
   const sevs=['CRITICAL','HIGH','MEDIUM','LOW'];
   c.innerHTML=`
@@ -790,7 +872,7 @@ function renderFindings(){
       <span class="fchip ${S.filter.sev==='all'?'on':''}" data-sev="all">All <b>${all.length}</b></span>
       ${sevs.map(s=>`<span class="fchip ${S.filter.sev===s?'on':''}" data-sev="${s}">${s.charAt(0)+s.slice(1).toLowerCase()} <b>${sevC(s)}</b></span>`).join('')}
       <span class="fdiv"></span>
-      ${CATS.filter(cat=>catC(cat)).map(cat=>`<span class="fchip cat ${S.filter.cat===cat?'on':''}" data-cat="${cat}">${CAT_ICON[cat]} ${cat} <b>${catC(cat)}</b></span>`).join('')}
+      ${CATS.filter(cat=>catC(cat)).map(cat=>`<span class="fchip cat ${S.filter.cat===cat?'on':''}" data-cat="${cat}">${catIco(cat)} ${cat} <b>${catC(cat)}</b></span>`).join('')}
       <input class="search" id="fsearch" placeholder="Filter by issue, file, CWE…" value="${esc(S.filter.q)}">
       <select id="fgroup" class="fgroup"><option value="none">No grouping</option><option value="severity">Group: severity</option><option value="category">Group: category</option><option value="file">Group: file</option></select>
     </div>
@@ -812,64 +894,71 @@ function paintFindings2(){
     const keyOf=S.filter.group==='file'?(f=>f.location?.file||'—'):S.filter.group==='category'?(f=>catOf(f.type)):(f=>f.severity);
     const groups={}; list.forEach((f,i)=>{ const k=keyOf(f); (groups[k]=groups[k]||[]).push(i); });
     const order=S.filter.group==='severity'?['CRITICAL','HIGH','MEDIUM','LOW'].filter(k=>groups[k]):Object.keys(groups).sort((a,b)=>groups[b].length-groups[a].length);
-    tbl.innerHTML=order.map(k=>`<div class="panel tbl-panel"><div class="grp-head">${S.filter.group==='severity'?`<span class="pill2 ${k}">${k}</span>`:S.filter.group==='category'?`<span class="cat-badge cat-${k}">${CAT_ICON[k]||''} ${esc(k)}</span>`:`<span class="mono">${esc(k)}</span>`}<span class="grp-n">${groups[k].length}</span></div><table class="tbl"><tbody>${groups[k].map(i=>findingRowHtml(list[i],i)).join('')}</tbody></table></div>`).join('');
+    tbl.innerHTML=order.map(k=>`<div class="panel tbl-panel"><div class="grp-head">${S.filter.group==='severity'?`<span class="pill2 ${k}">${k}</span>`:S.filter.group==='category'?`<span class="cat-badge cat-${k}">${catIco(k)} ${esc(k)}</span>`:`<span class="mono">${esc(k)}</span>`}<span class="grp-n">${groups[k].length}</span></div><table class="tbl"><tbody>${groups[k].map(i=>findingRowHtml(list[i],i)).join('')}</tbody></table></div>`).join('');
   }
   wireFindingRows(tbl);
 }
 
 // ---------------- monitoring ----------------
 const HOWITWORKS = `<div class="panel"><h2>How continuous monitoring works</h2><div class="how-grid">
-  <div class="how"><div class="how-ic">📥</div><b>1 · You push</b><p>A push or pull request to a watched repo triggers Yield Security via a GitHub webhook.</p></div>
-  <div class="how"><div class="how-ic">🛡</div><b>2 · We scan</b><p>The commit is pulled, scanned (SAST · SCA · IaC · license), and the code is discarded — only findings are kept.</p></div>
-  <div class="how"><div class="how-ic">📣</div><b>3 · We report</b><p>Results post back as a commit-status check, a PR comment, and to Slack / Jira. Plus a daily re-scan.</p></div>
+  <div class="how"><div class="how-ic">${I('inbox',22)}</div><b>1 · You push</b><p>A push or pull request to a watched repo triggers Yield Security via a GitHub webhook.</p></div>
+  <div class="how"><div class="how-ic">${I('shield',22)}</div><b>2 · We scan</b><p>The commit is pulled, scanned (SAST · SCA · IaC · license), and the code is discarded — only findings are kept.</p></div>
+  <div class="how"><div class="how-ic">${I('sparkle',22)}</div><b>3 · We can fix it</b><p>Turn on auto-commit and critical &amp; high findings get AI-fixed and pushed as a real commit — no click required.</p></div>
+  <div class="how"><div class="how-ic">${I('megaphone',22)}</div><b>4 · We report</b><p>Results post back as a commit-status check, a PR comment, and to Slack / Jira. Plus a daily re-scan.</p></div>
 </div></div>`;
 async function renderMonitoring(){
   const c=$('#content'); c.innerHTML=`<div class="empty"><span class="spin"></span> Loading…</div>`;
   const [mon, rep] = await Promise.all([api('/api/security/monitors'), S.github.connected?api('/api/security/repos'):Promise.resolve({repos:[]})]);
   const monitors=mon.monitors||[], repos=rep.repos||[]; const monset=new Set(monitors.map(m=>m.repo));
   $('#vsub').textContent=`${monitors.length} repo(s) watched`;
-  $('#tact').innerHTML = S.github.connected?'':`<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a>`;
+  $('#tact').innerHTML = S.github.connected?'':`<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">${I('github',14)} Connect GitHub</a>`;
 
   if(!S.github.connected){
-    c.innerHTML = `<div class="empty"><div class="big">🔁</div><h2>Monitor your repositories</h2>
+    c.innerHTML = `<div class="empty"><div class="big">${I('refresh',40)}</div><h2>Monitor your repositories</h2>
       <p>Connect GitHub to watch repos — every push & PR gets scanned automatically, with a daily re-scan and results posted back to GitHub, Slack and Jira.</p>
-      <a class="btn primary" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">🔗 Connect GitHub</a></div>${HOWITWORKS}`;
+      <a class="btn primary" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">${I('github',14)} Connect GitHub</a></div>${HOWITWORKS}`;
     return;
   }
 
-  const watched = `<div class="panel"><h2>🔁 Watched repositories <span class="right">${monitors.length} active · scan on push + daily</span></h2>
-    ${monitors.length?`<table class="tbl"><thead><tr><th>Repository</th><th>Scan-on-push</th><th>Last score</th><th>Last scan</th><th></th></tr></thead><tbody>
+  const watched = `<div class="panel"><h2>${I('refresh',16)} Watched repositories <span class="right">${monitors.length} active · scan on push + daily</span></h2>
+    ${monitors.length?`<table class="tbl"><thead><tr><th>Repository</th><th>Scan-on-push</th><th>Auto-fix</th><th>Last score</th><th>Last scan</th><th></th></tr></thead><tbody>
       ${monitors.map(m=>`<tr><td class="src-name">${esc(m.repo)} <span class="mono">@${esc(m.branch||'main')}</span></td>
         <td><span class="pill2 ${m.hook_id?'LOW':'MEDIUM'}">${m.hook_id?'● active':'manual'}</span></td>
+        <td><label class="chk" style="margin:0" title="AI-fix critical &amp; high findings and commit them automatically on every scan"><input type="checkbox" data-autofix="${esc(m.repo)}" ${m.auto_fix?'checked':''}> auto-commit</label></td>
         <td>${m.last_score!=null?`<span class="pill2 ${m.last_score>=70?'LOW':m.last_score>=40?'MEDIUM':'CRITICAL'}">${m.last_score}/100</span>`:'<span class="mono">pending first push</span>'}</td>
         <td class="mono">${ago(m.last_scan_at)||'—'}</td>
-        <td style="white-space:nowrap"><button class="btn ghost sm" data-scannow="${esc(m.repo)}" data-branch="${esc(m.branch||'main')}">⚡ Scan now</button> <button class="btn ghost sm" data-unmon="${esc(m.repo)}">🔕 Stop</button></td></tr>`).join('')}
+        <td style="white-space:nowrap"><button class="btn ghost sm" data-scannow="${esc(m.repo)}" data-branch="${esc(m.branch||'main')}">${I('bolt',14)} Scan now</button> <button class="btn ghost sm" data-unmon="${esc(m.repo)}">${I('belloff',14)} Stop</button></td></tr>`).join('')}
       </tbody></table>`:`<div class="empty" style="padding:1.5rem"><p>No repositories watched yet. Pick one below to start scanning on every push.</p></div>`}
   </div>`;
 
   const avail = repos.filter(r=>!monset.has(r.full_name));
   const add = `<div class="panel"><h2>Add a repository <span class="right">${avail.length} available</span></h2>
     <input class="search" id="repoFilter" placeholder="Filter repositories…" style="max-width:none;margin-bottom:.8rem">
-    <div class="repo-list" id="repoList">${avail.slice(0,60).map(r=>`<div class="repo-row" data-name="${esc(r.full_name)}"><span class="src-name">${esc(r.full_name)}${r.private?' <span class="mono">🔒 private</span>':''}</span><button class="btn ghost sm" data-mon="${esc(r.full_name)}">🔔 Monitor</button></div>`).join('')||'<p class="mono">All your repositories are monitored. 🎉</p>'}</div></div>`;
+    <div class="repo-list" id="repoList">${avail.slice(0,60).map(r=>`<div class="repo-row" data-name="${esc(r.full_name)}"><span class="src-name">${esc(r.full_name)}${r.private?` <span class="mono">${I('lock',12)} private</span>`:''}</span><button class="btn ghost sm" data-mon="${esc(r.full_name)}">${I('bell',14)} Monitor</button></div>`).join('')||'<p class="mono">All your repositories are monitored.</p>'}</div></div>`;
 
   c.innerHTML = watched + add + HOWITWORKS;
   $$('[data-mon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.mon,true,b));
   $$('[data-unmon]').forEach(b=>b.onclick=()=>toggleMonitor(b.dataset.unmon,false,b));
   $$('[data-scannow]').forEach(b=>b.onclick=()=>scanNow(b.dataset.scannow,b.dataset.branch));
+  $$('[data-autofix]').forEach(cb=>cb.onchange=()=>toggleAutoFix(cb.dataset.autofix,cb.checked,cb));
   const rf=$('#repoFilter'); if(rf) rf.oninput=e=>{ const q=e.target.value.toLowerCase(); $$('#repoList .repo-row').forEach(row=>row.style.display=row.dataset.name.toLowerCase().includes(q)?'':'none'); };
 }
-async function toggleMonitor(repo,on,btn){ btn.disabled=true; const t=btn.textContent; btn.textContent='…';
+async function toggleAutoFix(repo,on,cb){ cb.disabled=true;
+  const r=await api('/api/security/monitors',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({repo,auto_fix:on})});
+  cb.disabled=false;
+  if(r.ok){ toast(on?`Auto-fix on for ${repo} — critical & high findings commit automatically`:'Auto-fix off'); } else { cb.checked=!on; alert(r.error||'Failed to update.'); } }
+async function toggleMonitor(repo,on,btn){ btn.disabled=true; const t=btn.innerHTML; btn.textContent='…';
   const r=await api('/api/security/monitors',{method:on?'POST':'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({repo,branch:'main'})});
-  if(r.ok||r.already){ toast(on?'Monitoring '+repo:'Stopped monitoring'); (S.view==='monitoring'?renderMonitoring:renderDashboard)(); } else { btn.disabled=false; btn.textContent=t; alert(r.error||'Failed — is GitHub connected?'); } }
+  if(r.ok||r.already){ toast(on?'Monitoring '+repo:'Stopped monitoring'); (S.view==='monitoring'?renderMonitoring:renderDashboard)(); } else { btn.disabled=false; btn.innerHTML=t; alert(r.error||'Failed — is GitHub connected?'); } }
 
 // ---------------- integrations ----------------
 async function renderIntegrations(){
   const c=$('#content'); const d=await api('/api/security/integrations'); const g=d.integrations||{};
   c.innerHTML=`<div class="integ-cards">
-    <div class="icard"><h3>💬 Slack <span class="st ${g.slack?'on':'off'}">${g.slack?'connected':'off'}</span></h3><p class="mono">Post a summary to a channel after each scan.</p><input id="iSlack" placeholder="${g.slack?'configured ✓ (blank = keep)':'https://hooks.slack.com/services/…'}"></div>
-    <div class="icard"><h3>🧩 Jira <span class="st ${g.jira?'on':'off'}">${g.jira?'connected':'off'}</span></h3><p class="mono">Open a ticket for each critical finding.</p>
+    <div class="icard"><h3>${I('slack',15)} Slack <span class="st ${g.slack?'on':'off'}">${g.slack?'connected':'off'}</span></h3><p class="mono">Post a summary to a channel after each scan.</p><input id="iSlack" placeholder="${g.slack?'configured ✓ (blank = keep)':'https://hooks.slack.com/services/…'}"></div>
+    <div class="icard"><h3>${I('puzzle',15)} Jira <span class="st ${g.jira?'on':'off'}">${g.jira?'connected':'off'}</span></h3><p class="mono">Open a ticket for each critical finding.</p>
       <input id="iJiraBase" placeholder="${g.jira?'configured ✓':'https://you.atlassian.net'}"><input id="iJiraEmail" placeholder="you@company.com"><input id="iJiraToken" type="password" placeholder="${g.jira?'••• (blank = keep)':'API token'}"><input id="iJiraProj" value="${esc(g.jira_project||'')}" placeholder="Project key (e.g. SEC)"></div>
-    <div class="icard"><h3>🐙 GitHub <span class="st ${S.github.connected?'on':'off'}">${S.github.connected?'connected':'off'}</span></h3><p class="mono">On monitored repos, report results inline.</p>
+    <div class="icard"><h3>${I('github',15)} GitHub <span class="st ${S.github.connected?'on':'off'}">${S.github.connected?'connected':'off'}</span></h3><p class="mono">On monitored repos, report results inline.</p>
       <label class="chk"><input type="checkbox" id="iStatus" ${g.post_commit_status!==0?'checked':''}> Set commit-status checks</label>
       <label class="chk"><input type="checkbox" id="iPr" ${g.post_pr_comments?'checked':''}> Comment findings on PRs</label></div>
   </div>
@@ -883,23 +972,23 @@ async function renderIntegrations(){
 function renderUpsell(view){
   $$('#nav .sb-item').forEach(a=>a.classList.toggle('active', a.dataset.view===view));
   $('#vtitle').textContent = view==='monitoring'?'Continuous monitoring':'Integrations'; $('#vsub').textContent=''; $('#tact').innerHTML='';
-  $('#content').innerHTML=`<div class="empty"><div class="big">🔒</div><h2>${view==='monitoring'?'Continuous monitoring is a Pro feature':'Integrations are a Pro feature'}</h2>
+  $('#content').innerHTML=`<div class="empty"><div class="big">${I('lock',40)}</div><h2>${view==='monitoring'?'Continuous monitoring is a Pro feature':'Integrations are a Pro feature'}</h2>
     <p>Upgrade to Yield Security Pro to ${view==='monitoring'?'scan every push & PR automatically and re-scan daily':'pipe findings to Slack, Jira and GitHub'}.</p>
     <button class="btn primary" onclick="subscribe()">Upgrade — $19/mo</button></div>`;
 }
 function renderMarketing(s){
   document.body.classList.remove('sec-app'); // the marketing page scrolls; the app shell doesn't
   const cta = s.loginRequired?`<a class="btn primary lg" href="/login?redirect=/security">Sign in to start</a>`:(s.priceConfigured?`<button class="btn primary lg" onclick="subscribe()">Get Security Pro</button>`:`<button class="btn primary lg" disabled>Launching soon</button>`);
-  document.body.innerHTML=`<div id="root"><header class="nav"><a class="brand" href="/"><span class="logo">🛡</span> Yield Security</a><nav class="nav-links"><a href="/app">Builder</a><a href="/pricing">Pricing</a><a class="btn ghost sm" href="/login?redirect=/security">Sign in</a></nav></header>
-  <main class="mkt"><div class="mkt-hero"><span class="pill">🛡 Yield Security</span><h1>Find vulnerabilities before attackers do.</h1>
+  document.body.innerHTML=`<div id="root"><header class="nav"><a class="brand" href="/security" style="display:flex;align-items:center;gap:.5rem">${secMark(22)}<span class="sec-word-wrap"><span class="sec-word">Security</span><span class="sec-by">by Yield</span></span></a><nav class="nav-links"><a class="toplink" href="/" style="display:flex;align-items:center;gap:.35rem"><span class="logo" style="font-size:1rem">◆</span>Yield</a><a href="/app">Builder</a><a href="/pricing">Pricing</a><a class="btn ghost sm" href="/login?redirect=/security">Sign in</a></nav></header>
+  <main class="mkt"><div class="mkt-hero"><h1>Find vulnerabilities before attackers do.</h1>
     <p>Scan your GitHub repos and Yield projects with a live advisory feed (OSV / GitHub Advisories) and every top AI model. SAST · SCA · IaC · secrets · licenses — with AI auto-fix and continuous monitoring.</p>${cta}</div>
   <div class="mkt-feats">
-    <div class="mkt-feat"><h3>🧪 SAST · SCA · IaC</h3><p>Code flaws, dependency CVEs from the live OSV feed, and container/IaC misconfigs in one scan.</p></div>
-    <div class="mkt-feat"><h3>🤖 AI ensemble + ✨ auto-fix</h3><p>Every top model audits your code; generate and apply the corrected file in one click.</p></div>
-    <div class="mkt-feat"><h3>🔁 Continuous monitoring</h3><p>Scan every push & PR; results posted as a commit status, PR comment, Slack message or Jira ticket.</p></div>
-    <div class="mkt-feat"><h3>📋 Compliance & licenses</h3><p>GDPR/PCI mode plus copyleft license checks across your dependencies.</p></div>
-    <div class="mkt-feat"><h3>📤 Export anywhere</h3><p>SARIF for CI / GitHub code scanning, JSON, and shareable reports.</p></div>
-    <div class="mkt-feat"><h3>🔒 Privacy first</h3><p>Code is analyzed and discarded immediately — only finding metadata is kept.</p></div>
+    <div class="mkt-feat"><h3>${I('flask',16)} SAST · SCA · IaC</h3><p>Code flaws, dependency CVEs from the live OSV feed, and container/IaC misconfigs in one scan.</p></div>
+    <div class="mkt-feat"><h3>${I('sparkle',16)} AI ensemble + auto-fix</h3><p>Every top model audits your code; generate and apply the corrected file in one click.</p></div>
+    <div class="mkt-feat"><h3>${I('refresh',16)} Continuous monitoring</h3><p>Scan every push & PR; results posted as a commit status, PR comment, Slack message or Jira ticket.</p></div>
+    <div class="mkt-feat"><h3>${I('file',13)} Compliance & licenses</h3><p>GDPR/PCI mode plus copyleft license checks across your dependencies.</p></div>
+    <div class="mkt-feat"><h3>${I('download',16)} Export anywhere</h3><p>SARIF for CI / GitHub code scanning, JSON, and shareable reports.</p></div>
+    <div class="mkt-feat"><h3>${I('lock',16)} Privacy first</h3><p>Code is analyzed and discarded immediately — only finding metadata is kept.</p></div>
   </div>
   <div class="tier-grid">
     <div class="tcard"><h3>Free</h3><div class="amt">$0</div><ul><li>✓ Basic pattern scans</li><li>✓ 3 scans / day</li><li>✓ Projects & repos</li><li style="opacity:.5">✗ AI ensemble</li></ul><a class="btn ghost" href="/login?redirect=/security">Start free</a></div>
@@ -913,27 +1002,92 @@ async function subscribe(){ if(S.loginRequired){ location.href='/login?redirect=
 async function doIgnore(f,btn){ btn.disabled=true; btn.textContent='…';
   await api('/api/security/ignores',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:S.sourceKey,type:f.type,file:f.location.file,line:f.location.line})});
   S.findings=S.findings.filter(x=>x!==f); toast('Ignored — excluded from your score'); (S.view==='findings'?renderFindings:()=>scanDone(S.result))(); }
-async function doFix(f,btn){ if(S.tier!=='pro'&&!S.unlimited){ subscribe(); return; } btn.disabled=true; btn.textContent='✨ Generating…';
+
+// AI fixes run as a background job on the server (see /api/security/fix-status) — a slow
+// model call + a real commit shouldn't block the tab. Poll to completion; every callback
+// checks the triggering element is still on the page before touching it, since the user
+// is free to navigate elsewhere while a fix keeps working in the background.
+function pollFixJob(jobId,opts){
+  const {onProgress,onFinish,onFail,intervalMs=1500}=opts||{};
+  const tick=async()=>{
+    const job=await api('/api/security/fix-status?id='+encodeURIComponent(jobId));
+    if(!job.ok){ if(onFail) onFail(job.error||'Lost track of the fix job.'); return; }
+    if(job.status==='done'){ if(onFinish) onFinish(job.result); return; }
+    if(job.status==='error'){ if(onFail) onFail(job.error||'Fix failed.'); return; }
+    if(onProgress) onProgress(job);
+    setTimeout(tick,intervalMs);
+  };
+  tick();
+}
+async function doFix(f,btn){ if(S.tier!=='pro'&&!S.unlimited){ subscribe(); return; }
+  btn.disabled=true; btn.innerHTML=`${I('sparkle',14)} Generating…`;
   const r=await api('/api/security/fix',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...S.src,file:f.location.file,line:f.location.line,finding:f})});
-  btn.disabled=false; btn.textContent='✨ AI Fix';
-  if(r.fixedContent) fixModal(f,r.fixedContent,{...S.src,file:f.location.file,line:f.location.line,finding:f}); else alert(r.error||'Could not generate a fix.'); }
+  if(!r.jobId){ btn.disabled=false; btn.innerHTML=`${I('sparkle',14)} AI Fix`; alert(r.error||'Could not start the fix.'); return; }
+  toast('Generating the fix in the background — keep browsing, we’ll notify you.');
+  pollFixJob(r.jobId,{
+    onFinish:(result)=>{
+      if(document.contains(btn)){ btn.disabled=false; btn.innerHTML=`${I('sparkle',14)} AI Fix`; }
+      if(result&&result.fixedContent) fixModal(f,result.fixedContent,{...S.src,file:f.location.file,line:f.location.line,finding:f});
+      else toast('Could not generate a fix.');
+    },
+    onFail:(msg)=>{ if(document.contains(btn)){ btn.disabled=false; btn.innerHTML=`${I('sparkle',14)} AI Fix`; } toast(msg||'Could not generate a fix.'); },
+  });
+}
+// Fix every fixable finding at once — writes + commits one file at a time, no per-finding
+// review. Kicks off as a background job so the tab isn't blocked for however long N files take.
+async function doFixAll(btn,onDone){
+  if(S.tier!=='pro'&&!S.unlimited){ subscribe(); return; }
+  if(!S.src){ alert('Run a scan first.'); return; }
+  const fixable=fixableFindings(S.findings);
+  if(!fixable.length) return;
+  const dest=S.src.source==='repo'?`${S.src.repo}@${S.src.branch||'main'} (a real commit)`:'your project';
+  if(!confirm(`AI-fix ${fixable.length} finding(s) and commit the corrected files to ${dest}?`)) return;
+  const t=btn.innerHTML; btn.disabled=true; btn.innerHTML=`${I('sparkle',14)} Starting…`;
+  const r=await api('/api/security/fix-all',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...S.src,findings:fixable,apply:true})});
+  if(!r.jobId){ btn.disabled=false; btn.innerHTML=t; alert(r.error||'Bulk fix failed to start.'); return; }
+  toast(`Fixing ${r.filesTotal||fixable.length} file(s) in the background — feel free to keep browsing.`);
+  pollFixJob(r.jobId,{
+    onProgress:(job)=>{ if(document.contains(btn)) btn.innerHTML=`${I('sparkle',14)} Fixing ${job.filesDone||0}/${job.filesTotal||'?'}…`; },
+    onFinish:(result)=>{
+      if(document.contains(btn)){ btn.disabled=false; btn.innerHTML=t; }
+      if(!result){ toast('Bulk fix finished with no result.'); return; }
+      const fixedFiles=new Set((result.results||[]).filter(x=>x.applied).map(x=>x.file));
+      const failed=(result.results||[]).filter(x=>!x.applied).length;
+      if(fixedFiles.size) S.findings=S.findings.filter(f=>!fixedFiles.has(f.location?.file));
+      if(fixedFiles.size) toast(`Fixed & committed ${fixedFiles.size} file${fixedFiles.size>1?'s':''}${result.skipped?` (${result.skipped} skipped — too many files, run again)`:''}`);
+      if(failed&&!fixedFiles.size) toast(`Couldn't auto-fix ${failed} file${failed>1?'s':''} — try them individually`);
+      if(S.result) S.result.findings=S.findings;
+      (onDone||(()=>{}))();
+    },
+    onFail:(msg)=>{ if(document.contains(btn)){ btn.disabled=false; btn.innerHTML=t; } toast(msg||'Bulk fix failed.'); },
+  });
+}
 function fixModal(f,fixed,payload){
   const m=document.createElement('div'); m.className='fix-modal';
-  m.innerHTML=`<div class="fix-box"><div class="fix-head">✨ AI Fix — ${esc((f.type||'').replace(/_/g,' '))} <span class="mono">${esc(f.location.file)}</span><button class="btn ghost sm" id="fxX" style="margin-left:auto">✕</button></div>
+  m.innerHTML=`<div class="fix-box"><div class="fix-head">${I('sparkle',14)} AI Fix — ${esc((f.type||'').replace(/_/g,' '))} <span class="mono">${esc(f.location.file)}</span><button class="btn ghost sm" id="fxX" style="margin-left:auto">✕</button></div>
     <pre class="fix-pre">${esc(fixed)}</pre>
     <div class="fix-foot"><span class="mono" style="flex:1">Review the rewritten file, then apply it to your ${payload.source==='repo'?'repo (a commit)':'project'}.</span><button class="btn ghost sm" id="fxCopy">Copy</button><button class="btn primary sm" id="fxApply">Apply fix →</button></div></div>`;
   document.body.appendChild(m); const close=()=>m.remove();
   $('#fxX',m).onclick=close; m.onclick=e=>{if(e.target===m)close()};
   $('#fxCopy',m).onclick=()=>{navigator.clipboard?.writeText(fixed); $('#fxCopy',m).textContent='Copied';};
-  $('#fxApply',m).onclick=async()=>{ const b=$('#fxApply',m); b.disabled=true; b.textContent='Applying…'; const r=await api('/api/security/fix',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...payload,apply:true})});
-    if(r.applied){ b.textContent='✓ Applied'; S.findings=S.findings.filter(x=>x!==f); toast('Fix applied'); setTimeout(close,800); } else { b.disabled=false; b.textContent='Apply fix →'; alert(r.applyError||r.error||'Could not apply — copy the code instead.'); } };
+  $('#fxApply',m).onclick=async()=>{ const b=$('#fxApply',m); b.disabled=true; b.textContent='Applying…';
+    const r=await api('/api/security/fix',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...payload,apply:true})});
+    if(!r.jobId){ b.disabled=false; b.textContent='Apply fix →'; alert(r.error||'Could not start applying the fix.'); return; }
+    pollFixJob(r.jobId,{
+      onFinish:(result)=>{
+        if(result&&result.applied){ if(document.contains(b)) b.textContent='✓ Applied'; S.findings=S.findings.filter(x=>x!==f); toast('Fix applied'); setTimeout(close,800); }
+        else { if(document.contains(b)){ b.disabled=false; b.textContent='Apply fix →'; } alert((result&&result.applyError)||'Could not apply — copy the code instead.'); }
+      },
+      onFail:(msg)=>{ if(document.contains(b)){ b.disabled=false; b.textContent='Apply fix →'; } alert(msg||'Could not apply — copy the code instead.'); },
+    });
+  };
 }
 function download(name,text,mime){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:mime})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 function exportAs(fmt){ const stamp=new Date().toISOString().slice(0,10), fs=S.findings||[];
   if(fmt==='json') return download(`yield-security-${stamp}.json`,JSON.stringify(S.result,null,2),'application/json');
   if(fmt==='sarif'){ const rules={}, results=fs.map(f=>{ rules[f.type]={id:f.type,name:f.type,properties:{cwe:f.cwe,'security-severity':({CRITICAL:'9.5',HIGH:'8',MEDIUM:'5',LOW:'3'})[f.severity]}}; return {ruleId:f.type,level:({CRITICAL:'error',HIGH:'error',MEDIUM:'warning',LOW:'note'})[f.severity]||'warning',message:{text:f.description},locations:[{physicalLocation:{artifactLocation:{uri:f.location.file},region:{startLine:f.location.line||1}}}]}; });
     return download(`yield-security-${stamp}.sarif`,JSON.stringify({version:'2.1.0',$schema:'https://json.schemastore.org/sarif-2.1.0.json',runs:[{tool:{driver:{name:'Yield Security',rules:Object.values(rules)}},results}]},null,2),'application/json'); }
-  const html=`<!doctype html><meta charset=utf-8><title>Yield Security report</title><style>body{font:14px system-ui;margin:2rem;color:#111}.s{font-weight:700}pre{background:#f5f5f5;padding:.4rem;border-radius:4px;white-space:pre-wrap}</style><h1>🛡 Yield Security report</h1><p>${esc(S.sourceKey||'')} · ${stamp} · health <b>${S.result?.codeHealthScore??'—'}/100</b> · ${fs.length} findings</p>${fs.map(f=>`<div style="border-left:3px solid #ccc;padding:.3rem .6rem;margin:.5rem 0"><span class="s">${f.severity}</span> <b>${esc(f.type)}</b> · ${esc(f.cwe)} · ${esc(f.location.file)}:${f.location.line}<br>${esc(f.description||'')}<br><b>Fix:</b> ${esc(f.fix||'')}</div>`).join('')}`;
+  const html=`<!doctype html><meta charset=utf-8><title>Yield Security report</title><style>body{font:14px system-ui;margin:2rem;color:#111}.s{font-weight:700}pre{background:#f5f5f5;padding:.4rem;border-radius:4px;white-space:pre-wrap}</style><h1>Yield Security report</h1><p>${esc(S.sourceKey||'')} · ${stamp} · health <b>${S.result?.codeHealthScore??'—'}/100</b> · ${fs.length} findings</p>${fs.map(f=>`<div style="border-left:3px solid #ccc;padding:.3rem .6rem;margin:.5rem 0"><span class="s">${f.severity}</span> <b>${esc(f.type)}</b> · ${esc(f.cwe)} · ${esc(f.location.file)}:${f.location.line}<br>${esc(f.description||'')}<br><b>Fix:</b> ${esc(f.fix||'')}</div>`).join('')}`;
   download(`yield-security-${stamp}.html`,html,'text/html');
 }
 

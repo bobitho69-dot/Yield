@@ -4,125 +4,159 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Yield Roblox</title>
-<meta name="description" content="Yield Roblox — chat with an AI to write Roblox Luau scripts and design 3D maps with free community models, synced live into Roblox Studio by a companion plugin.">
+<meta name="description" content="Yield Roblox — one AI chatbot that writes Roblox Luau, designs 3D maps with free community models, and syncs it live into Roblox Studio through a companion plugin. Watch every action it sends to Studio in real time.">
 <link rel="stylesheet" href="/styles.css">
 <style>
-  /* Uses the shared global .nav (from styles.css, matching the Figma design system);
-     this page just adds its own sidebar + tabbed workspace below it. */
+  /* Single-chat Roblox workspace (Lemonade-style): games rail · chatbot · live
+     Studio-actions panel. Uses the shared design system tokens + .nav from styles.css. */
   body.rbx-app { height:100vh; overflow:hidden; display:flex; flex-direction:column; }
-  .app { display:grid; grid-template-columns:260px 1fr; flex:1; min-height:0; overflow:hidden; }
-  /* Sidebar */
-  .sb { background:#0e1119; border-right:1px solid var(--line); display:flex; flex-direction:column; padding:1rem .8rem; gap:.2rem; overflow-y:auto; min-height:0; }
-  .sb-sec { font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:.5rem .6rem .3rem; display:flex; justify-content:space-between; align-items:center; }
-  .sb-sec button { background:none; border:none; color:var(--brand-2); cursor:pointer; font-size:.72rem; font-weight:700; }
-  .proj-item { display:flex; align-items:center; gap:.5rem; padding:.55rem .6rem; border-radius:9px; color:var(--muted); font-size:.86rem; font-weight:500; cursor:pointer; transition:.12s; }
+  .rbx-grid { display:grid; grid-template-columns:244px 1fr 360px; flex:1; min-height:0; overflow:hidden; }
+  .badge { display:inline-flex; align-items:center; gap:.35rem; font-size:.72rem; font-weight:600; padding:.24rem .55rem; border-radius:999px; border:1px solid var(--line); background:var(--panel-2); color:var(--muted); white-space:nowrap; }
+  .badge.ok { color:#5fe0a6; border-color:#1e4d31; background:#0f2417; }
+  .sec-label { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); }
+  .dim { color:var(--faint); font-weight:400; }
+  .center { text-align:center; }
+
+  /* ---------- Left rail ---------- */
+  .rail { background:var(--bg); border-right:1px solid var(--line); display:flex; flex-direction:column; gap:.35rem; padding:1rem .85rem; min-height:0; overflow-y:auto; }
+  .rail-label { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); padding:.2rem .2rem .4rem; }
+  .proj-item { display:flex; align-items:center; gap:.6rem; padding:.55rem .62rem; border-radius:9px; color:var(--muted); font-size:.86rem; font-weight:500; cursor:pointer; transition:.12s; }
   .proj-item:hover { background:var(--panel-2); color:var(--text); }
-  .proj-item.active { background:#1b1740; color:#fff; box-shadow:inset 2px 0 0 var(--brand); }
+  .proj-item.active { background:#171a2e; color:var(--text); font-weight:600; }
   .proj-item .pi-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .proj-item .pi-dot { width:7px; height:7px; border-radius:50%; background:#3a4257; flex:0 0 auto; }
-  .proj-item.paired .pi-dot { background:var(--ok, #3ecf8e); }
-  .sb-foot { margin-top:auto; display:flex; flex-direction:column; gap:.15rem; padding-top:.8rem; border-top:1px solid var(--line); }
-  .sb-foot a, .sb-foot span, .sb-foot button { font-size:.84rem; color:var(--muted); text-decoration:none; padding:.4rem .5rem; border-radius:8px; text-align:left; }
-  .sb-foot a:hover { color:var(--text); background:var(--panel-2); }
-  /* Main */
-  .main { display:flex; flex-direction:column; min-width:0; min-height:0; }
-  .rbx-workbar h1 { font-size:1.1rem; margin:0; letter-spacing:-.01em; font-weight:700; }
-  .rbx-workbar input.title-edit { background:none; border:none; color:var(--text); font-size:1.1rem; font-weight:700; font-family:inherit; letter-spacing:-.01em; padding:.1rem .3rem; border-radius:6px; }
-  .rbx-workbar input.title-edit:focus { background:var(--panel-2); outline:1px solid var(--line); }
-  .tabbar { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-left:.5rem; }
-  .tabbar button { padding:.45rem .85rem; border:none; background:var(--panel); color:var(--muted); cursor:pointer; font-family:inherit; font-size:.83rem; border-right:1px solid var(--line); }
-  .tabbar button:last-child { border-right:none; }
-  .tabbar button.on { background:var(--brand); color:#fff; }
-  .top-actions { margin-left:auto; display:flex; gap:.5rem; align-items:center; }
-  .content { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:1.4rem 1.6rem 3rem; background:radial-gradient(1100px 500px at 80% -8%, #14122a 0%, transparent 55%); }
-  .content > * { max-width:1100px; margin-left:auto; margin-right:auto; }
-  .empty { text-align:center; color:var(--muted); padding:3.5rem 1rem; max-width:560px; margin:2rem auto; }
-  .empty .big { font-size:2.6rem; margin-bottom:.6rem; }
-  .empty h2 { color:var(--text); margin:.2rem 0 .5rem; }
-  .empty p { line-height:1.6; margin:0 0 1.2rem; }
-  /* Build tab: chat + scripts side panel */
-  .build-grid { display:grid; grid-template-columns:1fr 320px; gap:1.2rem; align-items:start; height:100%; }
-  @media (max-width:920px) { .build-grid { grid-template-columns:1fr; } }
-  .chat-col { display:flex; flex-direction:column; gap:.9rem; min-width:0; }
-  .messages { display:flex; flex-direction:column; gap:.8rem; }
-  .msg { max-width:100%; }
-  .msg .bubble { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.8rem 1rem; font-size:.9rem; line-height:1.55; white-space:pre-wrap; }
-  .msg.user .bubble { background:#1b1740; border-color:#2a2560; }
-  .msg .meta { font-size:.7rem; color:var(--muted); margin-bottom:.3rem; text-transform:uppercase; letter-spacing:.04em; }
-  .think { margin-top:.5rem; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); }
-  .think summary { cursor:pointer; padding:.4rem .7rem; font-size:.78rem; color:var(--muted); }
-  .think .think-body { padding:0 .8rem .7rem; font-size:.78rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
-  .livecode { margin-top:.6rem; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
-  .livecode summary { cursor:pointer; padding:.4rem .7rem; font-size:.78rem; color:var(--brand-2); background:var(--panel-2); }
+  .proj-item .pi-dot { width:8px; height:8px; border-radius:50%; background:#3a4257; flex:0 0 auto; }
+  .proj-item.paired .pi-dot { background:#3ecf8e; }
+  .rail-new { justify-content:center; width:100%; margin-top:.35rem; }
+  .rail-foot { margin-top:auto; padding-top:.8rem; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:.3rem; }
+  .rail-dl { font-size:.8rem; font-weight:600; color:var(--muted); }
+  .rail-dl:hover { color:var(--text); }
+  .rail-sub { font-family:var(--font-mono); font-size:.7rem; color:var(--faint); }
+
+  /* ---------- Center chat ---------- */
+  .chat { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .chat-head { display:flex; align-items:center; gap:.75rem; padding:.85rem 1.4rem; border-bottom:1px solid var(--line); background:var(--bg); flex:0 0 auto; }
+  .chat-head h1 { font-family:var(--font-display); font-size:1.12rem; margin:0; letter-spacing:-.01em; font-weight:700; }
+  .chat-head input.title-edit { background:none; border:none; color:var(--text); font-family:var(--font-display); font-size:1.12rem; font-weight:700; letter-spacing:-.01em; padding:.1rem .3rem; border-radius:6px; }
+  .chat-head input.title-edit:focus { background:var(--panel-2); outline:1px solid var(--line); }
+  .chat-head-sp { flex:1; }
+  .messages { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:1.15rem; padding:1.4rem 1.5rem; }
+  .msg { max-width:640px; display:flex; flex-direction:column; gap:.35rem; }
+  .msg.user { align-self:flex-end; max-width:520px; }
+  .msg .meta { font-family:var(--font-mono); font-size:.7rem; color:var(--faint); padding-left:.15rem; }
+  .msg.user .meta { color:var(--brand); text-align:right; padding-right:.15rem; }
+  .msg .bubble { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:.7rem .9rem; font-size:.88rem; line-height:1.55; white-space:pre-wrap; word-break:break-word; color:#dbe1ee; }
+  .msg.user .bubble { background:#171a2e; border-color:#2a2560; }
+  .think, .livecode { margin-top:.15rem; border:1px solid var(--line); border-radius:9px; background:var(--panel-2); overflow:hidden; }
+  .think summary, .livecode summary { cursor:pointer; padding:.45rem .7rem; font-size:.76rem; color:var(--muted); list-style:none; }
+  .livecode summary { color:var(--brand); }
+  .think .think-body { padding:0 .8rem .6rem; font-size:.76rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
   .lc-file { border-top:1px solid var(--line); }
-  .lc-head { padding:.35rem .7rem; font-size:.76rem; color:var(--muted); font-family:ui-monospace,monospace; background:#0d1017; }
-  .lc-pre { margin:0; padding:.6rem .7rem; font-size:.78rem; white-space:pre-wrap; overflow:auto; max-height:280px; background:#0a0c11; }
-  .ask-card { margin-top:.6rem; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.7rem .8rem; }
-  .ask-q { font-size:.86rem; margin-bottom:.5rem; }
+  .lc-head { padding:.35rem .7rem; font-size:.74rem; color:var(--muted); font-family:var(--font-mono); background:var(--bg-2); }
+  .lc-pre { margin:0; padding:.55rem .7rem; font-size:.76rem; white-space:pre-wrap; overflow:auto; max-height:280px; background:#0a0c11; font-family:var(--font-mono); }
+  .act-chips { display:flex; flex-direction:column; gap:.4rem; margin-top:.15rem; }
+  .chip { display:flex; align-items:center; gap:.55rem; padding:.45rem .65rem; border-radius:9px; background:#10131c; border:1px solid var(--line); font-family:var(--font-mono); font-size:.75rem; color:#c9d2e3; }
+  .chip .chip-t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sent-note { font-size:.72rem; font-weight:500; color:#5fe0a6; margin-top:.1rem; }
+  .ask-card { margin-top:.3rem; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.7rem .8rem; }
+  .ask-q { font-size:.84rem; margin-bottom:.5rem; }
   .ask-opts { display:flex; flex-wrap:wrap; gap:.4rem; }
   .ask-opt { background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:.35rem .8rem; font-size:.8rem; color:var(--text); cursor:pointer; }
   .ask-opt:hover { border-color:var(--brand); } .ask-opt.chosen { background:var(--brand); color:#fff; }
-  .composer { display:flex; gap:.6rem; align-items:flex-end; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.7rem; }
-  .composer textarea { flex:1; background:none; border:none; color:var(--text); font-family:inherit; font-size:.9rem; resize:none; min-height:44px; max-height:180px; outline:none; }
-  .composer .csel { background:var(--panel-2); border:1px solid var(--line); color:var(--muted); border-radius:8px; padding:.4rem .5rem; font-size:.78rem; font-family:inherit; }
-  .scripts-col { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.9rem; position:sticky; top:0; max-height:calc(100vh - 220px); overflow:auto; }
-  .scripts-col h3 { margin:0 0 .7rem; font-size:.85rem; }
-  .script-row { display:flex; align-items:center; gap:.5rem; padding:.5rem .5rem; border-radius:7px; cursor:pointer; font-size:.8rem; }
+  .empty-chat { margin:auto; text-align:center; color:var(--muted); max-width:440px; padding:2rem; }
+  .empty-chat .big { font-size:2.4rem; margin-bottom:.5rem; }
+  .empty-chat h2 { color:var(--text); margin:.2rem 0 .5rem; font-family:var(--font-display); }
+  .empty-chat p { line-height:1.6; font-size:.9rem; margin:0 0 1.1rem; }
+  .composer-wrap { flex:0 0 auto; padding:.5rem 1.5rem 1.35rem; }
+  .composer { display:flex; gap:.55rem; align-items:flex-end; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:.65rem .7rem; }
+  .composer textarea { flex:1; background:none; border:none; color:var(--text); font-family:inherit; font-size:.9rem; resize:none; min-height:26px; max-height:180px; outline:none; line-height:1.4; }
+  .composer textarea::placeholder { color:var(--faint); }
+  .composer .csel { background:var(--panel-2); border:1px solid var(--line); color:var(--muted); border-radius:8px; padding:.42rem .5rem; font-size:.78rem; font-family:inherit; align-self:center; }
+  .composer .btn { align-self:center; }
+
+  /* ---------- Right Studio panel ---------- */
+  .studio { background:#0b0e15; border-left:1px solid var(--line); display:flex; flex-direction:column; gap:.9rem; padding:1.1rem 1rem; min-height:0; overflow-y:auto; }
+  .studio-head { display:flex; align-items:center; gap:.6rem; }
+  .studio-title { font-weight:600; font-size:.92rem; }
+  .studio-head .badge { margin-left:auto; }
+  .studio-sub { font-family:var(--font-mono); font-size:.7rem; color:var(--faint); margin-top:-.5rem; }
+  .studio-sec { display:flex; flex-direction:column; gap:.45rem; }
+  .actions-feed { display:flex; flex-direction:column; gap:.5rem; }
+  .action { display:flex; align-items:center; gap:.6rem; padding:.6rem .68rem; border-radius:10px; background:#12151f; border:1px solid var(--line); }
+  .action .a-ic { font-size:.95rem; flex:0 0 auto; }
+  .action .a-col { flex:1; min-width:0; display:flex; flex-direction:column; gap:.1rem; }
+  .action .a-title { font-family:var(--font-mono); font-size:.72rem; color:#dbe1ee; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .action .a-sub { font-size:.66rem; font-weight:500; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .status-pill { font-size:.62rem; font-weight:700; padding:.16rem .48rem; border-radius:6px; text-transform:capitalize; flex:0 0 auto; }
+  .status-pill.applied { background:#0f2417; color:#5fe0a6; border:1px solid #1e4d31; }
+  .status-pill.pending { background:#241f0f; color:var(--warn); border:1px solid #3a331a; }
+  .status-pill.failed { background:#2a1416; color:#f58ea0; border:1px solid #5a2530; }
+  .feed-empty { font-size:.76rem; color:var(--faint); padding:.5rem .1rem; line-height:1.5; }
+  .script-list { display:flex; flex-direction:column; gap:.1rem; }
+  .script-row { display:flex; align-items:center; gap:.5rem; padding:.42rem .5rem; border-radius:7px; cursor:pointer; }
   .script-row:hover { background:var(--panel-2); }
-  .script-row .sc-path { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:ui-monospace,monospace; }
-  .script-row .sc-cls { font-size:.65rem; padding:.1rem .4rem; border-radius:5px; background:var(--panel-2); color:var(--muted); flex:0 0 auto; }
-  /* Editor modal */
+  .script-row .sc-path { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-mono); font-size:.72rem; color:#c9d2e3; }
+  .script-row .sc-cls { font-size:.62rem; padding:.1rem .42rem; border-radius:5px; background:var(--panel-2); color:var(--muted); flex:0 0 auto; }
+  .pair-code { font-size:1.9rem; font-weight:800; letter-spacing:.14em; text-align:center; padding:.9rem; background:var(--panel-2); border:1px dashed var(--line); border-radius:12px; margin:.6rem 0; font-family:var(--font-mono); }
+  .pair-badge { display:inline-flex; align-items:center; gap:.4rem; font-size:.82rem; padding:.3rem .7rem; border-radius:999px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); }
+  .pair-badge.on { color:#5fe0a6; border-color:#1e4d31; background:rgba(62,207,142,.1); }
+
+  /* ---------- Tools drawer (Map / Assets / Studio link) ---------- */
+  .drawer-bg { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:90; }
+  .drawer-bg.show { display:block; }
+  .drawer { position:absolute; top:0; right:0; height:100%; width:min(520px,96vw); background:var(--bg); border-left:1px solid var(--line); display:flex; flex-direction:column; box-shadow:var(--shadow); }
+  .drawer-head { display:flex; align-items:center; gap:.8rem; padding:.8rem 1.1rem; border-bottom:1px solid var(--line); }
+  .drawer-close { margin-left:auto; background:none; border:none; color:var(--muted); font-size:1.2rem; cursor:pointer; }
+  .drawer-body { flex:1; overflow-y:auto; padding:1.2rem 1.1rem 2.5rem; }
+  .tabbar { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .tabbar button { padding:.45rem .85rem; border:none; background:var(--panel); color:var(--muted); cursor:pointer; font-family:inherit; font-size:.83rem; border-right:1px solid var(--line); }
+  .tabbar button:last-child { border-right:none; }
+  .tabbar button.on { background:var(--brand); color:#fff; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.1rem 1.2rem; margin-bottom:1.1rem; }
+  .panel h2 { margin:0 0 .3rem; font-size:1rem; font-family:var(--font-display); }
+  .panel .p-hint { color:var(--muted); font-size:.84rem; margin:0 0 1rem; line-height:1.5; }
+  .field { display:flex; flex-direction:column; gap:.4rem; margin-bottom:1rem; }
+  .field label { font-size:.8rem; color:var(--muted); font-weight:600; }
+  .field textarea, .field input, .field select { background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:.6rem .7rem; color:var(--text); font-family:inherit; font-size:.88rem; }
+  .field textarea { resize:vertical; min-height:70px; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  @media (max-width:520px) { .row2 { grid-template-columns:1fr; } }
+  .result-box { background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.8rem .9rem; font-size:.84rem; margin-top:.6rem; }
+  .result-box.warn { border-color:#5a4a1e; background:#241f0f; color:var(--warn); }
+  .result-box.ok { border-color:#1e4d31; background:#0f2417; color:#5fe0a6; }
+  .mini-composer { display:flex; gap:.5rem; align-items:flex-end; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.5rem; margin-bottom:.4rem; }
+  .mini-composer textarea { flex:1; background:none; border:none; color:var(--text); font-family:inherit; font-size:.86rem; resize:none; min-height:22px; outline:none; }
+  .asset-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.7rem; margin-top:.8rem; }
+  .asset-card { background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.65rem; display:flex; flex-direction:column; gap:.35rem; }
+  .asset-card .a-thumb { width:100%; aspect-ratio:1; background:var(--panel-3); border-radius:7px; object-fit:cover; }
+  .asset-card .a-name { font-size:.8rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .asset-card .a-id { font-size:.68rem; color:var(--muted); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .asset-card .a-actions { display:flex; gap:.35rem; margin-top:.15rem; }
+  .steps { display:flex; flex-direction:column; gap:.55rem; margin:1rem 0; }
+  .step { display:flex; gap:.7rem; align-items:flex-start; }
+  .step .sn { width:22px; height:22px; border-radius:50%; background:var(--brand); color:#fff; display:grid; place-items:center; font-weight:800; flex:0 0 auto; font-size:.76rem; }
+  .step p { margin:0; font-size:.84rem; line-height:1.5; color:var(--muted); }
+  .step code { font-family:var(--font-mono); font-size:.78rem; background:var(--panel-2); padding:.05rem .3rem; border-radius:4px; }
+
+  /* ---------- Editor modal ---------- */
   .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.65); display:none; place-items:center; z-index:100; padding:1rem; }
   .modal-bg.show { display:grid; }
   .modal-box { background:var(--panel); border:1px solid var(--line); border-radius:14px; width:min(760px,96vw); max-height:88vh; display:flex; flex-direction:column; box-shadow:var(--shadow); }
-  .modal-head { display:flex; align-items:center; gap:.6rem; padding:.9rem 1.1rem; border-bottom:1px solid var(--line); font-weight:700; font-family:ui-monospace,monospace; font-size:.86rem; }
+  .modal-head { display:flex; align-items:center; gap:.6rem; padding:.9rem 1.1rem; border-bottom:1px solid var(--line); font-weight:700; font-family:var(--font-mono); font-size:.84rem; }
   .modal-head .close { margin-left:auto; cursor:pointer; color:var(--muted); background:none; border:none; font-size:1.1rem; }
-  .modal-box textarea.code-edit { flex:1; margin:0; padding:1rem; background:#0a0c11; color:#dfe6f5; border:none; outline:none; font-size:.82rem; white-space:pre; font-family:ui-monospace,monospace; resize:none; min-height:320px; }
+  .modal-box textarea.code-edit { flex:1; margin:0; padding:1rem; background:#0a0c11; color:#dfe6f5; border:none; outline:none; font-size:.82rem; white-space:pre; font-family:var(--font-mono); resize:none; min-height:320px; }
   .modal-foot { display:flex; gap:.6rem; padding:.8rem 1.1rem; border-top:1px solid var(--line); }
-  /* Form fields (shared: map/assets/sync tabs) */
-  .field { display:flex; flex-direction:column; gap:.4rem; margin-bottom:1rem; }
-  .field label { font-size:.82rem; color:var(--muted); font-weight:600; }
-  .field textarea, .field input, .field select { background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:.6rem .7rem; color:var(--text); font-family:inherit; font-size:.88rem; }
-  .field textarea { resize:vertical; min-height:70px; }
-  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
-  @media (max-width:680px) { .row2 { grid-template-columns:1fr; } }
-  .result-box { background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.9rem 1rem; font-size:.85rem; margin-top:.6rem; }
-  .result-box.warn { border-color:#5a4a1e; background:#241f0f; color:#e8c24a; }
-  .result-box.ok { border-color:#1e4d31; background:#0f2417; color:#5fe0a6; }
-  /* Assets */
-  .asset-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.8rem; margin-top:.8rem; }
-  .asset-card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.7rem; display:flex; flex-direction:column; gap:.4rem; }
-  .asset-card .a-thumb { width:100%; aspect-ratio:1; background:var(--panel-2); border-radius:7px; object-fit:cover; }
-  .asset-card .a-name { font-size:.82rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .asset-card .a-id { font-size:.7rem; color:var(--muted); font-family:ui-monospace,monospace; }
-  .asset-card .a-actions { display:flex; gap:.4rem; margin-top:.2rem; }
-  /* Sync tab */
-  .pair-code { font-size:2.1rem; font-weight:800; letter-spacing:.15em; text-align:center; padding:1rem; background:var(--panel-2); border:1px dashed var(--line); border-radius:12px; margin:.8rem 0; font-family:ui-monospace,monospace; }
-  .steps { display:flex; flex-direction:column; gap:.6rem; margin:1rem 0; }
-  .step { display:flex; gap:.7rem; align-items:flex-start; }
-  .step .sn { width:24px; height:24px; border-radius:50%; background:var(--brand); color:#fff; display:grid; place-items:center; font-weight:800; flex:0 0 auto; font-size:.8rem; }
-  .step p { margin:0; font-size:.86rem; line-height:1.5; color:var(--muted); }
-  .pair-badge { display:inline-flex; align-items:center; gap:.4rem; font-size:.82rem; padding:.3rem .7rem; border-radius:999px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); }
-  .pair-badge.on { color:#5fe0a6; border-color:#1e4d31; background:rgba(62,207,142,.1); }
-  table.tbl { width:100%; border-collapse:collapse; margin-top:.8rem; }
-  table.tbl th { text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:.5rem .6rem; border-bottom:1px solid var(--line); }
-  table.tbl td { padding:.55rem .6rem; border-bottom:1px solid var(--line); font-size:.82rem; }
-  .status-pill { font-size:.68rem; font-weight:700; padding:.1rem .5rem; border-radius:6px; }
-  .status-pill.applied { background:rgba(62,207,142,.15); color:#5fe0a6; }
-  .status-pill.pending { background:rgba(232,194,74,.15); color:#e8c24a; }
-  .status-pill.failed { background:rgba(240,86,109,.15); color:#f58ea0; }
   .toast { position:fixed; bottom:18px; left:50%; transform:translate(-50%,14px); background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:.6rem .9rem; font-size:.84rem; box-shadow:var(--shadow); z-index:200; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
   .toast.show { opacity:1; transform:translate(-50%,0); }
-  .rbx-workbar { display:flex; align-items:center; gap:1rem; padding:.9rem 1.4rem; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--bg); }
-  @media (max-width:820px) {
-    .app { grid-template-columns:1fr; grid-template-rows:auto 1fr; }
-    .sb { flex-direction:row; align-items:center; height:auto; overflow-x:auto; border-right:none; border-bottom:1px solid var(--line); padding:.5rem .8rem; }
-    .sb-sec, .sb-foot { display:none; }
+
+  @media (max-width:1080px) { .rbx-grid { grid-template-columns:220px 1fr; } .studio { display:none; } }
+  @media (max-width:760px) {
+    .rbx-grid { grid-template-columns:1fr; grid-template-rows:auto 1fr; }
+    .rail { flex-direction:row; align-items:center; overflow-x:auto; border-right:none; border-bottom:1px solid var(--line); padding:.5rem .8rem; }
+    .rail-label, .rail-foot { display:none; }
   }
 </style>
 </head>
 <body class="rbx-app">
-  <!-- Global navbar — the shared .nav component (matches the rest of the app) -->
   <header class="nav">
     <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
     <nav class="nav-links">
@@ -135,168 +169,165 @@
       <span id="authArea"></span>
     </nav>
   </header>
-  <div class="app">
-    <aside class="sb">
-      <div class="sb-sec"><span>Roblox Projects</span></div>
+
+  <div class="rbx-grid">
+    <!-- Left rail: games -->
+    <aside class="rail">
+      <div class="rail-label">Games</div>
       <div id="projList"></div>
-      <button class="btn primary sm" id="newProjectBtn" style="margin:.5rem .5rem .8rem">＋ New game</button>
-    </aside>
-    <main class="main">
-      <div class="rbx-workbar">
-        <span id="titleWrap"><h1 id="projTitle">Yield Roblox</h1></span>
-        <div class="tabbar" id="tabBar" style="display:none">
-          <button data-tab="build" class="on">Build</button>
-          <button data-tab="map">Map</button>
-          <button data-tab="assets">Assets</button>
-          <button data-tab="sync">Sync &amp; Plugin</button>
-        </div>
-        <div class="top-actions">
-          <button class="btn ghost sm" id="deleteProjectBtn" style="display:none">Delete</button>
-        </div>
+      <button class="btn ghost sm rail-new" id="newProjectBtn">＋ New game</button>
+      <div class="rail-foot">
+        <a class="rail-dl" href="/api/roblox/plugin.lua" id="downloadPluginLink2">⬇  Download plugin</a>
+        <span class="rail-sub">Yield Studio plugin</span>
       </div>
-      <div class="content">
-        <div id="emptyState">
-          <div class="empty">
-            <div class="big">🎮</div>
-            <h2>Build Roblox games with AI</h2>
-            <p>Chat with an AI to write real Luau scripts, design 3D maps dressed with free community models, and sync it all live into Roblox Studio. <b>Link the plugin once</b> and every place you open in Studio shows up here automatically — no naming, no per-game setup. Or start a project right here.</p>
-            <div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">
-              <button class="btn primary" id="emptyLinkBtn">Link Roblox Studio</button>
-              <button class="btn ghost" id="emptyNewBtn">＋ New project</button>
-            </div>
-          </div>
-        </div>
-        <div id="workspace" style="display:none">
-          <section id="tab-build">
-            <div class="build-grid">
-              <div class="chat-col">
-                <div class="messages" id="messages"></div>
-                <div class="composer">
-                  <textarea id="promptBox" placeholder="Describe what to build — e.g. &quot;a sword that does 10 damage and knocks players back on hit&quot;" rows="1"></textarea>
-                  <select class="csel" id="modelSel"><option value="auto">Auto</option></select>
-                  <button class="btn primary" id="sendBtn">Send</button>
-                </div>
-              </div>
-              <div class="scripts-col">
-                <h3>Scripts <span id="scriptCount" style="color:var(--muted);font-weight:400"></span></h3>
-                <div id="scriptList"></div>
-              </div>
-            </div>
-          </section>
+    </aside>
 
-          <section id="tab-map" style="display:none">
-            <div class="panel">
-              <h2 style="margin-top:0">Design a map</h2>
-              <p style="color:var(--muted);font-size:.88rem;margin-top:-.4rem">Describe a place and the AI builds it big and richly detailed — favoring real inserted meshes (trees, buildings, furniture, props — matched from your <a href="#" data-tab-link="assets" style="color:var(--brand-2)">asset library</a>) over blocky placeholders wherever it can. It's queued for the plugin to build next sync.</p>
-              <div class="field">
-                <label>Map description</label>
-                <textarea id="mapPrompt" rows="3" placeholder="e.g. a small medieval village with a market square, several distinct houses, and a forest around the edge"></textarea>
-              </div>
-              <div class="row2">
-                <div class="field">
-                  <label>Art style</label>
-                  <select id="mapStyle">
-                    <option value="">Let the AI decide</option>
-                    <option value="smooth, realistic">Smooth / realistic</option>
-                    <option value="low-poly, cartoon">Low-poly / cartoon</option>
-                    <option value="pixel, voxel, blocky">Pixel art / voxel</option>
-                    <option value="medieval fantasy">Medieval fantasy</option>
-                    <option value="sci-fi, futuristic">Sci-fi / futuristic</option>
-                    <option value="modern, urban">Modern / urban</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label>Color palette</label>
-                  <input id="mapPalette" placeholder="e.g. warm autumn oranges and browns, or #8B4513, #556B2F">
-                </div>
-              </div>
-              <label style="display:flex;align-items:center;gap:.5rem;font-size:.84rem;color:var(--muted);margin-bottom:1rem">
-                <input type="checkbox" id="mapClear" style="width:auto"> Clear the existing map first (unchecked adds onto what's already built)
-              </label>
-              <button class="btn primary" id="genMapBtn">Generate map</button>
-              <div id="mapResult"></div>
-            </div>
-            <div class="panel">
-              <h2 style="margin-top:0">Recent maps</h2>
-              <div id="mapsHistory" style="color:var(--muted);font-size:.8rem">Loading…</div>
-            </div>
-          </section>
-
-          <section id="tab-assets" style="display:none">
-            <div class="panel">
-              <h2 style="margin-top:0">Free-model library</h2>
-              <p style="color:var(--muted);font-size:.88rem;margin-top:-.4rem">Pin free Roblox models by asset id so the AI's map generator can place them. Grab an id from any model's page on the Roblox marketplace (the number in its URL) — no account connection needed.</p>
-              <div class="row2">
-                <div class="field"><label>Asset id or roblox.com URL</label><input id="assetIdInput" placeholder="e.g. 123456789"></div>
-                <div class="field"><label>Name</label><input id="assetNameInput" placeholder="e.g. Pine Tree"></div>
-              </div>
-              <div class="field"><label>Tags (comma-separated — helps the AI match it)</label><input id="assetTagsInput" placeholder="tree, pine, nature, forest"></div>
-              <button class="btn ghost sm" id="addAssetBtn">＋ Pin asset</button>
-              <div class="asset-grid" id="assetGrid"></div>
-            </div>
-            <div class="panel">
-              <h2 style="margin-top:0">Generate a custom 3D model</h2>
-              <p style="color:var(--muted);font-size:.88rem;margin-top:-.4rem" id="modelGenHint">Describe a prop and the 3D-model AI generates a real mesh, uploads it to your Roblox account, and pins it here — needs a connected Roblox Open Cloud API key with a creator id (below).</p>
-              <div class="composer" style="margin-bottom:.4rem">
-                <textarea id="modelGenPrompt" rows="1" placeholder="e.g. a weathered stone gargoyle statue"></textarea>
-                <button class="btn primary sm" id="modelGenBtn">Generate</button>
-              </div>
-              <div id="modelGenResult"></div>
-            </div>
-            <div class="panel">
-              <h2 style="margin-top:0">Search the marketplace</h2>
-              <p style="color:var(--muted);font-size:.88rem;margin-top:-.4rem" id="searchHint">Connect your own Roblox Open Cloud API key to search free models directly from Yield.</p>
-              <div class="composer" style="margin-bottom:.8rem">
-                <textarea id="searchQuery" rows="1" placeholder="e.g. medieval house"></textarea>
-                <button class="btn primary sm" id="searchBtn">Search</button>
-              </div>
-              <div class="asset-grid" id="searchResults"></div>
-              <details style="margin-top:1rem">
-                <summary style="cursor:pointer;color:var(--brand-2);font-size:.85rem">Connect a Roblox Open Cloud API key (optional)</summary>
-                <div style="margin-top:.8rem">
-                  <div class="field"><label>API key</label><input id="robloxKeyInput" type="password" placeholder="paste your Open Cloud key"></div>
-                  <div class="row2">
-                    <div class="field"><label>Creator type</label><select id="creatorTypeInput"><option value="User">User</option><option value="Group">Group</option></select></div>
-                    <div class="field"><label>Creator id</label><input id="creatorIdInput" placeholder="your user or group id"></div>
-                  </div>
-                  <div style="display:flex;gap:.5rem">
-                    <button class="btn primary sm" id="connectKeyBtn">Connect</button>
-                    <button class="btn ghost sm" id="disconnectKeyBtn">Disconnect</button>
-                  </div>
-                  <p style="color:var(--muted);font-size:.78rem;margin-top:.6rem">Create one at create.roblox.com → Creator Dashboard → API Keys. Stored encrypted; used only to search assets for this project.</p>
-                </div>
-              </details>
-            </div>
-          </section>
-
-          <section id="tab-sync" style="display:none">
-            <div class="panel" id="linkPanel">
-              <h2 style="margin-top:0">Link Roblox Studio</h2>
-              <p style="color:var(--muted);font-size:.88rem;margin-top:-.4rem">Link your Studio to Yield <b>once</b>. After that, every place you open in Studio auto-syncs by its PlaceId — this list of games fills in automatically as you open them, with no naming or per-game pairing ever again.</p>
-              <div id="linkStatus"></div>
-              <div id="linkCodeArea"></div>
-              <div class="steps">
-                <div class="step"><span class="sn">1</span><p><a href="/api/roblox/plugin.lua" id="downloadPluginLink" style="color:var(--brand-2)">Download the Yield plugin</a> and drop the .lua file into your local Roblox Studio Plugins folder (Windows: <code>%LOCALAPPDATA%\Roblox\Plugins</code>, Mac: <code>~/Documents/Roblox/Plugins</code>), then restart Studio.</p></div>
-                <div class="step"><span class="sn">2</span><p>Click <b>Get link code</b> below, open the Yield panel in Studio's toolbar, and paste the code in — just this once.</p></div>
-                <div class="step"><span class="sn">3</span><p>Allow the HTTP-request and script-injection prompts Studio shows the first time. From then on, open any saved/published place and it syncs automatically.</p></div>
-              </div>
-              <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-                <button class="btn primary" id="linkBtn">Get link code</button>
-                <a class="btn ghost sm" id="robloxSigninBtn" href="/api/auth/roblox/login?redirect=/roblox" style="display:none">Sign in with Roblox</a>
-                <button class="btn ghost sm" id="unlinkBtn" style="display:none">Unlink Studio</button>
-              </div>
-            </div>
-            <div class="panel">
-              <h2 style="margin-top:0">Sync activity <span style="color:var(--muted);font-weight:400;font-size:.82rem" id="opsProjName"></span></h2>
-              <table class="tbl" id="opsTable"><thead><tr><th>Type</th><th>Status</th><th>Detail</th><th>When</th></tr></thead><tbody></tbody></table>
-              <div id="opsEmpty" class="empty" style="display:none;padding:1.5rem"><p style="margin:0">No sync activity for this place yet — generate some scripts or a map, and the linked plugin applies them on its next sync.</p></div>
-            </div>
-          </section>
+    <!-- Center: chatbot -->
+    <main class="chat">
+      <div class="chat-head">
+        <span id="titleWrap"><h1 id="projTitle">Yield Roblox</h1></span>
+        <span id="placeBadge" class="badge" style="display:none"></span>
+        <span class="chat-head-sp"></span>
+        <button class="btn ghost sm" id="toolsBtn">⋯  Tools</button>
+        <button class="btn ghost sm" id="deleteProjectBtn" style="display:none">Delete</button>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea id="promptBox" rows="1" placeholder="Message the chatbot — “a shop system”, “a lava obby”…"></textarea>
+          <select class="csel" id="modelSel"><option value="auto">Auto</option></select>
+          <button class="btn primary" id="sendBtn">Send</button>
         </div>
       </div>
     </main>
+
+    <!-- Right: live Studio actions -->
+    <aside class="studio">
+      <div class="studio-head">
+        <span class="studio-title">Roblox Studio</span>
+        <span id="studioBadge" class="badge">○ …</span>
+      </div>
+      <div class="studio-sub" id="studioSub">Checking link…</div>
+      <button class="btn primary sm" id="studioLinkBtn" style="display:none;width:100%">Link Studio</button>
+      <div id="studioLinkCode"></div>
+      <div class="studio-sec">
+        <div class="sec-label">Live actions</div>
+        <div id="actionsFeed" class="actions-feed"><div class="feed-empty">Select a game to see what the chatbot is sending to Studio.</div></div>
+      </div>
+      <div class="studio-sec">
+        <div class="sec-label">Scripts <span id="scriptCount" class="dim"></span></div>
+        <div id="scriptList" class="script-list"></div>
+      </div>
+    </aside>
   </div>
 
+  <!-- Tools drawer -->
+  <div class="drawer-bg" id="drawer">
+    <div class="drawer">
+      <div class="drawer-head">
+        <div class="tabbar" id="drawerTabs">
+          <button data-dtab="map" class="on">Map</button>
+          <button data-dtab="assets">Assets</button>
+          <button data-dtab="link">Studio link</button>
+        </div>
+        <button class="drawer-close" id="drawerClose">✕</button>
+      </div>
+      <div class="drawer-body">
+        <!-- Map -->
+        <section id="dtab-map">
+          <div class="panel">
+            <h2>Design a map</h2>
+            <p class="p-hint">Describe a place and the AI builds it big and richly detailed — favoring real inserted meshes (trees, buildings, props, matched from your <a href="#" data-open-dtab="assets" style="color:var(--brand)">asset library</a>) over blocky parts. It's queued for the plugin to build next sync.</p>
+            <div class="field"><label>Map description</label><textarea id="mapPrompt" rows="3" placeholder="e.g. a medieval village with a market square, several houses, and a forest around the edge"></textarea></div>
+            <div class="row2">
+              <div class="field"><label>Art style</label>
+                <select id="mapStyle">
+                  <option value="">Let the AI decide</option>
+                  <option value="smooth, realistic">Smooth / realistic</option>
+                  <option value="low-poly, cartoon">Low-poly / cartoon</option>
+                  <option value="pixel, voxel, blocky">Pixel art / voxel</option>
+                  <option value="medieval fantasy">Medieval fantasy</option>
+                  <option value="sci-fi, futuristic">Sci-fi / futuristic</option>
+                  <option value="modern, urban">Modern / urban</option>
+                </select>
+              </div>
+              <div class="field"><label>Color palette</label><input id="mapPalette" placeholder="e.g. warm autumn oranges, or #8B4513, #556B2F"></div>
+            </div>
+            <label style="display:flex;align-items:center;gap:.5rem;font-size:.83rem;color:var(--muted);margin-bottom:1rem">
+              <input type="checkbox" id="mapClear" style="width:auto"> Clear the existing map first (unchecked adds onto what's already built)
+            </label>
+            <button class="btn primary" id="genMapBtn">Generate map</button>
+            <div id="mapResult"></div>
+          </div>
+          <div class="panel">
+            <h2>Recent maps</h2>
+            <div id="mapsHistory" class="dim" style="font-size:.82rem">Loading…</div>
+          </div>
+        </section>
+
+        <!-- Assets -->
+        <section id="dtab-assets" style="display:none">
+          <div class="panel">
+            <h2>Free-model library</h2>
+            <p class="p-hint">Pin free Roblox models by asset id so the AI's map generator can place them. Grab an id from any model's page on the Roblox marketplace (the number in its URL) — no account connection needed.</p>
+            <div class="row2">
+              <div class="field"><label>Asset id or roblox.com URL</label><input id="assetIdInput" placeholder="e.g. 123456789"></div>
+              <div class="field"><label>Name</label><input id="assetNameInput" placeholder="e.g. Pine Tree"></div>
+            </div>
+            <div class="field"><label>Tags (comma-separated — helps the AI match it)</label><input id="assetTagsInput" placeholder="tree, pine, nature, forest"></div>
+            <button class="btn ghost sm" id="addAssetBtn">＋ Pin asset</button>
+            <div class="asset-grid" id="assetGrid"></div>
+          </div>
+          <div class="panel">
+            <h2>Generate a custom 3D model</h2>
+            <p class="p-hint" id="modelGenHint">Describe a prop and the 3D-model AI generates a real mesh, uploads it to your Roblox account, and pins it here — needs a connected Roblox Open Cloud API key with a creator id (below).</p>
+            <div class="mini-composer"><textarea id="modelGenPrompt" rows="1" placeholder="e.g. a weathered stone gargoyle statue"></textarea><button class="btn primary sm" id="modelGenBtn">Generate</button></div>
+            <div id="modelGenResult"></div>
+          </div>
+          <div class="panel">
+            <h2>Search the marketplace</h2>
+            <p class="p-hint" id="searchHint">Connect your own Roblox Open Cloud API key to search free models directly from Yield.</p>
+            <div class="mini-composer"><textarea id="searchQuery" rows="1" placeholder="e.g. medieval house"></textarea><button class="btn primary sm" id="searchBtn">Search</button></div>
+            <div class="asset-grid" id="searchResults"></div>
+            <details style="margin-top:1rem">
+              <summary style="cursor:pointer;color:var(--brand);font-size:.85rem">Connect a Roblox Open Cloud API key (optional)</summary>
+              <div style="margin-top:.8rem">
+                <div class="field"><label>API key</label><input id="robloxKeyInput" type="password" placeholder="paste your Open Cloud key"></div>
+                <div class="row2">
+                  <div class="field"><label>Creator type</label><select id="creatorTypeInput"><option value="User">User</option><option value="Group">Group</option></select></div>
+                  <div class="field"><label>Creator id</label><input id="creatorIdInput" placeholder="your user or group id"></div>
+                </div>
+                <div style="display:flex;gap:.5rem"><button class="btn primary sm" id="connectKeyBtn">Connect</button><button class="btn ghost sm" id="disconnectKeyBtn">Disconnect</button></div>
+                <p class="dim" style="font-size:.76rem;margin-top:.6rem">Create one at create.roblox.com → Creator Dashboard → API Keys. Stored encrypted; used only to search assets for this project.</p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- Studio link -->
+        <section id="dtab-link" style="display:none">
+          <div class="panel">
+            <h2>Link Roblox Studio</h2>
+            <p class="p-hint">Link your Studio to Yield <b>once</b>. After that, every place you open in Studio auto-syncs by its PlaceId — your games fill in automatically as you open them, with no naming or per-game pairing ever again.</p>
+            <div id="linkStatus"></div>
+            <div id="linkCodeArea"></div>
+            <div class="steps">
+              <div class="step"><span class="sn">1</span><p><a href="/api/roblox/plugin.lua" id="downloadPluginLink" style="color:var(--brand)">Download the Yield plugin</a> and drop the .lua file into your local Studio Plugins folder (Windows: <code>%LOCALAPPDATA%\Roblox\Plugins</code>, Mac: <code>~/Documents/Roblox/Plugins</code>), then restart Studio.</p></div>
+              <div class="step"><span class="sn">2</span><p>Click <b>Get link code</b>, open the Yield panel in Studio's toolbar, and paste the code in — just this once.</p></div>
+              <div class="step"><span class="sn">3</span><p>Allow the HTTP-request and script-injection prompts Studio shows the first time. From then on, open any saved/published place and it syncs automatically.</p></div>
+            </div>
+            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+              <button class="btn primary" id="linkBtn">Get link code</button>
+              <a class="btn ghost sm" id="robloxSigninBtn" href="/api/auth/roblox/login?redirect=/roblox" style="display:none">Sign in with Roblox</a>
+              <button class="btn ghost sm" id="unlinkBtn" style="display:none">Unlink Studio</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Editor modal -->
   <div class="modal-bg" id="editorModal">
     <div class="modal-box">
       <div class="modal-head"><span id="editorPath"></span><button class="close" id="editorClose">✕</button></div>
@@ -317,7 +348,10 @@ const ago = (t) => { if (!t) return 'never'; const d = Date.now() / 1000 - t; if
 let toastTimer;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200); }
 
-const state = { projects: [], currentId: null, current: null, tab: 'build', streaming: false, opsPoll: null, robloxSignin: false };
+const OP_ICON = { upsert_script: '📝', delete_script: '🗑', build_map: '🗺', insert_model: '📦' };
+const OP_TYPE = { upsert_script: 'Script', delete_script: 'Delete script', build_map: 'Build map', insert_model: 'Insert model' };
+
+const state = { projects: [], currentId: null, current: null, streaming: false, studioPoll: null, robloxSignin: false };
 
 async function api(path, opts) {
   const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts });
@@ -338,9 +372,8 @@ async function api(path, opts) {
     const models = await fetch('/api/models').then((r) => r.json());
     const sel = $('#modelSel');
     (models.models || []).forEach((m) => { if (!m.id || m.id === 'auto') return; const o = document.createElement('option'); o.value = m.id; o.textContent = m.label || m.id; sel.appendChild(o); });
-  } catch { /* auto-only fallback is fine */ }
+  } catch { /* auto-only fallback */ }
 
-  // Only show "Sign in with Roblox" when its OAuth is actually configured.
   try {
     const prov = await fetch('/api/auth/providers').then((r) => r.json());
     state.robloxSignin = !!(prov.providers && prov.providers.roblox);
@@ -350,6 +383,7 @@ async function api(path, opts) {
   const qp = new URLSearchParams(location.search).get('project');
   if (qp && state.projects.some((p) => p.id === qp)) selectProject(qp);
   else if (state.projects.length) selectProject(state.projects[0].id);
+  else await createFirstProject(); // no games yet — make one so the chatbot is always ready
 })();
 
 async function loadProjects() {
@@ -357,12 +391,12 @@ async function loadProjects() {
     const { projects } = await api('/api/roblox/projects');
     state.projects = projects || [];
   } catch (e) { if (e.message === 'auth') return; state.projects = []; }
-  renderProjectList();
+  renderRail();
 }
 
-function renderProjectList() {
+function renderRail() {
   const el = $('#projList');
-  if (!state.projects.length) { el.innerHTML = `<div style="padding:.6rem;color:var(--muted);font-size:.8rem">No games yet.</div>`; return; }
+  if (!state.projects.length) { el.innerHTML = `<div class="dim" style="padding:.6rem;font-size:.8rem">No games yet.</div>`; return; }
   el.innerHTML = state.projects.map((p) => `
     <div class="proj-item ${p.id === state.currentId ? 'active' : ''} ${p.paired ? 'paired' : ''}" data-id="${p.id}">
       <span class="pi-dot" title="${p.paired ? 'Plugin connected' : 'Plugin not connected'}"></span>
@@ -371,58 +405,43 @@ function renderProjectList() {
   $$('.proj-item', el).forEach((row) => row.addEventListener('click', () => selectProject(row.dataset.id)));
 }
 
-$('#newProjectBtn').onclick = createProject;
-$('#emptyNewBtn').onclick = createProject;
-// Link Studio straight from the empty state (account-level — no project needed yet).
-$('#emptyLinkBtn').onclick = async () => {
-  const btn = $('#emptyLinkBtn'); btn.disabled = true;
-  try {
-    const r = await api('/api/roblox/link', { method: 'POST' });
-    btn.parentElement.insertAdjacentHTML('afterend',
-      `<div style="margin-top:1rem"><div class="pair-code">${esc(r.code)}</div>` +
-      `<p style="color:var(--muted);font-size:.82rem;max-width:460px;margin:.4rem auto 0">` +
-      `Download the plugin (<a href="/api/roblox/plugin.lua" style="color:var(--brand-2)">Yield.lua</a>), drop it in your Studio Plugins folder, open the Yield panel, and paste this code — once. Then open any saved place and it appears here automatically.</p></div>`);
-    btn.style.display = 'none';
-  } catch (e) { toast(e.message); } finally { btn.disabled = false; }
-};
+$('#newProjectBtn').onclick = () => createProject();
 async function createProject() {
   const title = prompt('Name your Roblox game', 'Untitled game');
   if (title === null) return;
   const { project } = await api('/api/roblox/projects', { method: 'POST', body: JSON.stringify({ title: title || 'Untitled game' }) });
   state.projects.unshift(project);
-  renderProjectList();
+  renderRail();
   selectProject(project.id);
+}
+async function createFirstProject() {
+  try {
+    const { project } = await api('/api/roblox/projects', { method: 'POST', body: JSON.stringify({ title: 'Untitled game' }) });
+    state.projects.unshift(project);
+    renderRail();
+    selectProject(project.id);
+  } catch (e) {
+    if (e.message === 'auth') return;
+    $('#messages').innerHTML = `<div class="empty-chat"><div class="big">🎮</div><h2>Build Roblox games with AI</h2><p>Chat to write real Luau, design 3D maps, and sync it live into Studio.</p><button class="btn primary" onclick="createProject()">Start a game</button></div>`;
+  }
 }
 
 $('#deleteProjectBtn').onclick = async () => {
   if (!state.currentId) return;
-  if (!confirm('Delete this Roblox project? This cannot be undone.')) return;
-  try {
-    await api('/api/roblox/projects/' + state.currentId, { method: 'DELETE' });
-  } catch (e) { toast(e.message); return; }
+  if (!confirm('Delete this Roblox game? This cannot be undone.')) return;
+  try { await api('/api/roblox/projects/' + state.currentId, { method: 'DELETE' }); } catch (e) { toast(e.message); return; }
   state.projects = state.projects.filter((p) => p.id !== state.currentId);
   state.currentId = null; state.current = null;
-  renderProjectList();
-  showEmpty();
+  renderRail();
+  if (state.projects.length) selectProject(state.projects[0].id);
+  else createFirstProject();
 };
-
-function showEmpty() {
-  $('#emptyState').style.display = '';
-  $('#workspace').style.display = 'none';
-  $('#tabBar').style.display = 'none';
-  $('#deleteProjectBtn').style.display = 'none';
-  $('#projTitle').textContent = 'Yield Roblox';
-  stopOpsPoll();
-}
 
 async function selectProject(id) {
   state.currentId = id;
-  renderProjectList();
+  renderRail();
   const data = await api('/api/roblox/projects/' + id);
   state.current = data;
-  $('#emptyState').style.display = 'none';
-  $('#workspace').style.display = '';
-  $('#tabBar').style.display = '';
   $('#deleteProjectBtn').style.display = '';
   renderTitle();
   renderMessages();
@@ -430,8 +449,11 @@ async function selectProject(id) {
   renderAssets();
   $('#mapStyle').value = data.project.map_style || '';
   $('#mapPalette').value = data.project.map_palette || '';
-  setTab(state.tab);
+  $('#searchHint').textContent = data.project.robloxKeyConnected ? 'Marketplace search is live for this project.' : 'Connect your own Roblox Open Cloud API key to search free models directly from Yield.';
   history.replaceState(null, '', '/roblox?project=' + id);
+  loadLink();
+  loadOps();
+  startStudioPoll();
 }
 
 function renderTitle() {
@@ -444,95 +466,77 @@ function renderTitle() {
     await api('/api/roblox/projects/' + p.id, { method: 'PATCH', body: JSON.stringify({ title }) });
     p.title = title;
     const proj = state.projects.find((x) => x.id === p.id); if (proj) proj.title = title;
-    renderProjectList();
+    renderRail();
   });
 }
 
-// ---------- Tabs ----------
-$$('#tabBar button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
-document.addEventListener('click', (e) => {
-  const link = e.target.closest('[data-tab-link]');
-  if (link) { e.preventDefault(); setTab(link.dataset.tabLink); }
-});
-function setTab(tab) {
-  state.tab = tab;
-  $$('#tabBar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-  ['build', 'map', 'assets', 'sync'].forEach((t) => { $('#tab-' + t).style.display = t === tab ? '' : 'none'; });
-  if (tab === 'sync') { loadSyncStatus(); loadOps(); startOpsPoll(); } else stopOpsPoll();
-  if (tab === 'map') loadMapsHistory();
-}
-function startOpsPoll() { stopOpsPoll(); state.opsPoll = setInterval(loadOps, 8000); }
-function stopOpsPoll() { if (state.opsPoll) { clearInterval(state.opsPoll); state.opsPoll = null; } }
-
-// ---------- Build tab: chat + scripts ----------
+// ---------- Chat rendering ----------
 function renderMessages() {
   const m = $('#messages');
   m.innerHTML = '';
-  (state.current.messages || []).forEach((msg) => {
-    const div = document.createElement('div');
-    div.className = 'msg ' + (msg.role === 'user' ? 'user' : 'ai');
-    div.innerHTML = `<div class="meta">${msg.role === 'user' ? 'you' : esc(msg.model || 'yield')}</div><div class="bubble">${esc(msg.content)}</div>`;
-    m.appendChild(div);
-  });
+  const msgs = state.current.messages || [];
+  if (!msgs.length) {
+    m.innerHTML = `<div class="empty-chat"><div class="big">🎮</div><h2>What do you want to build?</h2><p>Describe a mechanic, a system, or a whole map. I'll write the Luau and queue it to Studio — watch it apply in the panel on the right.</p></div>`;
+    return;
+  }
+  msgs.forEach((msg) => m.appendChild(bubble(msg.role === 'user' ? 'you' : (msg.model || 'yield'), msg.content, msg.role === 'user')));
   m.scrollTop = m.scrollHeight;
+}
+function bubble(meta, text, user) {
+  const g = document.createElement('div');
+  g.className = 'msg ' + (user ? 'user' : 'ai');
+  g.innerHTML = `<div class="meta">${esc(meta)}</div><div class="bubble">${esc(text)}</div>`;
+  return g;
 }
 
 function renderScripts() {
-  const files = state.current.files || [];
-  $('#scriptCount').textContent = files.length ? `(${files.length})` : '';
+  const files = (state.current && state.current.files) || [];
+  $('#scriptCount').textContent = files.length ? '(' + files.length + ')' : '';
   const el = $('#scriptList');
   el.innerHTML = files.length ? files.map((f) => `
-    <div class="script-row" data-path="${esc(f.path)}">
-      <span class="sc-path">${esc(f.path)}</span>
-      <span class="sc-cls">${esc(f.class_name)}</span>
-    </div>`).join('') : `<div style="color:var(--muted);font-size:.8rem;padding:.5rem">No scripts yet — describe something to build.</div>`;
+    <div class="script-row" data-path="${esc(f.path)}"><span class="sc-path">${esc(f.path)}</span><span class="sc-cls">${esc(f.class_name)}</span></div>`).join('')
+    : `<div class="feed-empty">No scripts yet — describe something to build.</div>`;
   $$('.script-row', el).forEach((row) => row.addEventListener('click', () => openEditor(row.dataset.path)));
 }
 
-$('#promptBox').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); } });
-$('#sendBtn').onclick = sendPrompt;
+// ---------- Composer ----------
+const promptBox = $('#promptBox');
+promptBox.addEventListener('input', () => { promptBox.style.height = 'auto'; promptBox.style.height = Math.min(180, promptBox.scrollHeight) + 'px'; });
+promptBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); } });
+$('#sendBtn').onclick = () => sendPrompt();
 
 async function sendPrompt(overrideText) {
   if (state.streaming || !state.currentId) return;
-  const box = $('#promptBox');
-  const text = (overrideText || box.value).trim();
+  const text = (overrideText || promptBox.value).trim();
   if (!text) return;
-  box.value = '';
-  state.streaming = true;
-  $('#sendBtn').disabled = true;
+  if (!(state.current.messages || []).length) $('#messages').innerHTML = ''; // clear empty-state
+  promptBox.value = ''; promptBox.style.height = 'auto';
+  state.streaming = true; $('#sendBtn').disabled = true;
 
   const m = $('#messages');
-  const uDiv = document.createElement('div');
-  uDiv.className = 'msg user';
-  uDiv.innerHTML = `<div class="meta">you</div><div class="bubble">${esc(text)}</div>`;
-  m.appendChild(uDiv);
-
-  const aiDiv = document.createElement('div');
-  aiDiv.className = 'msg ai';
-  aiDiv.innerHTML = `<div class="meta">yield</div><div class="bubble"><span id="curChat"></span></div>`;
+  m.appendChild(bubble('you', text, true));
+  const aiDiv = bubble('yield', '', false);
   m.appendChild(aiDiv);
   m.scrollTop = m.scrollHeight;
 
-  const bubble = aiDiv.querySelector('.bubble');
-  const chatSpan = aiDiv.querySelector('#curChat');
+  const chatSpan = document.createElement('span');
+  aiDiv.querySelector('.bubble').appendChild(chatSpan);
+  const bubbleEl = aiDiv.querySelector('.bubble');
   let thinkEl, thinkBody, thinkAcc = '';
   const ensureThink = () => {
     if (!thinkEl) {
       thinkEl = document.createElement('details'); thinkEl.className = 'think';
       thinkEl.innerHTML = '<summary>💭 Thinking…</summary><div class="think-body"></div>';
-      bubble.parentElement.insertBefore(thinkEl, bubble);
-      thinkBody = thinkEl.querySelector('.think-body');
+      aiDiv.appendChild(thinkEl); thinkBody = thinkEl.querySelector('.think-body');
     }
     return thinkEl;
   };
-  let lcEl, lcBody;
-  const codeSecs = {};
+  let lcEl, lcBody; const codeSecs = {};
   const ensureLive = () => {
     if (!lcEl) {
       lcEl = document.createElement('details'); lcEl.className = 'livecode'; lcEl.open = true;
       lcEl.innerHTML = '<summary>👁 Writing scripts…</summary><div class="lc-body"></div>';
-      aiDiv.appendChild(lcEl);
-      lcBody = lcEl.querySelector('.lc-body');
+      aiDiv.appendChild(lcEl); lcBody = lcEl.querySelector('.lc-body');
     }
     return lcEl;
   };
@@ -553,7 +557,7 @@ async function sendPrompt(overrideText) {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ prompt: text, model: $('#modelSel').value }),
     });
-    if (!res.ok || !res.body) { bubble.innerHTML = esc((await res.json().catch(() => ({}))).error || 'Request failed.'); throw 0; }
+    if (!res.ok || !res.body) { bubbleEl.textContent = ((await res.json().catch(() => ({}))).error) || 'Request failed.'; throw 0; }
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buf = '', chatAcc = '';
     for (;;) {
@@ -567,41 +571,42 @@ async function sendPrompt(overrideText) {
         const data = /data: ([\s\S]*)/.exec(frame)?.[1];
         if (!ev || data == null) continue;
         let payload; try { payload = JSON.parse(data); } catch { continue; }
-        if (ev === 'status') { aiDiv.querySelector('.meta').textContent = payload.stage || 'yield'; }
-        else if (ev === 'meta') { aiDiv.querySelector('.meta').textContent = payload.label || 'yield'; }
+        if (ev === 'status') aiDiv.querySelector('.meta').textContent = payload.stage || 'yield';
+        else if (ev === 'meta') aiDiv.querySelector('.meta').textContent = payload.label || 'yield';
         else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; }
         else if (ev === 'chat') { chatAcc += payload; chatSpan.textContent = chatAcc; m.scrollTop = m.scrollHeight; }
-        else if (ev === 'code') { appendCode(payload); }
+        else if (ev === 'code') appendCode(payload);
         else if (ev === 'image') {
           if (payload.url) {
-            const fig = document.createElement('figure');
-            fig.style.margin = '.6rem 0 0';
+            const fig = document.createElement('figure'); fig.style.margin = '.5rem 0 0';
             fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" loading="lazy">` +
-              (payload.prompt ? `<figcaption style="font-size:.72rem;color:var(--muted);margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : '');
+              (payload.prompt ? `<figcaption class="dim" style="font-size:.72rem;margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : '');
             aiDiv.appendChild(fig); m.scrollTop = m.scrollHeight;
           }
-        }
-        else if (ev === 'ask') {
+        } else if (ev === 'ask') {
           const el = document.createElement('div'); el.className = 'ask-card';
           el.innerHTML = `<div class="ask-q">🤔 ${esc(payload.question)}</div>` + (payload.options && payload.options.length ? `<div class="ask-opts">${payload.options.map((o) => `<button class="ask-opt">${esc(o)}</button>`).join('')}</div>` : '');
           el.querySelectorAll('.ask-opt').forEach((b) => b.addEventListener('click', () => { el.querySelectorAll('.ask-opt').forEach((x) => x.disabled = true); b.classList.add('chosen'); sendPrompt(b.textContent); }));
           aiDiv.appendChild(el); m.scrollTop = m.scrollHeight;
         } else if (ev === 'done') {
-          if (payload.queued) toast('Synced ' + payload.scripts.length + ' script(s) — will apply on the plugin next sync.');
+          if (lcEl) lcEl.open = false;
+          if (payload.queued && payload.scripts && payload.scripts.length) {
+            const wrap = document.createElement('div'); wrap.className = 'act-chips';
+            payload.scripts.forEach((s) => { const c = document.createElement('div'); c.className = 'chip'; c.innerHTML = `<span>📝</span><span class="chip-t">${esc(s.path)}</span>`; wrap.appendChild(c); });
+            const note = document.createElement('div'); note.className = 'sent-note'; note.textContent = '→ Sent ' + payload.scripts.length + ' action(s) to Roblox Studio';
+            aiDiv.appendChild(wrap); aiDiv.appendChild(note);
+          }
         } else if (ev === 'blocked' || ev === 'gate' || ev === 'error') {
-          bubble.innerHTML += `<div style="color:#f58ea0;margin-top:.4rem">${esc(payload.message || 'Something went wrong.')}</div>`;
+          const e = document.createElement('div'); e.style.cssText = 'color:#f58ea0;margin-top:.4rem;font-size:.85rem'; e.textContent = payload.message || 'Something went wrong.';
+          aiDiv.appendChild(e);
         }
       }
     }
   } catch (e) { if (e) console.error(e); }
   finally {
-    state.streaming = false;
-    $('#sendBtn').disabled = false;
-    try {
-      const fresh = await api('/api/roblox/projects/' + state.currentId);
-      state.current = fresh;
-      renderScripts();
-    } catch { /* keep what's already rendered */ }
+    state.streaming = false; $('#sendBtn').disabled = false;
+    try { const fresh = await api('/api/roblox/projects/' + state.currentId); state.current = fresh; renderScripts(); } catch { /* keep */ }
+    loadOps(); loadLink();
   }
 }
 
@@ -619,59 +624,62 @@ $('#editorClose').onclick = () => $('#editorModal').classList.remove('show');
 $('#editorModal').addEventListener('click', (e) => { if (e.target === $('#editorModal')) $('#editorModal').classList.remove('show'); });
 $('#editorSave').onclick = async () => {
   const ta = $('#editorSource');
-  try {
-    await api('/api/roblox/projects/' + state.currentId + '/files', { method: 'PUT', body: JSON.stringify({ path: ta.dataset.path, className: ta.dataset.cls, source: ta.value }) });
-  } catch (e) { toast(e.message); return; }
+  try { await api('/api/roblox/projects/' + state.currentId + '/files', { method: 'PUT', body: JSON.stringify({ path: ta.dataset.path, className: ta.dataset.cls, source: ta.value }) }); } catch (e) { toast(e.message); return; }
   const f = state.current.files.find((x) => x.path === ta.dataset.path);
   if (f) f.source = ta.value;
   toast('Saved — will apply on next plugin sync.');
-  $('#editorModal').classList.remove('show');
+  $('#editorModal').classList.remove('show'); loadOps();
 };
 $('#editorDelete').onclick = async () => {
   const ta = $('#editorSource');
   if (!confirm('Delete ' + ta.dataset.path + '? This removes it from your place on next sync.')) return;
-  try {
-    await api('/api/roblox/projects/' + state.currentId + '/files?path=' + encodeURIComponent(ta.dataset.path), { method: 'DELETE' });
-  } catch (e) { toast(e.message); return; }
+  try { await api('/api/roblox/projects/' + state.currentId + '/files?path=' + encodeURIComponent(ta.dataset.path), { method: 'DELETE' }); } catch (e) { toast(e.message); return; }
   state.current.files = state.current.files.filter((x) => x.path !== ta.dataset.path);
   renderScripts();
-  $('#editorModal').classList.remove('show');
+  $('#editorModal').classList.remove('show'); loadOps();
   toast('Deleted — will apply on next plugin sync.');
 };
 
+// ---------- Tools drawer ----------
+$('#toolsBtn').onclick = () => { $('#drawer').classList.add('show'); loadMapsHistory(); };
+$('#drawerClose').onclick = () => $('#drawer').classList.remove('show');
+$('#drawer').addEventListener('click', (e) => { if (e.target === $('#drawer')) $('#drawer').classList.remove('show'); });
+$$('#drawerTabs button').forEach((b) => b.addEventListener('click', () => setDTab(b.dataset.dtab)));
+document.addEventListener('click', (e) => { const l = e.target.closest('[data-open-dtab]'); if (l) { e.preventDefault(); setDTab(l.dataset.openDtab); } });
+function setDTab(tab) {
+  $$('#drawerTabs button').forEach((b) => b.classList.toggle('on', b.dataset.dtab === tab));
+  ['map', 'assets', 'link'].forEach((t) => { $('#dtab-' + t).style.display = t === tab ? '' : 'none'; });
+  if (tab === 'map') loadMapsHistory();
+  if (tab === 'link') loadLink();
+}
+
 // ---------- Map tab ----------
 $('#genMapBtn').onclick = async () => {
-  const prompt = $('#mapPrompt').value.trim();
-  if (!prompt || !state.currentId) return;
+  const p = $('#mapPrompt').value.trim();
+  if (!p || !state.currentId) return;
   const btn = $('#genMapBtn'); btn.disabled = true; btn.textContent = 'Designing…';
   const box = $('#mapResult'); box.innerHTML = '';
   try {
     const r = await api('/api/roblox/projects/' + state.currentId + '/map', {
-      method: 'POST',
-      body: JSON.stringify({ prompt, style: $('#mapStyle').value, palette: $('#mapPalette').value.trim(), clear: $('#mapClear').checked }),
+      method: 'POST', body: JSON.stringify({ prompt: p, style: $('#mapStyle').value, palette: $('#mapPalette').value.trim(), clear: $('#mapClear').checked }),
     });
     let html = `<div class="result-box ok">Queued: ${r.partCount} part(s), ${r.modelCount} model(s)${r.clear ? ' (replacing the previous map)' : ' (added onto the existing map)'}. Will build on the plugin's next sync.</div>`;
-    if (r.unresolved && r.unresolved.length) {
-      html += `<div class="result-box warn">${esc(r.unresolvedHelp || '')}<br><br>Needs a model: ${r.unresolved.map(esc).join(', ')}</div>`;
-    }
+    if (r.unresolved && r.unresolved.length) html += `<div class="result-box warn">${esc(r.unresolvedHelp || '')}<br><br>Needs a model: ${r.unresolved.map(esc).join(', ')}</div>`;
     box.innerHTML = html;
-    // A generation always makes the NEXT one additive by default (only the very
-    // first map for a project defaults to a clean slate).
     $('#mapClear').checked = false;
-    loadMapsHistory();
-  } catch (e) {
-    box.innerHTML = `<div class="result-box warn">${esc(e.message)}</div>`;
-  } finally { btn.disabled = false; btn.textContent = 'Generate map'; }
+    loadMapsHistory(); loadOps();
+    toast('Map queued — watch it apply in the Studio panel.');
+  } catch (e) { box.innerHTML = `<div class="result-box warn">${esc(e.message)}</div>`; }
+  finally { btn.disabled = false; btn.textContent = 'Generate map'; }
 };
-
 async function loadMapsHistory() {
   if (!state.currentId) return;
   const el = $('#mapsHistory');
   try {
     const { maps } = await api('/api/roblox/projects/' + state.currentId + '/maps');
-    $('#mapClear').checked = maps.length === 0; // first map for this project -> clean slate by default
+    $('#mapClear').checked = maps.length === 0;
     el.innerHTML = maps.length
-      ? maps.map((m) => `<div style="padding:.5rem 0;border-bottom:1px solid var(--line)"><div style="color:var(--text);font-size:.85rem">${esc(m.prompt)}</div><div style="font-size:.72rem;color:var(--muted)">${m.partCount} part(s), ${m.modelCount} model(s) · ${ago(m.created_at)}</div></div>`).join('')
+      ? maps.map((m) => `<div style="padding:.5rem 0;border-bottom:1px solid var(--line)"><div style="color:var(--text);font-size:.85rem">${esc(m.prompt)}</div><div class="dim" style="font-size:.72rem">${m.partCount} part(s), ${m.modelCount} model(s) · ${ago(m.created_at)}</div></div>`).join('')
       : 'No maps generated yet for this project.';
   } catch { el.textContent = 'Could not load map history.'; }
 }
@@ -679,84 +687,63 @@ async function loadMapsHistory() {
 // ---------- Assets tab ----------
 function renderAssets() {
   const el = $('#assetGrid');
-  const assets = state.current.assets || [];
+  const assets = (state.current && state.current.assets) || [];
   el.innerHTML = assets.length ? assets.map((a) => `
     <div class="asset-card">
       <div class="a-name">${esc(a.name)}</div>
       <div class="a-id">#${esc(a.asset_id)}${a.tags ? ' · ' + esc(a.tags) : ''}</div>
       <div class="a-actions">
-        <button class="btn ghost sm" data-insert="${esc(a.asset_id)}" data-name="${esc(a.name)}">Insert now</button>
+        <button class="btn ghost sm" data-insert="${esc(a.asset_id)}" data-name="${esc(a.name)}">Insert</button>
         <button class="btn ghost sm" data-del="${esc(a.asset_id)}">Remove</button>
       </div>
-    </div>`).join('') : `<div style="color:var(--muted);font-size:.8rem">No pinned models yet.</div>`;
+    </div>`).join('') : `<div class="dim" style="font-size:.8rem">No pinned models yet.</div>`;
   $$('[data-insert]', el).forEach((b) => b.addEventListener('click', () => insertAsset(b.dataset.insert, b.dataset.name)));
   $$('[data-del]', el).forEach((b) => b.addEventListener('click', () => deleteAsset(b.dataset.del)));
 }
-
-// Pins an asset both server-side and locally (no full-project refetch needed — the
-// caller already has everything the assets list needs).
 async function pinAsset(assetId, name, tags) {
   await api('/api/roblox/projects/' + state.currentId + '/assets', { method: 'POST', body: JSON.stringify({ assetId, name, tags: tags || '' }) });
-  const existing = state.current.assets.find((a) => a.asset_id === String(assetId).match(/\d{3,20}/)?.[0]);
+  const digits = String(assetId).match(/\d{3,20}/)?.[0] || assetId;
+  const existing = state.current.assets.find((a) => a.asset_id === digits);
   if (existing) { existing.name = name; existing.tags = tags || existing.tags; }
-  else state.current.assets.unshift({ asset_id: String(assetId).match(/\d{3,20}/)?.[0] || assetId, name, tags: tags || '', created_at: Date.now() / 1000 });
+  else state.current.assets.unshift({ asset_id: digits, name, tags: tags || '', created_at: Date.now() / 1000 });
   renderAssets();
 }
-
 $('#addAssetBtn').onclick = async () => {
   const assetId = $('#assetIdInput').value.trim();
   const name = $('#assetNameInput').value.trim() || ('Asset ' + assetId);
   const tags = $('#assetTagsInput').value.trim();
   if (!assetId) return toast('Enter an asset id or URL.');
-  try {
-    await pinAsset(assetId, name, tags);
-    $('#assetIdInput').value = ''; $('#assetNameInput').value = ''; $('#assetTagsInput').value = '';
-    toast('Pinned.');
-  } catch (e) { toast(e.message); }
+  try { await pinAsset(assetId, name, tags); $('#assetIdInput').value = ''; $('#assetNameInput').value = ''; $('#assetTagsInput').value = ''; toast('Pinned.'); } catch (e) { toast(e.message); }
 };
-
 async function deleteAsset(assetId) {
-  try {
-    await api('/api/roblox/projects/' + state.currentId + '/assets/' + encodeURIComponent(assetId), { method: 'DELETE' });
-  } catch (e) { toast(e.message); return; }
+  try { await api('/api/roblox/projects/' + state.currentId + '/assets/' + encodeURIComponent(assetId), { method: 'DELETE' }); } catch (e) { toast(e.message); return; }
   state.current.assets = state.current.assets.filter((a) => a.asset_id !== assetId);
   renderAssets();
 }
-
 async function insertAsset(assetId, name) {
-  try {
-    await api('/api/roblox/projects/' + state.currentId + '/insert-asset', { method: 'POST', body: JSON.stringify({ assetId, name }) });
-    toast('Queued — will insert on next plugin sync.');
-  } catch (e) { toast(e.message); }
+  try { await api('/api/roblox/projects/' + state.currentId + '/insert-asset', { method: 'POST', body: JSON.stringify({ assetId, name }) }); toast('Queued — will insert on next plugin sync.'); loadOps(); } catch (e) { toast(e.message); }
 }
-
 $('#modelGenBtn').onclick = async () => {
-  const prompt = $('#modelGenPrompt').value.trim();
-  if (!prompt || !state.currentId) return;
+  const p = $('#modelGenPrompt').value.trim();
+  if (!p || !state.currentId) return;
   const btn = $('#modelGenBtn'); btn.disabled = true; btn.textContent = 'Generating…';
-  const box = $('#modelGenResult'); box.innerHTML = '<div style="color:var(--muted);font-size:.8rem;margin-top:.4rem">Generating a 3D model and uploading it to Roblox — this can take a minute…</div>';
+  const box = $('#modelGenResult'); box.innerHTML = '<div class="dim" style="font-size:.8rem;margin-top:.4rem">Generating a 3D model and uploading it to Roblox — this can take a minute…</div>';
   try {
-    const r = await api('/api/roblox/projects/' + state.currentId + '/generate-model', { method: 'POST', body: JSON.stringify({ prompt }) });
+    const r = await api('/api/roblox/projects/' + state.currentId + '/generate-model', { method: 'POST', body: JSON.stringify({ prompt: p }) });
     box.innerHTML = `<div class="result-box ok">Generated and pinned "${esc(r.name)}" (asset #${esc(r.assetId)}).</div>`;
     state.current.assets.unshift({ asset_id: r.assetId, name: r.name, tags: 'ai-generated', created_at: Date.now() / 1000 });
-    renderAssets();
-    $('#modelGenPrompt').value = '';
-  } catch (e) {
-    box.innerHTML = `<div class="result-box warn">${esc(e.message)}</div>`;
-  } finally { btn.disabled = false; btn.textContent = 'Generate'; }
+    renderAssets(); $('#modelGenPrompt').value = '';
+  } catch (e) { box.innerHTML = `<div class="result-box warn">${esc(e.message)}</div>`; }
+  finally { btn.disabled = false; btn.textContent = 'Generate'; }
 };
-
 $('#searchBtn').onclick = async () => {
   const query = $('#searchQuery').value.trim();
   if (!query || !state.currentId) return;
-  const box = $('#searchResults'); box.innerHTML = '<div style="color:var(--muted);font-size:.8rem">Searching…</div>';
+  const box = $('#searchResults'); box.innerHTML = '<div class="dim" style="font-size:.8rem">Searching…</div>';
   try {
     const r = await api('/api/roblox/models/search', { method: 'POST', body: JSON.stringify({ query, projectId: state.currentId }) });
-    if (!r.configured) {
-      box.innerHTML = `<div style="grid-column:1/-1" class="result-box warn">No Roblox key connected yet. <a href="${esc(r.browseUrl)}" target="_blank" style="color:var(--brand-2)">Browse "${esc(query)}" on Roblox ↗</a>, copy an asset id from the URL, and pin it above.</div>`;
-      return;
-    }
-    if (!r.results.length) { box.innerHTML = `<div style="grid-column:1/-1;color:var(--muted);font-size:.8rem">No results. <a href="${esc(r.browseUrl)}" target="_blank" style="color:var(--brand-2)">Browse on Roblox ↗</a></div>`; return; }
+    if (!r.configured) { box.innerHTML = `<div style="grid-column:1/-1" class="result-box warn">No Roblox key connected yet. <a href="${esc(r.browseUrl)}" target="_blank" style="color:var(--brand)">Browse "${esc(query)}" on Roblox ↗</a>, copy an asset id from the URL, and pin it above.</div>`; return; }
+    if (!r.results.length) { box.innerHTML = `<div style="grid-column:1/-1" class="dim" style="font-size:.8rem">No results. <a href="${esc(r.browseUrl)}" target="_blank" style="color:var(--brand)">Browse on Roblox ↗</a></div>`; return; }
     box.innerHTML = r.results.map((m) => `
       <div class="asset-card">
         ${m.thumbnail ? `<img class="a-thumb" src="${esc(m.thumbnail)}" alt="">` : ''}
@@ -764,83 +751,73 @@ $('#searchBtn').onclick = async () => {
         <div class="a-id">#${esc(m.assetId)}${m.creator ? ' · ' + esc(m.creator) : ''}</div>
         <div class="a-actions"><button class="btn primary sm" data-pin="${esc(m.assetId)}" data-name="${esc(m.name)}">＋ Pin</button></div>
       </div>`).join('');
-    $$('[data-pin]', box).forEach((b) => b.addEventListener('click', async () => {
-      try { await pinAsset(b.dataset.pin, b.dataset.name, ''); toast('Pinned.'); } catch (e) { toast(e.message); }
-    }));
+    $$('[data-pin]', box).forEach((b) => b.addEventListener('click', async () => { try { await pinAsset(b.dataset.pin, b.dataset.name, ''); toast('Pinned.'); } catch (e) { toast(e.message); } }));
   } catch (e) { box.innerHTML = `<div class="result-box warn">${esc(e.message)}</div>`; }
 };
-
 $('#connectKeyBtn').onclick = async () => {
   const apiKey = $('#robloxKeyInput').value.trim();
   if (!apiKey) return toast('Paste an API key first.');
-  try {
-    await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey, creatorType: $('#creatorTypeInput').value, creatorId: $('#creatorIdInput').value.trim() }) });
-  } catch (e) { toast(e.message); return; }
-  $('#robloxKeyInput').value = '';
-  state.current.project.robloxKeyConnected = true;
-  $('#searchHint').textContent = 'Marketplace search is live for this project.';
-  toast('Roblox key connected.');
+  try { await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey, creatorType: $('#creatorTypeInput').value, creatorId: $('#creatorIdInput').value.trim() }) }); } catch (e) { toast(e.message); return; }
+  $('#robloxKeyInput').value = ''; state.current.project.robloxKeyConnected = true;
+  $('#searchHint').textContent = 'Marketplace search is live for this project.'; toast('Roblox key connected.');
 };
 $('#disconnectKeyBtn').onclick = async () => {
-  try {
-    await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey: '' }) });
-  } catch (e) { toast(e.message); return; }
+  try { await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey: '' }) }); } catch (e) { toast(e.message); return; }
   state.current.project.robloxKeyConnected = false;
-  $('#searchHint').textContent = 'Connect your own Roblox Open Cloud API key to search free models directly from Yield.';
-  toast('Disconnected.');
+  $('#searchHint').textContent = 'Connect your own Roblox Open Cloud API key to search free models directly from Yield.'; toast('Disconnected.');
 };
 
-// ---------- Sync tab (account-level Studio link + per-place activity) ----------
-function loadSyncStatus() {
-  const p = state.current.project;
-  $('#searchHint').textContent = p.robloxKeyConnected ? 'Marketplace search is live for this project.' : 'Connect your own Roblox Open Cloud API key to search free models directly from Yield.';
-  loadLinkStatus();
-}
+// ---------- Studio panel (link status + live actions) ----------
+function startStudioPoll() { stopStudioPoll(); state.studioPoll = setInterval(() => { loadLink(); loadOps(); }, 6000); }
+function stopStudioPoll() { if (state.studioPoll) { clearInterval(state.studioPoll); state.studioPoll = null; } }
 
-// Account-level link status (shared across all places) — not per-project.
-async function loadLinkStatus() {
+async function loadLink() {
   const r = await api('/api/roblox/link').catch(() => null);
   if (!r) return;
   const linked = r.linkedPlaces > 0 || !!r.lastSeenAt;
-  $('#linkStatus').innerHTML = `<span class="pair-badge ${linked ? 'on' : ''}">${linked ? '● Studio linked' : '○ Studio not linked yet'}` +
-    `${r.robloxUsername ? ' · @' + esc(r.robloxUsername) : ''}` +
-    `${r.linkedPlaces ? ' · ' + r.linkedPlaces + ' place' + (r.linkedPlaces === 1 ? '' : 's') : ''}` +
-    `${r.lastSeenAt ? ' · last seen ' + ago(r.lastSeenAt) : ''}</span>`;
+  const badge = $('#studioBadge');
+  badge.className = 'badge' + (linked ? ' ok' : '');
+  badge.textContent = linked ? '● Linked' : '○ Not linked';
+  $('#studioSub').textContent = linked
+    ? [r.linkedPlaces ? r.linkedPlaces + ' place' + (r.linkedPlaces === 1 ? '' : 's') : '', r.robloxUsername ? '@' + r.robloxUsername : '', r.lastSeenAt ? 'synced ' + ago(r.lastSeenAt) : ''].filter(Boolean).join(' · ')
+    : 'Link Studio to sync your game';
+  $('#studioLinkBtn').style.display = linked ? 'none' : '';
+  // Drawer link tab
+  $('#linkStatus').innerHTML = `<span class="pair-badge ${linked ? 'on' : ''}">${linked ? '● Studio linked' : '○ Studio not linked yet'}${r.robloxUsername ? ' · @' + esc(r.robloxUsername) : ''}${r.linkedPlaces ? ' · ' + r.linkedPlaces + ' place' + (r.linkedPlaces === 1 ? '' : 's') : ''}${r.lastSeenAt ? ' · last seen ' + ago(r.lastSeenAt) : ''}</span>`;
   $('#unlinkBtn').style.display = linked ? '' : 'none';
-  // Show "Sign in with Roblox" only when it's configured and not already connected.
   $('#robloxSigninBtn').style.display = (state.robloxSignin && !r.robloxConnected) ? '' : 'none';
+  // Place badge in chat header
+  const bound = state.current && state.current.project && state.current.project.place_id;
+  const pb = $('#placeBadge');
+  if (bound) { pb.className = 'badge ok'; pb.textContent = '● place linked'; pb.style.display = ''; }
+  else if (linked) { pb.className = 'badge'; pb.textContent = '○ open this place in Studio'; pb.style.display = ''; }
+  else pb.style.display = 'none';
 }
-
-$('#linkBtn').onclick = async () => {
-  const btn = $('#linkBtn'); btn.disabled = true;
-  try {
-    const r = await api('/api/roblox/link', { method: 'POST' });
-    $('#linkCodeArea').innerHTML = `<div class="pair-code">${esc(r.code)}</div><p style="text-align:center;color:var(--muted);font-size:.8rem">Expires in 10 minutes — paste it into the Yield panel in Roblox Studio, just this once. Every place you open after that syncs automatically.</p>`;
-  } catch (e) { toast(e.message); } finally { btn.disabled = false; }
-};
+async function getLinkCode(targetEl) {
+  try { const r = await api('/api/roblox/link', { method: 'POST' }); targetEl.innerHTML = `<div class="pair-code">${esc(r.code)}</div><p class="dim center" style="font-size:.78rem">Paste into the Yield panel in Studio — just once. Expires in 10 min.</p>`; }
+  catch (e) { toast(e.message); }
+}
+$('#studioLinkBtn').onclick = () => getLinkCode($('#studioLinkCode'));
+$('#linkBtn').onclick = () => getLinkCode($('#linkCodeArea'));
 $('#unlinkBtn').onclick = async () => {
   if (!confirm('Unlink every Studio install from your Yield account? Each will need a new link code to reconnect.')) return;
-  try {
-    await api('/api/roblox/unlink', { method: 'POST' });
-    toast('Unlinked.');
-    loadLinkStatus();
-  } catch (e) { toast(e.message); }
+  try { await api('/api/roblox/unlink', { method: 'POST' }); toast('Unlinked.'); loadLink(); } catch (e) { toast(e.message); }
 };
 
-// Per-place sync activity for the currently selected project.
 async function loadOps() {
-  if (!state.currentId || state.tab !== 'sync') return;
-  loadLinkStatus();
+  if (!state.currentId) return;
   const r = await api('/api/roblox/projects/' + state.currentId + '/ops').catch(() => null);
   if (!r) return;
-  $('#opsProjName').textContent = r.placeName ? '· ' + r.placeName : '';
-  // Keep the sidebar's connection dot in sync with this place's paired state.
   const proj = state.projects.find((p) => p.id === state.currentId);
-  if (proj && proj.paired !== (r.paired ? 1 : 0)) { proj.paired = r.paired ? 1 : 0; renderProjectList(); }
-  const tbody = $('#opsTable tbody');
-  if (!r.ops.length) { tbody.innerHTML = ''; $('#opsEmpty').style.display = ''; $('#opsTable').style.display = 'none'; return; }
-  $('#opsEmpty').style.display = 'none'; $('#opsTable').style.display = '';
-  tbody.innerHTML = r.ops.map((o) => `<tr><td>${esc(o.type || '?')}</td><td><span class="status-pill ${esc(o.status)}">${esc(o.status)}</span></td><td class="mono" style="font-size:.75rem;color:var(--muted)">${esc(o.detail || '')}</td><td>${ago(o.created_at)}</td></tr>`).join('');
+  if (proj && proj.paired !== (r.paired ? 1 : 0)) { proj.paired = r.paired ? 1 : 0; renderRail(); }
+  if (state.current && state.current.project) state.current.project.place_id = r.placeId || state.current.project.place_id;
+  const feed = $('#actionsFeed');
+  if (!r.ops.length) { feed.innerHTML = `<div class="feed-empty">No actions yet — ask the chatbot to build something and it'll queue here, then flip to <b>Applied</b> once the plugin syncs.</div>`; return; }
+  feed.innerHTML = r.ops.map((o) => {
+    const icon = OP_ICON[o.type] || '⚙';
+    const sub = o.detail ? esc(o.detail) : (OP_TYPE[o.type] || o.type || 'action') + ' · ' + ago(o.created_at);
+    return `<div class="action"><span class="a-ic">${icon}</span><div class="a-col"><div class="a-title">${esc(o.label || OP_TYPE[o.type] || o.type || 'action')}</div><div class="a-sub">${sub}</div></div><span class="status-pill ${esc(o.status)}">${esc(o.status)}</span></div>`;
+  }).join('');
 }
 </script>
 </body>

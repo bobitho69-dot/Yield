@@ -653,7 +653,19 @@ async function opsLog(c: Ctx, project: RobloxProjectRow): Promise<Response> {
   const ops = results.map((r) => {
     let parsed: any = {};
     try { parsed = JSON.parse(r.op); } catch { /* ignore malformed row */ }
-    return { id: r.id, type: parsed.type, status: r.status, detail: r.detail, created_at: r.created_at, applied_at: r.applied_at };
+    return { id: r.id, type: parsed.type, label: opLabel(parsed), status: r.status, detail: r.detail, created_at: r.created_at, applied_at: r.applied_at };
   });
   return json({ ops, paired: !!project.paired, lastSeenAt: project.last_seen_at, placeName: project.place_name, placeId: project.place_id });
+}
+
+// A short, human label for one queued Studio action — what the actions feed shows
+// (e.g. "ServerScriptService/Sword", "Pine Tree #123", "42 parts · 6 models").
+function opLabel(op: any): string {
+  switch (op?.type) {
+    case 'upsert_script': return String(op.path || 'script');
+    case 'delete_script': return String(op.path || 'script');
+    case 'insert_model': return `${op.name || 'model'}${op.assetId ? ' #' + op.assetId : ''}`;
+    case 'build_map': return `${op.spec?.parts?.length || 0} part(s) · ${op.spec?.models?.length || 0} model(s)`;
+    default: return '';
+  }
 }

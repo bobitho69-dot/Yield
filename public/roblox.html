@@ -76,6 +76,9 @@
   .composer textarea::placeholder { color:var(--faint); }
   .composer .csel { background:var(--panel-2); border:1px solid var(--line); color:var(--muted); border-radius:8px; padding:.42rem .5rem; font-size:.78rem; font-family:inherit; align-self:center; }
   .composer .btn { align-self:center; }
+  .composer .char-count { font-size:.66rem; color:var(--faint); font-family:var(--font-mono); align-self:center; white-space:nowrap; }
+  .composer .char-count.warn { color:var(--warn); }
+  .composer .stop-btn { align-self:center; border-radius:9px; }
 
   /* ---------- Right Studio panel ---------- */
   .studio { background:#0b0e15; border-left:1px solid var(--line); display:flex; flex-direction:column; gap:.9rem; padding:1.1rem 1rem; min-height:0; }
@@ -193,9 +196,11 @@
       <div class="messages" id="messages"></div>
       <div class="composer-wrap">
         <div class="composer">
-          <textarea id="promptBox" rows="1" placeholder="Ask for anything — build, script, or edit your game…"></textarea>
+          <textarea id="promptBox" rows="1" maxlength="4000" placeholder="Ask for anything — build, script, or edit your game…"></textarea>
+          <span id="charCount" class="char-count"></span>
           <select class="csel" id="modelSel"><option value="auto">Auto</option></select>
-          <button class="btn primary" id="sendBtn">Send</button>
+          <button class="btn primary" id="sendBtn" disabled>Send</button>
+          <button class="stop-btn hidden" id="stopBtn">■ Stop</button>
         </div>
       </div>
     </main>
@@ -435,17 +440,34 @@ function renderScripts() {
 }
 
 const promptBox = $('#promptBox');
-promptBox.addEventListener('input', () => { promptBox.style.height = 'auto'; promptBox.style.height = Math.min(180, promptBox.scrollHeight) + 'px'; });
+const PROMPT_MAX = 4000;
+function updateComposer() {
+  const n = promptBox.value.length;
+  const c = $('#charCount');
+  c.textContent = n >= 3000 ? n + '/' + PROMPT_MAX : '';
+  c.classList.toggle('warn', n >= PROMPT_MAX - 150);
+  if (!state.streaming) $('#sendBtn').disabled = !promptBox.value.trim();
+}
+function setSending(on) {
+  state.streaming = on;
+  $('#sendBtn').classList.toggle('hidden', on);
+  $('#stopBtn').classList.toggle('hidden', !on);
+  if (!on) $('#sendBtn').disabled = !promptBox.value.trim();
+}
+promptBox.addEventListener('input', () => { promptBox.style.height = 'auto'; promptBox.style.height = Math.min(180, promptBox.scrollHeight) + 'px'; updateComposer(); });
 promptBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); } });
 $('#sendBtn').onclick = () => sendPrompt();
+$('#stopBtn').onclick = () => { if (state.abort) state.abort.abort(); };
+updateComposer();
 
 async function sendPrompt(overrideText) {
   if (state.streaming || !state.currentId) return;
-  const text = (overrideText || promptBox.value).trim();
+  const text = (overrideText || promptBox.value).trim().slice(0, PROMPT_MAX);
   if (!text) return;
   if (!(state.current.messages || []).length) $('#messages').innerHTML = '';
-  promptBox.value = ''; promptBox.style.height = 'auto';
-  state.streaming = true; $('#sendBtn').disabled = true;
+  promptBox.value = ''; promptBox.style.height = 'auto'; updateComposer();
+  const ctrl = new AbortController(); state.abort = ctrl;
+  setSending(true);
 
   const m = $('#messages');
   m.appendChild(bubble('you', text, true));
@@ -468,6 +490,7 @@ async function sendPrompt(overrideText) {
     const res = await fetch('/api/roblox/projects/' + state.currentId + '/generate', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ prompt: text, model: $('#modelSel').value }),
+      signal: ctrl.signal,
     });
     if (!res.ok || !res.body) { bubbleEl.textContent = ((await res.json().catch(() => ({}))).error) || 'Request failed.'; throw 0; }
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -505,9 +528,12 @@ async function sendPrompt(overrideText) {
         }
       }
     }
-  } catch (e) { if (e) console.error(e); }
+  } catch (e) {
+    if (e && e.name === 'AbortError') { const s = document.createElement('div'); s.className = 'dim'; s.style.cssText = 'font-size:.75rem;margin-top:.3rem'; s.textContent = '⏹ Stopped.'; aiDiv.appendChild(s); }
+    else if (e) console.error(e);
+  }
   finally {
-    state.streaming = false; $('#sendBtn').disabled = false;
+    state.abort = null; setSending(false);
     try { const fresh = await api('/api/roblox/projects/' + state.currentId); state.current = fresh; renderScripts(); } catch { /* keep */ }
     loadOps(); loadLink();
   }

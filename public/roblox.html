@@ -303,8 +303,8 @@ const ago = (t) => { if (!t) return 'never'; const d = Date.now() / 1000 - t; if
 let toastTimer;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200); }
 
-const OP_ICON = { upsert_script: '📝', delete_script: '🗑', build_map: '🗺', insert_model: '📦', set_properties: '🎚', create_instance: '➕', delete_instance: '🗑', rename_instance: '✏', move_instance: '↔' };
-const OP_TYPE = { upsert_script: 'Script', delete_script: 'Delete script', build_map: 'Build map', insert_model: 'Insert model', set_properties: 'Edit properties', create_instance: 'Create', delete_instance: 'Delete', rename_instance: 'Rename', move_instance: 'Move' };
+const OP_ICON = { upsert_script: '📜', delete_script: '🗑', build_map: '🗺', insert_model: '📦', create_mesh: '🗿', set_properties: '🎨', create_instance: '🧱', delete_instance: '🗑', rename_instance: '✏️', move_instance: '↔️' };
+const OP_TYPE = { upsert_script: 'Script', delete_script: 'Delete script', build_map: 'Build map', insert_model: 'Insert model', create_mesh: 'Build mesh', set_properties: 'Edit properties', create_instance: 'Create', delete_instance: 'Delete', rename_instance: 'Rename', move_instance: 'Move' };
 const CLASS_ICON = (cls) => {
   if (/Script$/.test(cls)) return '📜';
   if (cls === 'Folder' || cls === 'Model' || cls === 'Configuration') return '📁';

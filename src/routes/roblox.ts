@@ -296,6 +296,17 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       const treeText = formatGameTreeForPrompt(await getGameTree(c.env, project.id));
       if (treeText) messages.push({ role: 'system', content: treeText });
       else messages.push({ role: 'system', content: 'No game snapshot has been pushed yet this session (the Studio plugin has not synced this place). You STILL have full access — build and queue the requested work normally; it applies on the plugin\'s next sync. If the user wants you to see the current contents first, tell them to click "Sync now" / "Push game" in the Yield panel in Roblox Studio (and re-download the plugin if theirs is outdated). Do NOT tell the user you cannot access their game.' });
+      // Tell the AI whether marketplace/3D tooling is actually available, so it builds
+      // scenery it CAN deliver instead of emitting unresolvable model requests.
+      const [assetCount, keyStatus] = await Promise.all([listRobloxAssets(c.env, project.id), marketplaceKeyStatus(c.env, project.user_id)]);
+      const hasKey = keyStatus.connected || !!project.roblox_api_key_enc;
+      const hasLibrary = (assetCount.results?.length || 0) > 0;
+      messages.push({
+        role: 'system',
+        content: hasKey
+          ? `A Marketplace Key IS connected${hasLibrary ? ' and the pinned model library has assets' : ''}, so find_model (marketplace search), gen_model (3D generation), and matched "models" roles can resolve. Still prefer sculpting "props" from parts for most scenery; reach for find_model/gen_model for hero assets.`
+          : `IMPORTANT: NO Marketplace Key is connected and the pinned model library is ${hasLibrary ? 'small' : 'empty'}. find_model, gen_model, and unmatched "models" roles will NOT resolve — do NOT use them, and NEVER tell the user you "need a model" or to find/generate one. Build EVERY piece of scenery (trees, rocks, houses, carts, fences, props) yourself as "props" sculpted from parts in build_map — use plenty of parts, colors, and repetition so it looks detailed and extravagant. You can make an excellent map entirely from parts.`,
+      });
       const existing = await listRobloxFiles(c.env, project.id);
       if (existing.length) {
         messages.push({ role: 'system', content: ROBLOX_EDIT_NOTE });

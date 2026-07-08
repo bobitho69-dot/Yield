@@ -295,6 +295,7 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       // place (map + every instance) and target real paths when it edits.
       const treeText = formatGameTreeForPrompt(await getGameTree(c.env, project.id));
       if (treeText) messages.push({ role: 'system', content: treeText });
+      else messages.push({ role: 'system', content: 'No game snapshot has been pushed yet this session (the Studio plugin has not synced this place). You STILL have full access — build and queue the requested work normally; it applies on the plugin\'s next sync. If the user wants you to see the current contents first, tell them to click "Sync now" / "Push game" in the Yield panel in Roblox Studio (and re-download the plugin if theirs is outdated). Do NOT tell the user you cannot access their game.' });
       const existing = await listRobloxFiles(c.env, project.id);
       if (existing.length) {
         messages.push({ role: 'system', content: ROBLOX_EDIT_NOTE });

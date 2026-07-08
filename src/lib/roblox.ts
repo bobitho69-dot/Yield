@@ -605,6 +605,78 @@ function b64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+// --- Local mesh import (no publishing) ---------------------------------------------
+// Parse a generated .glb's geometry so the Studio plugin can build a MeshPart LOCALLY
+// via AssetService:CreateMeshPartAsync (EditableMesh) — no Open Cloud key, no asset
+// upload, no publishing. Handles standard (uncompressed) glTF binary only; returns
+// null on anything it can't handle (Draco compression, non-float positions, oversize)
+// so the caller can fall back to the upload path or skip.
+export interface LocalMesh { verts: number[]; tris: number[] }
+const MESH_MAX_VERTS = 12000;
+const MESH_MAX_TRIS = 20000;
+
+// Turn generate3dModel's result (a data: URL or a plain URL) into raw glb bytes.
+export async function glbBytesFromResult(res: string | null): Promise<Uint8Array | null> {
+  if (!res) return null;
+  if (res.startsWith('data:')) { const c = res.indexOf(','); return c < 0 ? null : b64ToBytes(res.slice(c + 1)); }
+  try { const r = await fetch(res); if (!r.ok) return null; return new Uint8Array(await r.arrayBuffer()); } catch { return null; }
+}
+
+export function parseGlbMesh(bytes: Uint8Array): LocalMesh | null {
+  try {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (bytes.byteLength < 12 || dv.getUint32(0, true) !== 0x46546c67) return null; // 'glTF'
+    let ptr = 12, jsonText = '', binOffset = -1;
+    while (ptr + 8 <= bytes.byteLength) {
+      const chunkLen = dv.getUint32(ptr, true);
+      const chunkType = dv.getUint32(ptr + 4, true);
+      const dataStart = ptr + 8;
+      if (chunkType === 0x4e4f534a) jsonText = new TextDecoder().decode(bytes.subarray(dataStart, dataStart + chunkLen)); // JSON
+      else if (chunkType === 0x004e4942) binOffset = dataStart; // BIN
+      ptr = dataStart + chunkLen;
+    }
+    if (!jsonText || binOffset < 0) return null;
+    const g: any = JSON.parse(jsonText);
+    if (!Array.isArray(g.meshes) || !g.meshes.length) return null;
+
+    const accView = (i: number) => { const acc = g.accessors?.[i]; const bv = acc ? g.bufferViews?.[acc.bufferView] : null; return acc && bv ? { acc, bv } : null; };
+    const rnd = (n: number) => Math.round(n * 1000) / 1000;
+    const readVec3 = (i: number): number[] | null => {
+      const v = accView(i); if (!v || v.acc.type !== 'VEC3' || v.acc.componentType !== 5126) return null; // FLOAT vec3
+      const start = binOffset + (v.bv.byteOffset || 0) + (v.acc.byteOffset || 0);
+      const stride = v.bv.byteStride || 12; const out: number[] = [];
+      for (let k = 0; k < v.acc.count; k++) { const o = start + k * stride; out.push(rnd(dv.getFloat32(o, true)), rnd(dv.getFloat32(o + 4, true)), rnd(dv.getFloat32(o + 8, true))); }
+      return out;
+    };
+    const readIdx = (i: number): number[] | null => {
+      const v = accView(i); if (!v || v.acc.type !== 'SCALAR') return null;
+      const ct = v.acc.componentType; const size = ct === 5125 ? 4 : ct === 5123 ? 2 : ct === 5121 ? 1 : 0; if (!size) return null;
+      const start = binOffset + (v.bv.byteOffset || 0) + (v.acc.byteOffset || 0);
+      const stride = v.bv.byteStride || size; const out: number[] = [];
+      for (let k = 0; k < v.acc.count; k++) { const o = start + k * stride; out.push(ct === 5125 ? dv.getUint32(o, true) : ct === 5123 ? dv.getUint16(o, true) : dv.getUint8(o)); }
+      return out;
+    };
+
+    const verts: number[] = []; const tris: number[] = [];
+    for (const mesh of g.meshes) {
+      for (const prim of (mesh.primitives || [])) {
+        if (prim.extensions?.KHR_draco_mesh_compression) return null; // compressed — can't decode here
+        const posIdx = prim.attributes?.POSITION; if (posIdx == null) continue;
+        const base = verts.length / 3;
+        const pos = readVec3(posIdx); if (!pos) return null;
+        for (const c of pos) verts.push(c);
+        if (verts.length / 3 > MESH_MAX_VERTS) return null;
+        const count = pos.length / 3;
+        const idx = prim.indices != null ? readIdx(prim.indices) : null;
+        if (idx) { for (let k = 0; k + 2 < idx.length; k += 3) tris.push(base + idx[k], base + idx[k + 1], base + idx[k + 2]); }
+        else { for (let k = 0; k + 2 < count; k += 3) tris.push(base + k, base + k + 1, base + k + 2); }
+        if (tris.length / 3 > MESH_MAX_TRIS) return null;
+      }
+    }
+    return verts.length >= 9 && tris.length >= 3 ? { verts, tris } : null;
+  } catch { return null; }
+}
+
 // The AI 3D-model endpoint returns either a data: URL (inline base64) or a plain
 // provider URL — normalize either into raw bytes + a MIME type.
 async function materializeBytes(urlOrDataUrl: string): Promise<{ bytes: Uint8Array; mime: string } | null> {

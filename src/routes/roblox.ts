@@ -46,6 +46,7 @@ import {
   searchFreeModels, uploadRobloxModelAsset, type PinnedAsset, type RobloxCreator,
   setGameTree, getGameTree, formatGameTreeForPrompt, sanitizeGenericOp, type GameTreeNode,
   setMarketplaceKey, getMarketplaceKey, marketplaceKeyStatus, validateMarketplaceKey,
+  parseGlbMesh, glbBytesFromResult,
 } from '../lib/roblox';
 import {
   ensureGuestUser,
@@ -304,8 +305,8 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       messages.push({
         role: 'system',
         content: hasKey
-          ? `A Marketplace Key IS connected${hasLibrary ? ' and the pinned model library has assets' : ''}, so find_model (marketplace search), gen_model (3D generation), and matched "models" roles can resolve. Still prefer sculpting "props" from parts for most scenery; reach for find_model/gen_model for hero assets.`
-          : `IMPORTANT: NO Marketplace Key is connected and the pinned model library is ${hasLibrary ? 'small' : 'empty'}. find_model, gen_model, and unmatched "models" roles will NOT resolve — do NOT use them, and NEVER tell the user you "need a model" or to find/generate one. Build EVERY piece of scenery (trees, rocks, houses, carts, fences, props) yourself as "props" sculpted from parts in build_map — use plenty of parts, colors, and repetition so it looks detailed and extravagant. You can make an excellent map entirely from parts.`,
+          ? `A Marketplace Key IS connected${hasLibrary ? ' and the pinned model library has assets' : ''}, so find_model (marketplace search), gen_model (custom 3D mesh), and matched "models" roles all work. Still prefer sculpting "props" from parts for most scenery; use find_model for hero marketplace assets and gen_model for custom meshes.`
+          : `NO Marketplace Key is connected. find_model and unmatched "models" roles will NOT resolve — do NOT use them, and NEVER tell the user you "need a model" or to find one. (gen_model DOES still work without a key — it builds the mesh directly in Studio, no publishing — but 3D generation is slow, so use it only for the occasional special hero prop.) Build the BULK of scenery (trees, rocks, houses, carts, fences) yourself as "props" sculpted from parts — plenty of parts, colors, and repetition. You can make an excellent map entirely from parts.`,
       });
       const existing = await listRobloxFiles(c.env, project.id);
       if (existing.length) {
@@ -487,8 +488,10 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
     } else if (type === 'gen_model' || type === 'generate_model' || type === 'model3d') {
       const prompt = String(op.prompt || op.description || '').trim().slice(0, 200);
       if (!prompt) continue;
-      if (apiKey && creator) { pending++; c.ctx.waitUntil(generateAndInsertModel(c.env, project, prompt, op, apiKey, creator)); }
-      else notes.push(`To 3D-generate "${prompt}" I need your Marketplace Key + creator id connected (⋯ Studio → Marketplace Key) so I can upload the mesh to your account.`);
+      // Build the mesh LOCALLY in Studio (no publish, no key needed); fall back to an
+      // Open Cloud upload only if the geometry can't be imported and a key exists.
+      pending++;
+      c.ctx.waitUntil(generateAndPlaceMesh(c.env, project, prompt, op, apiKey, creator));
     } else {
       const clean = sanitizeGenericOp(op);
       if (clean) queued.push(clean);
@@ -497,18 +500,34 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
   return { queued, notes, pending };
 }
 
-// 3D-generate a mesh, upload it to the user's Roblox account, pin it, and queue a
-// scanned insert — runs detached (3D gen is slow) so the chat turn stays responsive.
-async function generateAndInsertModel(env: Env, project: RobloxProjectRow, prompt: string, op: any, apiKey: string, creator: RobloxCreator): Promise<void> {
+// 3D-generate a mesh and place it. PRIMARY path: parse the .glb geometry and queue a
+// create_mesh op so the plugin builds a MeshPart LOCALLY (EditableMesh) — no publish,
+// no key. FALLBACK: if the geometry can't be imported (Draco-compressed / too large)
+// and a Marketplace Key is connected, upload it as an asset and insert by id. Runs
+// detached (3D gen is slow) so the chat turn stays responsive.
+async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt: string, op: any, apiKey: string | null, creator: RobloxCreator | null): Promise<void> {
   try {
-    const glb = await generate3dModel(env, prompt);
-    if (!glb) return;
-    const assetId = await uploadRobloxModelAsset(apiKey, creator, glb, prompt.slice(0, 50), `AI-generated for Yield: ${prompt}`.slice(0, 1000));
-    if (!assetId) return;
-    await addRobloxAsset(env, project.id, assetId, prompt.slice(0, 80), 'ai-generated');
+    const res = await generate3dModel(env, prompt);
+    if (!res) return;
     const position = Array.isArray(op.position) && op.position.length === 3 ? op.position.map((n: any) => Number(n) || 0) : [0, 5, 0];
-    await queueRobloxOps(env, project.id, [{ type: 'insert_model', assetId, name: prompt.slice(0, 60), position, rotation: [0, 0, 0], scale: Number(op.scale) || 1 }]);
-    await logUsage(env, { user_id: project.user_id, kind: 'roblox_model3d_agent' });
+    const scale = Number(op.scale) || 1;
+    const name = prompt.slice(0, 60);
+
+    const bytes = await glbBytesFromResult(res);
+    const mesh = bytes ? parseGlbMesh(bytes) : null;
+    if (mesh) {
+      await queueRobloxOps(env, project.id, [{ type: 'create_mesh', name, verts: mesh.verts, tris: mesh.tris, position, scale, color: typeof op.color === 'string' ? op.color : '#b7b0a4' }]);
+      await logUsage(env, { user_id: project.user_id, kind: 'roblox_mesh_local' });
+      return;
+    }
+    // Couldn't import the geometry locally — upload it (needs a key) as a fallback.
+    if (apiKey && creator) {
+      const assetId = await uploadRobloxModelAsset(apiKey, creator, res, prompt.slice(0, 50), `AI-generated for Yield: ${prompt}`.slice(0, 1000));
+      if (!assetId) return;
+      await addRobloxAsset(env, project.id, assetId, prompt.slice(0, 80), 'ai-generated');
+      await queueRobloxOps(env, project.id, [{ type: 'insert_model', assetId, name, position, rotation: [0, 0, 0], scale }]);
+      await logUsage(env, { user_id: project.user_id, kind: 'roblox_model3d_agent' });
+    }
   } catch { /* best-effort — a failed generation must not break anything */ }
 }
 

@@ -34,6 +34,7 @@ local InsertService = game:GetService("InsertService")
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
+local AssetService = game:GetService("AssetService")
 
 local API_BASE = "{{APP_URL}}" .. "/api/roblox/plugin"
 
@@ -922,6 +923,89 @@ local function applyMoveInstance(op)
 	return detail
 end
 
+-- Builds a MeshPart LOCALLY from raw geometry via EditableMesh — NO asset upload, NO
+-- publishing, NO Open Cloud key. This is how Yield inserts AI-3D-generated meshes
+-- without needing the user to publish anything: the server parses the generated .glb
+-- into vertices + triangles and sends them here.
+local function applyCreateMesh(op)
+	local verts = op.verts
+	local tris = op.tris
+	if type(verts) ~= "table" or type(tris) ~= "table" or #verts < 9 or #tris < 3 then
+		error("create_mesh: missing geometry")
+	end
+
+	ChangeHistoryService:SetWaypoint("Yield build mesh")
+
+	-- EditableMesh creation moved from Instance.new to AssetService over Studio
+	-- versions — try the current API first, then the older one.
+	local okEM, em = pcall(function()
+		return AssetService:CreateEditableMesh()
+	end)
+	if not okEM or not em then
+		okEM, em = pcall(function()
+			return Instance.new("EditableMesh")
+		end)
+	end
+	if not okEM or not em then
+		error("EditableMesh isn't available — update Roblox Studio to a recent version. (" .. tostring(em) .. ")")
+	end
+
+	local ids = {}
+	local n = math.floor(#verts / 3)
+	for i = 0, n - 1 do
+		ids[i] = em:AddVertex(Vector3.new(verts[i * 3 + 1], verts[i * 3 + 2], verts[i * 3 + 3]))
+	end
+
+	local t = math.floor(#tris / 3)
+	local added = 0
+	for i = 0, t - 1 do
+		local a = ids[tris[i * 3 + 1]]
+		local b = ids[tris[i * 3 + 2]]
+		local c = ids[tris[i * 3 + 3]]
+		if a and b and c then
+			if pcall(function() em:AddTriangle(a, b, c) end) then
+				added = added + 1
+			end
+		end
+	end
+	if added == 0 then
+		error("create_mesh: no valid triangles could be built")
+	end
+
+	-- CreateMeshPartAsync takes a Content wrapper on current Studio, or the
+	-- EditableMesh directly on older builds.
+	local okMP, meshPart = pcall(function()
+		if Content and Content.fromObject then
+			return AssetService:CreateMeshPartAsync(Content.fromObject(em), { CollisionFidelity = Enum.CollisionFidelity.Box })
+		end
+		return AssetService:CreateMeshPartAsync(em)
+	end)
+	if not okMP or not meshPart then
+		error("CreateMeshPartAsync failed: " .. tostring(meshPart))
+	end
+
+	local scale = tonumber(op.scale) or 1
+	if scale ~= 1 then
+		pcall(function()
+			meshPart.Size = meshPart.Size * scale
+		end)
+	end
+	meshPart.Name = op.name or "Mesh"
+	meshPart.Anchored = true
+	meshPart.Color = hexToColor3(op.color, Color3.fromRGB(183, 176, 164))
+	local px, py, pz = xyz(op.position, 0, 5, 0)
+	meshPart.CFrame = CFrame.new(px, py, pz)
+	pcall(function()
+		meshPart:SetAttribute("YieldMap", true)
+	end)
+	meshPart.Parent = Workspace
+
+	ChangeHistoryService:SetWaypoint("Yield build mesh")
+	local detail = ("Built mesh '%s' locally — %d verts, %d tris (no upload)"):format(meshPart.Name, n, added)
+	logActivity(detail)
+	return detail
+end
+
 -- ============================================================
 -- SYNC (pull -> apply -> ack)
 -- ============================================================
@@ -1001,6 +1085,8 @@ local function performSync()
 				detail = applyBuildMap(op)
 			elseif op.type == "insert_model" then
 				detail = applyInsertModel(op)
+			elseif op.type == "create_mesh" then
+				detail = applyCreateMesh(op)
 			elseif op.type == "set_properties" then
 				detail = applySetProperties(op)
 			elseif op.type == "create_instance" then

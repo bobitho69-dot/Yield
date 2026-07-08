@@ -2,11 +2,18 @@
 // {{APP_URL}} is replaced with env.APP_URL by the server before serving.
 export const ROBLOX_PLUGIN_SOURCE = `-- Yield for Roblox Studio
 --
--- This is a local, unpublished Roblox Studio plugin that connects your place to
--- Yield (a free AI web app builder). Pair it with a project on the Yield website,
--- then it will pull AI-generated Luau scripts and map layouts from your browser
--- session and apply them to this place, and can push your existing scripts back
--- to Yield so the AI can see and edit them.
+-- This is a local, unpublished Roblox Studio plugin that connects Studio to
+-- Yield (a free AI web app builder). You link it ONCE: generate a link code on
+-- the Yield website and paste it in here. The plugin redeems the code for a
+-- permanent link to your Yield account, and from then on every place you open in
+-- Studio auto-syncs by its Roblox PlaceId -- there is nothing to pair per game
+-- ever again. While a place is open it pulls AI-generated Luau scripts and map
+-- layouts from your Yield session and applies them, and can push the place's
+-- existing scripts back to Yield so the AI can see and edit them.
+--
+-- NOTE: a brand-new place that has never been saved or published has a PlaceId of
+-- 0, and Yield syncs by PlaceId, so save/publish the place first -- the panel will
+-- tell you when it is waiting on this.
 --
 -- INSTALL: save this file as a .lua file and drop it directly into your local
 -- Roblox Studio Plugins folder (Studio loads any .lua file placed there as a
@@ -179,8 +186,7 @@ end
 -- ============================================================
 
 local token = nil
-local projectId = nil
-local projectTitle = nil
+local robloxUsername = nil
 
 local isSyncing = false
 local autoSyncRunning = false
@@ -562,7 +568,6 @@ end
 -- ============================================================
 
 local setStatusLabel -- forward declaration, assigned once the UI exists
-local setProjectTitleLabel -- forward declaration
 
 local function performSync()
 	if isSyncing or not token then
@@ -570,7 +575,24 @@ local function performSync()
 	end
 	isSyncing = true
 
-	local pullOk, body = apiRequest("GET", "/pull", nil)
+	-- Yield syncs whatever place is currently open, keyed by its Roblox PlaceId. A
+	-- brand-new unsaved/unpublished place has PlaceId 0, which can't be synced --
+	-- bail out gracefully (no error spam) and tell the user what to do.
+	local placeId = tostring(game.PlaceId)
+	local placeName = game.Name
+	if game.PlaceId == 0 then
+		if setStatusLabel then
+			setStatusLabel("Open or publish this place first -- it needs a PlaceId to sync.")
+		end
+		isSyncing = false
+		return
+	end
+
+	local pullOk, body = apiRequest(
+		"GET",
+		"/pull?placeId=" .. HttpService:UrlEncode(placeId) .. "&placeName=" .. HttpService:UrlEncode(placeName),
+		nil
+	)
 	if not pullOk then
 		logActivity("Sync failed: " .. tostring(body))
 		if setStatusLabel then
@@ -591,18 +613,17 @@ local function performSync()
 		return
 	end
 
-	if type(body.project) == "table" and body.project.title and body.project.title ~= projectTitle then
-		projectTitle = body.project.title
-		plugin:SetSetting("yield_project_title", projectTitle)
-		if setProjectTitleLabel then
-			setProjectTitleLabel(projectTitle)
-		end
+	-- Prefer the project title the server maps this place to, otherwise just show
+	-- the place's own name.
+	local displayName = placeName
+	if type(body.project) == "table" and body.project.title and body.project.title ~= "" then
+		displayName = body.project.title
 	end
 
 	local ops = body.ops
 	if type(ops) ~= "table" or #ops == 0 then
 		if setStatusLabel then
-			setStatusLabel("Connected - up to date")
+			setStatusLabel(("Synced • %s"):format(displayName))
 		end
 		isSyncing = false
 		return
@@ -634,13 +655,17 @@ local function performSync()
 
 	-- Always report back, even on partial failure -- the server needs to know which
 	-- ops landed so it doesn't resend them forever.
-	local ackOk, ackErr = apiRequest("POST", "/ack", { results = results })
+	local ackOk, ackErr = apiRequest("POST", "/ack", {
+		placeId = placeId,
+		placeName = placeName,
+		results = results,
+	})
 	if not ackOk then
 		logActivity("Failed to report sync results to Yield: " .. tostring(ackErr))
 	end
 
 	if setStatusLabel then
-		setStatusLabel("Connected - last synced just now")
+		setStatusLabel(("Synced • %s"):format(displayName))
 	end
 	isSyncing = false
 end
@@ -744,6 +769,16 @@ local function collectScriptsForPush()
 end
 
 local function pushSnapshot()
+	-- Same PlaceId 0 caveat as performSync: an unsaved/unpublished place has no id
+	-- to key the snapshot to, so don't push -- just tell the user.
+	if game.PlaceId == 0 then
+		if setStatusLabel then
+			setStatusLabel("Open or publish this place first -- it needs a PlaceId to sync.")
+		end
+		logActivity("Can't push yet: save or publish this place so it has a PlaceId.")
+		return
+	end
+
 	local scripts, truncated = collectScriptsForPush()
 	if truncated then
 		logActivity("Warning: this place has more than " .. MAX_PUSH_SCRIPTS .. " scripts, only pushing the first " .. MAX_PUSH_SCRIPTS)
@@ -751,8 +786,8 @@ local function pushSnapshot()
 
 	local ok, body = apiRequest("POST", "/snapshot", {
 		scripts = scripts,
-		placeName = game.Name,
 		placeId = tostring(game.PlaceId),
+		placeName = game.Name,
 	})
 
 	if ok then
@@ -808,7 +843,7 @@ new("TextLabel", {
 
 new("TextLabel", {
 	Font = Enum.Font.Gotham,
-	Text = "Start a Roblox project on the Yield website, copy the 8-character pairing code it gives you, and paste it below.",
+	Text = "Generate an 8-character link code on the Yield website and paste it below. This links Studio to your Yield account one time -- after that, every place you open here auto-syncs on its own. You never need to pair per game again.",
 	TextSize = 13,
 	TextColor3 = THEME.mutedText,
 	TextWrapped = true,
@@ -816,7 +851,7 @@ new("TextLabel", {
 	TextYAlignment = Enum.TextYAlignment.Top,
 	BackgroundTransparency = 1,
 	Position = UDim2.new(0, 14, 0, 42),
-	Size = UDim2.new(1, -28, 0, 56),
+	Size = UDim2.new(1, -28, 0, 72),
 	Parent = pairingPage,
 })
 
@@ -830,7 +865,7 @@ local codeBox = new("TextBox", {
 	ClearTextOnFocus = false,
 	BackgroundColor3 = THEME.panel,
 	BorderSizePixel = 0,
-	Position = UDim2.new(0, 14, 0, 104),
+	Position = UDim2.new(0, 14, 0, 120),
 	Size = UDim2.new(1, -28, 0, 36),
 	Parent = pairingPage,
 })
@@ -850,7 +885,7 @@ local connectButton = new("TextButton", {
 	BackgroundColor3 = THEME.accent,
 	AutoButtonColor = true,
 	BorderSizePixel = 0,
-	Position = UDim2.new(0, 14, 0, 148),
+	Position = UDim2.new(0, 14, 0, 164),
 	Size = UDim2.new(1, -28, 0, 36),
 	Parent = pairingPage,
 })
@@ -865,7 +900,7 @@ local pairStatusLabel = new("TextLabel", {
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextYAlignment = Enum.TextYAlignment.Top,
 	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 14, 0, 192),
+	Position = UDim2.new(0, 14, 0, 208),
 	Size = UDim2.new(1, -28, 0, 60),
 	Parent = pairingPage,
 })
@@ -879,34 +914,49 @@ local connectedPage = new("Frame", {
 	Parent = root,
 })
 
-local projectTitleLabel = new("TextLabel", {
+new("TextLabel", {
 	Font = Enum.Font.GothamBold,
-	Text = "Yield project",
+	Text = "Connected to Yield",
 	TextSize = 17,
 	TextColor3 = THEME.text,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextTruncate = Enum.TextTruncate.AtEnd,
 	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 14, 0, 12),
+	Position = UDim2.new(0, 14, 0, 10),
 	Size = UDim2.new(1, -28, 0, 22),
 	Parent = connectedPage,
 })
 
-local statusLabel = new("TextLabel", {
+local userLabel = new("TextLabel", {
 	Font = Enum.Font.Gotham,
 	Text = "Connected",
 	TextSize = 12,
 	TextColor3 = THEME.mutedText,
 	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
 	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 14, 0, 36),
-	Size = UDim2.new(1, -28, 0, 18),
+	Position = UDim2.new(0, 14, 0, 34),
+	Size = UDim2.new(1, -28, 0, 16),
+	Parent = connectedPage,
+})
+
+local statusLabel = new("TextLabel", {
+	Font = Enum.Font.Gotham,
+	Text = "Waiting for first sync...",
+	TextSize = 12,
+	TextColor3 = THEME.mutedText,
+	TextWrapped = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 14, 0, 52),
+	Size = UDim2.new(1, -28, 0, 30),
 	Parent = connectedPage,
 })
 
 local actionsRow = new("Frame", {
 	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 14, 0, 62),
+	Position = UDim2.new(0, 14, 0, 86),
 	Size = UDim2.new(1, -28, 0, 32),
 	Parent = connectedPage,
 })
@@ -950,7 +1000,7 @@ local disconnectButton = new("TextButton", {
 	TextColor3 = THEME.danger,
 	BackgroundTransparency = 1,
 	AutoButtonColor = false,
-	Position = UDim2.new(0, 14, 0, 100),
+	Position = UDim2.new(0, 14, 0, 124),
 	Size = UDim2.new(1, -28, 0, 18),
 	Parent = connectedPage,
 })
@@ -962,7 +1012,7 @@ new("TextLabel", {
 	TextColor3 = THEME.mutedText,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 14, 0, 126),
+	Position = UDim2.new(0, 14, 0, 150),
 	Size = UDim2.new(1, -28, 0, 16),
 	Parent = connectedPage,
 })
@@ -970,8 +1020,8 @@ new("TextLabel", {
 local logScroll = new("ScrollingFrame", {
 	BackgroundColor3 = THEME.panel,
 	BorderSizePixel = 0,
-	Position = UDim2.new(0, 14, 0, 146),
-	Size = UDim2.new(1, -28, 1, -158),
+	Position = UDim2.new(0, 14, 0, 170),
+	Size = UDim2.new(1, -28, 1, -182),
 	ScrollingDirection = Enum.ScrollingDirection.Y,
 	ScrollBarThickness = 6,
 	ScrollBarImageColor3 = THEME.accent,
@@ -1026,8 +1076,12 @@ setStatusLabel = function(text)
 	statusLabel.Text = text
 end
 
-setProjectTitleLabel = function(text)
-	projectTitleLabel.Text = text
+local function updateUserLabel()
+	if type(robloxUsername) == "string" and robloxUsername ~= "" then
+		userLabel.Text = "Signed in as " .. robloxUsername
+	else
+		userLabel.Text = "Connected"
+	end
 end
 
 local function showPairingView()
@@ -1040,26 +1094,22 @@ end
 local function showConnectedView()
 	pairingPage.Visible = false
 	connectedPage.Visible = true
-	projectTitleLabel.Text = projectTitle or "Yield project"
-	statusLabel.Text = "Connected - not yet synced this session"
+	updateUserLabel()
+	statusLabel.Text = "Connected - waiting for first sync..."
 end
 
-local function saveSession(newToken, newProjectId, newProjectTitle)
+local function saveSession(newToken, newRobloxUsername)
 	token = newToken
-	projectId = newProjectId
-	projectTitle = newProjectTitle
+	robloxUsername = newRobloxUsername
 	plugin:SetSetting("yield_token", token)
-	plugin:SetSetting("yield_project_id", projectId)
-	plugin:SetSetting("yield_project_title", projectTitle)
+	plugin:SetSetting("yield_roblox_user", robloxUsername)
 end
 
 local function clearSession()
 	token = nil
-	projectId = nil
-	projectTitle = nil
+	robloxUsername = nil
 	plugin:SetSetting("yield_token", nil)
-	plugin:SetSetting("yield_project_id", nil)
-	plugin:SetSetting("yield_project_title", nil)
+	plugin:SetSetting("yield_roblox_user", nil)
 end
 
 -- ============================================================
@@ -1075,28 +1125,28 @@ local function onWidgetEnabledChanged()
 	end
 end
 
-local function attemptPair(rawCode)
+local function attemptLink(rawCode)
 	local code = (rawCode or ""):gsub("%s", ""):upper()
 	if #code == 0 then
-		pairStatusLabel.Text = "Please enter your pairing code."
+		pairStatusLabel.Text = "Please enter your link code."
 		pairStatusLabel.TextColor3 = THEME.danger
 		return
 	end
 
-	connectButton.Text = "Connecting..."
-	pairStatusLabel.Text = "Connecting to Yield..."
+	connectButton.Text = "Linking..."
+	pairStatusLabel.Text = "Linking to Yield..."
 	pairStatusLabel.TextColor3 = THEME.mutedText
 
-	local ok, body = apiRequest("POST", "/pair", {
+	-- Link is a one-time exchange of the code for a permanent, account-scoped token.
+	-- No placeId/placeName here -- places are picked up automatically once linked.
+	local ok, body = apiRequest("POST", "/link", {
 		code = code,
-		placeName = game.Name,
-		placeId = tostring(game.PlaceId),
 	})
 
 	connectButton.Text = "Connect"
 
 	if not ok then
-		pairStatusLabel.Text = "Could not connect: " .. tostring(body) .. ". If Studio asked to allow HTTP requests, allow it and try again."
+		pairStatusLabel.Text = "Could not link: " .. tostring(body) .. ". If Studio asked to allow HTTP requests, allow it and try again."
 		pairStatusLabel.TextColor3 = THEME.danger
 		return
 	end
@@ -1107,15 +1157,19 @@ local function attemptPair(rawCode)
 		return
 	end
 
-	saveSession(body.token, body.projectId, body.projectTitle or "Untitled project")
+	saveSession(body.token, body.robloxUsername)
 	clearActivityLog()
 	showConnectedView()
-	logActivity("Connected to project: " .. tostring(projectTitle))
+	if type(robloxUsername) == "string" and robloxUsername ~= "" then
+		logActivity("Linked to Yield as " .. robloxUsername)
+	else
+		logActivity("Linked to Yield")
+	end
 	onWidgetEnabledChanged()
 end
 
 local function disconnect()
-	apiRequest("POST", "/unpair", {}) -- best-effort; local state is cleared regardless
+	apiRequest("POST", "/unlink", {}) -- best-effort; local state is cleared regardless
 	stopAutoSyncLoop()
 	clearSession()
 	clearActivityLog()
@@ -1123,12 +1177,12 @@ local function disconnect()
 end
 
 connectButton.MouseButton1Click:Connect(function()
-	attemptPair(codeBox.Text)
+	attemptLink(codeBox.Text)
 end)
 
 codeBox.FocusLost:Connect(function(enterPressed)
 	if enterPressed then
-		attemptPair(codeBox.Text)
+		attemptLink(codeBox.Text)
 	end
 end)
 
@@ -1168,13 +1222,13 @@ widget:GetPropertyChangedSignal("Enabled"):Connect(onWidgetEnabledChanged)
 -- ============================================================
 
 local savedToken = plugin:GetSetting("yield_token")
-local savedProjectId = plugin:GetSetting("yield_project_id")
-local savedProjectTitle = plugin:GetSetting("yield_project_title")
+local savedRobloxUser = plugin:GetSetting("yield_roblox_user")
 
-if type(savedToken) == "string" and #savedToken > 0 and type(savedProjectId) == "string" and #savedProjectId > 0 then
+if type(savedToken) == "string" and #savedToken > 0 then
 	token = savedToken
-	projectId = savedProjectId
-	projectTitle = savedProjectTitle
+	if type(savedRobloxUser) == "string" then
+		robloxUsername = savedRobloxUser
+	end
 	showConnectedView()
 else
 	showPairingView()

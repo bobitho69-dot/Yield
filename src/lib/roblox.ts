@@ -197,49 +197,76 @@ function unbiasedPick(alphabet: string): string {
   return alphabet[byte % alphabet.length];
 }
 
-export async function createPairCode(env: Env, projectId: string): Promise<{ code: string; expiresAt: number }> {
+// The link is USER-scoped and permanent: the web mints a one-time link code tied to
+// the signed-in user; the plugin redeems it ONCE for a long-lived token that never
+// expires. After that the plugin auto-picks-up whichever place is open (by PlaceId)
+// with zero further setup — no per-game naming, no re-pairing.
+export async function createLinkCode(env: Env, userId: string): Promise<{ code: string; expiresAt: number }> {
   let code = '';
   for (let i = 0; i < 8; i++) code += unbiasedPick(PAIR_ALPHABET);
   const expiresAt = now() + PAIR_TTL;
-  await env.KV.put(`roblox_pair:${code}`, JSON.stringify({ projectId }), { expirationTtl: PAIR_TTL });
+  await env.KV.put(`roblox_link:${code}`, JSON.stringify({ userId }), { expirationTtl: PAIR_TTL });
   return { code, expiresAt };
 }
 
-export async function redeemPairCode(env: Env, rawCode: string): Promise<{ projectId: string } | null> {
+export async function redeemLinkCode(env: Env, rawCode: string): Promise<{ userId: string } | null> {
   const code = (rawCode || '').trim().toUpperCase();
   if (!code) return null;
-  const key = `roblox_pair:${code}`;
+  const key = `roblox_link:${code}`;
   const val = await env.KV.get(key);
   if (!val) return null;
   await env.KV.delete(key); // one-time use
   try { return JSON.parse(val); } catch { return null; }
 }
 
-export async function mintPluginToken(env: Env, projectId: string): Promise<string> {
-  const token = `rbx_${newId()}${newId()}`;
-  await env.KV.put(`roblox_token:${token}`, JSON.stringify({ projectId }));
+// Permanent, user-scoped plugin token (no TTL). Revocable from the website WITHOUT
+// the website ever holding the token: each token carries the user's "link epoch",
+// and web-side "unlink" bumps that epoch (revokeAllUserTokens) so every outstanding
+// token stops resolving. The lone-token delete path is also kept for the plugin's
+// own unlink.
+async function linkEpoch(env: Env, userId: string): Promise<number> {
+  const v = await env.KV.get(`roblox_link_epoch:${userId}`);
+  return v ? parseInt(v, 10) || 1 : 1;
+}
+
+export async function mintUserToken(env: Env, userId: string): Promise<string> {
+  const epoch = await linkEpoch(env, userId);
+  const token = `rbxu_${newId()}${newId()}`;
+  await env.KV.put(`roblox_user_token:${token}`, JSON.stringify({ userId, epoch }));
   return token;
 }
 
-export async function resolvePluginToken(env: Env, token: string): Promise<{ projectId: string } | null> {
+export async function resolveUserToken(env: Env, token: string): Promise<{ userId: string } | null> {
   if (!token) return null;
-  const val = await env.KV.get(`roblox_token:${token}`);
+  const val = await env.KV.get(`roblox_user_token:${token}`);
   if (!val) return null;
-  try { return JSON.parse(val); } catch { return null; }
+  let parsed: { userId: string; epoch?: number };
+  try { parsed = JSON.parse(val); } catch { return null; }
+  // Reject (and clean up) tokens minted before the user's last web-side unlink.
+  const current = await linkEpoch(env, parsed.userId);
+  if ((parsed.epoch || 1) !== current) { await env.KV.delete(`roblox_user_token:${token}`).catch(() => {}); return null; }
+  return { userId: parsed.userId };
 }
 
-export async function revokePluginToken(env: Env, token: string): Promise<void> {
-  if (token) await env.KV.delete(`roblox_token:${token}`).catch(() => {});
+export async function revokeUserToken(env: Env, token: string): Promise<void> {
+  if (token) await env.KV.delete(`roblox_user_token:${token}`).catch(() => {});
 }
 
-/** Pull the bearer token off a plugin request and resolve it to a project id. */
-export async function authenticatePlugin(env: Env, req: Request): Promise<{ projectId: string; token: string } | null> {
+// Web-side "unlink everything": bump the epoch so all outstanding tokens for this
+// user stop resolving on their next request.
+export async function revokeAllUserTokens(env: Env, userId: string): Promise<void> {
+  const next = (await linkEpoch(env, userId)) + 1;
+  await env.KV.put(`roblox_link_epoch:${userId}`, String(next));
+}
+
+/** Pull the bearer token off a plugin request and resolve it to a user id. */
+export async function authenticatePlugin(env: Env, req: Request): Promise<{ userId: string; token: string } | null> {
   const auth = req.headers.get('authorization') || '';
   const m = auth.match(/^Bearer\s+(.+)$/i);
   if (!m) return null;
   const token = m[1].trim();
-  const resolved = await resolvePluginToken(env, token);
-  return resolved ? { projectId: resolved.projectId, token } : null;
+  const resolved = await resolveUserToken(env, token);
+  return resolved ? { userId: resolved.userId, token } : null;
 }
 
 // --- Map spec sanitization + free-model role resolution -------------------------

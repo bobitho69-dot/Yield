@@ -70,6 +70,10 @@ export interface Env {
   GITHUB_CLIENT_SECRET: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
+  // "Sign in with Roblox" (OAuth 2.0 / OIDC). Register an app at
+  // create.roblox.com → Creator Dashboard → Open Cloud → OAuth 2.0 Apps.
+  ROBLOX_CLIENT_ID: string;
+  ROBLOX_CLIENT_SECRET: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
 

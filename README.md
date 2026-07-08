@@ -129,15 +129,23 @@ with an AI to write real Luau scripts (`Script`/`LocalScript`/`ModuleScript`) an
 free community models, then sync it all live into **Roblox Studio** with a companion plugin — the plugin is the
 only thing that talks to the actual game; everything else (chat, code, map design) runs in the browser.
 
-- **How sync works:** the web app queues an *outbox* of ops (`upsert_script`, `delete_script`, `build_map`,
-  `insert_model`) per project; the Studio plugin polls `GET /api/roblox/plugin/pull` (bearer-token auth, minted
-  at pairing — never a cookie), applies each op to the DataModel (creating `Script`/`Folder` instances, building
-  `Part`s from a map spec, inserting free models via `InsertService:LoadAsset`), and reports back with
-  `POST /api/roblox/plugin/ack`. It can also `POST /api/roblox/plugin/snapshot` its current scripts back up so
-  the AI sees your manual Studio edits.
-- **Pairing:** the website mints a short-lived one-time code (`POST /api/roblox/projects/:id/pair`); the plugin
-  redeems it (`POST /api/roblox/plugin/pair`) for a long-lived bearer token stored locally via
-  `plugin:SetSetting`. No Roblox account or OAuth needed.
+- **Link once, then it just picks up:** you link Studio to your Yield account a single time; after that **every
+  place you open in Studio auto-syncs by its Roblox `PlaceId`** — no per-game naming, no re-pairing. The web app
+  queues an *outbox* of ops (`upsert_script`, `delete_script`, `build_map`, `insert_model`); the plugin polls
+  `GET /api/roblox/plugin/pull?placeId=…` (permanent user-scoped bearer token, never a cookie), and the backend
+  auto-finds-or-creates that place's project (`findOrCreateRobloxProjectByPlace`) so games appear in the web UI
+  as you open them. The plugin applies each op to the DataModel (creating `Script`/`Folder` instances, building
+  `Part`s from a map spec, inserting free models via `InsertService:LoadAsset`), reports back with
+  `POST /api/roblox/plugin/ack`, and can `POST /api/roblox/plugin/snapshot` its current scripts back up so the AI
+  sees your manual Studio edits.
+- **Linking:** the website mints a one-time link code (`POST /api/roblox/link`); the plugin redeems it
+  (`POST /api/roblox/plugin/link`) for a **permanent, user-scoped** token stored via `plugin:SetSetting`.
+  Web-side unlink (`POST /api/roblox/unlink`) bumps a per-user "link epoch" so every outstanding token stops
+  resolving. In **open testing mode** (`AUTH_ENABLED="false"`) the plugin links with zero friction — no code,
+  no OAuth — and everything ties to the shared guest.
+- **Sign in with Roblox (optional):** full OAuth 2.0 / OIDC (`apis.roblox.com/oauth/v1`) as a login method and
+  as an account link — configure `ROBLOX_CLIENT_ID`/`ROBLOX_CLIENT_SECRET`. Left unset, the button auto-hides and
+  the plugin still links via the code (or the testing-mode fast path).
 - **Free models:** pin any public asset id (paste from a roblox.com URL) into a per-project library — the map
   generator matches AI-proposed prop "roles" against it by tag. Optionally connect your own Roblox Open Cloud
   API key (`POST /api/roblox/projects/:id/roblox-key`, AES-GCM encrypted at rest) to search the marketplace

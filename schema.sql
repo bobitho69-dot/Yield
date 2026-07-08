@@ -21,10 +21,15 @@ CREATE TABLE IF NOT EXISTS users (
   -- GitHub code storage (token is AES-GCM encrypted at rest with SESSION_SECRET).
   github_login           TEXT,
   github_token_enc       TEXT,
+  -- Linked Roblox account ("Sign in with Roblox" / account link). Lets the Studio
+  -- plugin associate places to the right person and shows who's connected.
+  roblox_user_id         TEXT,
+  roblox_username        TEXT,
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL,
   UNIQUE (provider, provider_id)
 );
+CREATE INDEX IF NOT EXISTS idx_users_roblox ON users(roblox_user_id);
 
 -- ── Projects (one generated app per row) ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS projects (
@@ -203,18 +208,20 @@ CREATE TABLE IF NOT EXISTS app_data (
 CREATE INDEX IF NOT EXISTS idx_app_data ON app_data(project_id, entity);
 
 -- ── Yield Roblox (AI-built Roblox games, synced to a Roblox Studio plugin) ─────
--- The plugin never talks to the web session — it authenticates with a bearer token
--- minted at pairing time and looked up in KV (roblox_token:<token> -> {projectId}),
--- same pattern as web sessions (KV-backed opaque tokens). This table holds only
--- non-secret pairing status; the token itself is never persisted in D1.
+-- The plugin authenticates with a PERMANENT, USER-scoped bearer token (minted when
+-- the user links Studio once) looked up in KV (roblox_user_token:<token> -> {userId}).
+-- It reports the Roblox PlaceId of whatever place is open, and the backend auto-finds
+-- or creates the matching project row — so a project "just picks up" per place with
+-- no manual naming. `place_id` is the natural per-user key (UNIQUE below).
 CREATE TABLE IF NOT EXISTS roblox_projects (
   id                  TEXT PRIMARY KEY,
   user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title               TEXT NOT NULL DEFAULT 'Untitled game',
   model               TEXT,                  -- last coder model id used
-  paired              INTEGER NOT NULL DEFAULT 0,
-  place_name          TEXT,                  -- reported by the plugin
-  place_id            TEXT,
+  paired              INTEGER NOT NULL DEFAULT 0, -- 1 once a linked plugin has synced this place
+  place_name          TEXT,                  -- reported by the plugin (game.Name)
+  place_id            TEXT,                  -- reported by the plugin (game.PlaceId); auto-pickup key
+  auto_created        INTEGER NOT NULL DEFAULT 0, -- 1 = created automatically from a place (vs manual)
   paired_at           INTEGER,
   last_seen_at        INTEGER,               -- last plugin pull/snapshot
   -- Optional: the user's own Roblox Open Cloud API key (AES-GCM encrypted), enabling
@@ -231,6 +238,11 @@ CREATE TABLE IF NOT EXISTS roblox_projects (
   updated_at          INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_roblox_projects_user ON roblox_projects(user_id, updated_at DESC);
+-- One auto-project per (user, place): lets the plugin upsert-by-place idempotently.
+-- SQLite treats NULLs as DISTINCT in a unique index, so manually-created projects
+-- (place_id IS NULL) never collide with each other or with placed ones — no partial
+-- index needed, which also keeps this usable as an ON CONFLICT upsert target.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_roblox_projects_place ON roblox_projects(user_id, place_id);
 
 -- One row per Roblox Instance the AI (or the plugin's "push") has written — mirrors
 -- the web builder's `files` table, but path segments are a DataModel hierarchy

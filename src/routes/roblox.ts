@@ -14,23 +14,22 @@
 //   POST              /api/roblox/projects/:id/generate-model AI-generate a custom 3D model & upload it to Roblox
 //   GET               /api/roblox/projects/:id/maps           recent map-generation history
 //   POST              /api/roblox/projects/:id/roblox-key     connect/clear a Roblox Open Cloud API key
-//   POST              /api/roblox/projects/:id/pair           mint a pairing code for the plugin
-//   POST              /api/roblox/projects/:id/unpair         disconnect the plugin from the web (revokes its access)
 //   GET               /api/roblox/projects/:id/ops            recent sync activity log
+//   POST/GET          /api/roblox/link                        mint a one-time Studio link code / link status
+//   POST              /api/roblox/unlink                      revoke every plugin token for this user
 //   POST              /api/roblox/models/search                marketplace search (needs a connected key)
 //   GET               /api/roblox/plugin.lua                   download the Studio plugin (public)
-// Plugin (Authorization: Bearer <token>, minted at pairing time):
-//   POST /api/roblox/plugin/pair      {code, placeName?, placeId?} -> {token, projectId, projectTitle}
-//   GET  /api/roblox/plugin/pull                                   -> {project, ops:[...]}
-//   POST /api/roblox/plugin/ack       {results:[{id,ok,detail?}]}
-//   POST /api/roblox/plugin/snapshot  {scripts:[...], placeName?, placeId?}
-//   GET  /api/roblox/plugin/ping                                   -> {ok, projectId, projectTitle}
-//   POST /api/roblox/plugin/unpair                                 -> {ok:true}
-// A plugin token stays valid until EITHER side revokes it: the plugin itself
-// (POST plugin/unpair) or the project owner from the website (POST .../unpair,
-// which flips roblox_projects.paired to 0 — every plugin endpoint below re-checks
-// that flag on each call, so disconnecting from the web retroactively invalidates
-// the token even though it's still technically resolvable in KV).
+// Plugin (Authorization: Bearer <permanent user token>):
+//   POST /api/roblox/plugin/link      {code} -> {token, robloxUsername}   (one-time; permanent token)
+//   GET  /api/roblox/plugin/pull?placeId=&placeName=               -> {project, ops:[...]}
+//   POST /api/roblox/plugin/ack       {placeId, placeName?, results:[...]}
+//   POST /api/roblox/plugin/snapshot  {placeId, placeName?, scripts:[...]}
+//   GET  /api/roblox/plugin/ping?placeId=&placeName=              -> {ok, projectId, projectTitle, robloxUsername}
+//   POST /api/roblox/plugin/unlink                                -> {ok:true}  (unlink this install)
+// The plugin links ONCE (permanent, user-scoped token). It reports the open place's
+// PlaceId on every call and the backend auto-resolves/creates that place's project —
+// so it "just picks up" whatever place is open, no naming. Web-side unlink bumps the
+// user's link epoch so all outstanding tokens stop resolving.
 
 import type { Ctx, Env } from '../types';
 import { json, error, sse } from '../lib/response';
@@ -43,12 +42,14 @@ import { generateImage, generate3dModel } from './media';
 import { ROBLOX_CONVO_SYSTEM, ROBLOX_EDIT_NOTE, ROBLOX_MAP_SYSTEM } from '../lib/robloxPrompts';
 import {
   makeScriptStreamer, sanitizeScriptPath, sanitizeClassName, sanitizeMapSpec,
-  createPairCode, redeemPairCode, mintPluginToken, authenticatePlugin, revokePluginToken,
+  createLinkCode, redeemLinkCode, mintUserToken, authenticatePlugin, revokeUserToken, revokeAllUserTokens,
   searchFreeModels, uploadRobloxModelAsset, type PinnedAsset, type RobloxCreator,
 } from '../lib/roblox';
 import {
-  createRobloxProject, getRobloxProject, listRobloxProjects, renameRobloxProject, deleteRobloxProject,
-  touchRobloxProject, markRobloxPaired, markRobloxUnpaired, touchRobloxSeen, setRobloxApiKey, setRobloxMapPrefs,
+  ensureGuestUser,
+  createRobloxProject, getRobloxProject, findOrCreateRobloxProjectByPlace, listRobloxProjects,
+  renameRobloxProject, deleteRobloxProject,
+  touchRobloxProject, touchRobloxSeen, setRobloxApiKey, setRobloxMapPrefs, getRobloxAuth,
   listRobloxFiles, upsertRobloxFile, upsertRobloxFiles, deleteRobloxFile,
   addRobloxMessage, listRobloxMessages,
   queueRobloxOps, listPendingRobloxOps, ackRobloxOps, listRecentRobloxOps,
@@ -81,6 +82,12 @@ export async function handleRoblox(req: Request, c: Ctx, rest: string): Promise<
 
   if (!c.user) return error(401, 'Sign in required.', { code: 'login_required' });
   const user = c.user;
+
+  // Account-level Studio link (not tied to any one project): generate the one-time
+  // link code, report link status, or unlink all this user's plugin installs.
+  if (rest === 'link' && req.method === 'POST') return webLink(c, user.id);
+  if (rest === 'link' && req.method === 'GET') return linkStatus(c, user.id);
+  if (rest === 'unlink' && req.method === 'POST') return webUnlink(c, user.id);
 
   if (segs[0] !== 'projects') return error(404, 'Not found');
   const id = segs[1];
@@ -126,8 +133,6 @@ export async function handleRoblox(req: Request, c: Ctx, rest: string): Promise<
   if (sub === 'files') return handleFiles(req, c, project);
   if (sub === 'assets') return handleAssets(req, c, project, sub2);
   if (sub === 'roblox-key' && req.method === 'POST') return connectRobloxKey(req, c, project);
-  if (sub === 'pair' && req.method === 'POST') return pair(c, project);
-  if (sub === 'unpair' && req.method === 'POST') return webUnpair(c, project);
   if (sub === 'ops' && req.method === 'GET') return opsLog(c, project);
   if (sub === 'insert-asset' && req.method === 'POST') return insertAsset(req, c, project);
   if (sub === 'generate-model' && req.method === 'POST') return generateModelAsset(req, c, project);
@@ -148,37 +153,59 @@ async function servePlugin(c: Ctx): Promise<Response> {
   });
 }
 
-// --- Plugin API (bearer token, no session) -----------------------------------------
+// --- Plugin API (permanent user-scoped bearer token, no session) --------------------
+// The plugin links ONCE (redeems a link code for a permanent token) and thereafter
+// just reports the open place's PlaceId on every call; the backend auto-resolves (or
+// creates) that place's project. No per-game naming, no re-pairing — it "just picks
+// up" whatever place is open. Revoking the token (either side) unlinks everything.
+const cap = (s: unknown, n: number) => (s == null ? null : String(s).slice(0, n));
+
 async function handlePluginApi(req: Request, c: Ctx, segs: string[]): Promise<Response> {
   const action = segs[0];
 
-  if (action === 'pair' && req.method === 'POST') {
-    const body = (await req.json().catch(() => ({}))) as { code?: string; placeName?: string; placeId?: string };
-    const redeemed = await redeemPairCode(c.env, String(body.code || ''));
-    if (!redeemed) return error(400, 'Invalid or expired pairing code. Generate a new one on the Yield website.');
-    const project = await getRobloxProject(c.env, redeemed.projectId);
-    if (!project) return error(404, 'Project not found');
-    const token = await mintPluginToken(c.env, project.id);
-    await markRobloxPaired(c.env, project.id, {
-      placeName: body.placeName ? String(body.placeName).slice(0, 120) : null,
-      placeId: body.placeId ? String(body.placeId).slice(0, 40) : null,
-    });
-    return json({ token, projectId: project.id, projectTitle: project.title });
+  // One-time link: redeem the code the user generated on the website -> permanent token.
+  if (action === 'link' && req.method === 'POST') {
+    const body = (await req.json().catch(() => ({}))) as { code?: string };
+    // Open testing mode (AUTH_ENABLED='false'): there are no real accounts — everyone
+    // is the shared guest — so the plugin links with ZERO friction (no code, no OAuth)
+    // and everything ties back to that one guest. A code IS still honored if given.
+    if (c.env.AUTH_ENABLED === 'false') {
+      const redeemed = await redeemLinkCode(c.env, String(body.code || ''));
+      const guest = await ensureGuestUser(c.env);
+      const userId = redeemed?.userId || guest.id;
+      const token = await mintUserToken(c.env, userId);
+      const ra = await getRobloxAuth(c.env, userId);
+      return json({ token, robloxUsername: ra?.roblox_username ?? null, testing: true });
+    }
+    const redeemed = await redeemLinkCode(c.env, String(body.code || ''));
+    if (!redeemed) return error(400, 'Invalid or expired link code. Generate a new one on the Yield website.');
+    const token = await mintUserToken(c.env, redeemed.userId);
+    const ra = await getRobloxAuth(c.env, redeemed.userId);
+    return json({ token, robloxUsername: ra?.roblox_username ?? null });
   }
 
   const auth = await authenticatePlugin(c.env, req);
-  if (!auth) return error(401, 'Invalid or expired plugin token — re-pair from the Yield website.');
-  const project = await getRobloxProject(c.env, auth.projectId);
-  if (!project) return error(404, 'Project not found');
-  // The owner can disconnect a plugin from the website (POST .../unpair) without
-  // ever holding this token — that flips `paired` to 0, which every action here
-  // (except the plugin's own best-effort unpair) must honor immediately.
-  if (!project.paired && action !== 'unpair') {
-    return error(401, 'This project was disconnected from the Yield website — pair again with a new code.');
+  if (!auth) return error(401, 'This Studio isn’t linked (or was unlinked) — link it again from the Yield website.');
+  const userId = auth.userId;
+
+  // Unlink: revoke the permanent token for this whole plugin install.
+  if (action === 'unlink' && req.method === 'POST') {
+    await revokeUserToken(c.env, auth.token);
+    return json({ ok: true });
   }
 
+  // Everything else needs the open place; auto-resolve (or create) its project.
+  const placeIdRaw = req.method === 'GET'
+    ? c.url.searchParams.get('placeId')
+    : null;
+  const bodyForPlace = req.method === 'POST' ? (await req.json().catch(() => ({}))) as any : {};
+  const placeId = cap(placeIdRaw ?? bodyForPlace.placeId, 40);
+  const placeName = cap(req.method === 'GET' ? c.url.searchParams.get('placeName') : bodyForPlace.placeName, 120);
+  if (!placeId) return error(400, 'placeId is required (publish or open a saved place so it has a PlaceId).');
+  const project = await findOrCreateRobloxProjectByPlace(c.env, userId, placeId, placeName);
+
   if (action === 'pull' && req.method === 'GET') {
-    await touchRobloxSeen(c.env, project.id);
+    await touchRobloxSeen(c.env, project.id, { placeName });
     const { results } = await listPendingRobloxOps(c.env, project.id, 100);
     const ops = results
       .map((r) => { try { return { id: r.id, ...JSON.parse(r.op) }; } catch { return null; } })
@@ -187,41 +214,28 @@ async function handlePluginApi(req: Request, c: Ctx, segs: string[]): Promise<Re
   }
 
   if (action === 'ack' && req.method === 'POST') {
-    const body = (await req.json().catch(() => ({}))) as { results?: { id?: string; ok?: boolean; detail?: string }[] };
-    const results = Array.isArray(body.results)
-      ? body.results.filter((r): r is { id: string; ok?: boolean; detail?: string } => !!r && typeof r.id === 'string').slice(0, 300)
+    const results = Array.isArray(bodyForPlace.results)
+      ? (bodyForPlace.results as any[]).filter((r) => r && typeof r.id === 'string').slice(0, 300)
       : [];
-    await ackRobloxOps(c.env, project.id, results.map((r) => ({ id: r.id, ok: !!r.ok, detail: r.detail ? String(r.detail) : undefined })));
+    await ackRobloxOps(c.env, project.id, results.map((r: any) => ({ id: r.id, ok: !!r.ok, detail: r.detail ? String(r.detail) : undefined })));
     await touchRobloxSeen(c.env, project.id);
     return json({ ok: true, acked: results.length });
   }
 
   if (action === 'snapshot' && req.method === 'POST') {
-    const body = (await req.json().catch(() => ({}))) as {
-      scripts?: { path?: string; className?: string; source?: string }[]; placeName?: string; placeId?: string;
-    };
-    const scripts = Array.isArray(body.scripts) ? body.scripts.slice(0, 300) : [];
+    const scripts = Array.isArray(bodyForPlace.scripts) ? bodyForPlace.scripts.slice(0, 300) : [];
     const toSave = scripts
-      .map((s) => ({ path: sanitizeScriptPath(String(s.path || '')), className: sanitizeClassName(String(s.className || '')), source: String(s.source || '').slice(0, 200_000) }))
-      .filter((s): s is { path: string; className: string; source: string } => !!s.path);
+      .map((s: any) => ({ path: sanitizeScriptPath(String(s.path || '')), className: sanitizeClassName(String(s.className || '')), source: String(s.source || '').slice(0, 200_000) }))
+      .filter((s: any): s is { path: string; className: string; source: string } => !!s.path);
     if (toSave.length) await upsertRobloxFiles(c.env, project.id, toSave);
-    const saved = toSave.length;
-    await touchRobloxSeen(c.env, project.id, {
-      placeName: body.placeName ? String(body.placeName).slice(0, 120) : null,
-      placeId: body.placeId ? String(body.placeId).slice(0, 40) : null,
-    });
-    return json({ ok: true, saved });
+    await touchRobloxSeen(c.env, project.id, { placeName });
+    return json({ ok: true, saved: toSave.length });
   }
 
   if (action === 'ping' && req.method === 'GET') {
-    await touchRobloxSeen(c.env, project.id);
-    return json({ ok: true, projectId: project.id, projectTitle: project.title });
-  }
-
-  if (action === 'unpair' && req.method === 'POST') {
-    await revokePluginToken(c.env, auth.token);
-    await markRobloxUnpaired(c.env, project.id);
-    return json({ ok: true });
+    await touchRobloxSeen(c.env, project.id, { placeName });
+    const ra = await getRobloxAuth(c.env, userId);
+    return json({ ok: true, projectId: project.id, projectTitle: project.title, robloxUsername: ra?.roblox_username ?? null });
   }
 
   return error(404, 'Not found');
@@ -601,18 +615,36 @@ async function generateModelAsset(req: Request, c: Ctx, project: RobloxProjectRo
   return json({ ok: true, assetId, name });
 }
 
-// --- Pairing + activity log ---------------------------------------------------------
-async function pair(c: Ctx, project: RobloxProjectRow): Promise<Response> {
-  const { code, expiresAt } = await createPairCode(c.env, project.id);
+// --- Account-level Studio link + activity log ---------------------------------------
+// POST /api/roblox/link — mint the one-time code the user pastes into the plugin.
+// The resulting plugin token is PERMANENT and USER-scoped, so this is done ONCE ever;
+// afterward every place the user opens in Studio auto-syncs with no further setup.
+async function webLink(c: Ctx, userId: string): Promise<Response> {
+  const { code, expiresAt } = await createLinkCode(c.env, userId);
   return json({ code, expiresAt });
 }
 
-// POST /api/roblox/projects/:id/unpair — web-session-initiated disconnect. The
-// owner doesn't need (and never has) the plugin's bearer token: this just flips
-// `paired` to 0, which every plugin endpoint re-checks, so it revokes access
-// immediately even though the token itself is still technically valid in KV.
-async function webUnpair(c: Ctx, project: RobloxProjectRow): Promise<Response> {
-  await markRobloxUnpaired(c.env, project.id);
+// GET /api/roblox/link — whether a Roblox account is connected + when a linked plugin
+// was last seen (across any place), for the "connected" UI.
+async function linkStatus(c: Ctx, userId: string): Promise<Response> {
+  const [ra, { results }] = await Promise.all([
+    getRobloxAuth(c.env, userId),
+    listRobloxProjects(c.env, userId),
+  ]);
+  const lastSeenAt = results.reduce<number | null>((max, p) => Math.max(max ?? 0, p.last_seen_at ?? 0) || null, null);
+  const linkedPlaces = results.filter((p) => p.place_id).length;
+  return json({
+    robloxConnected: !!ra?.roblox_user_id,
+    robloxUsername: ra?.roblox_username ?? null,
+    lastSeenAt,
+    linkedPlaces,
+  });
+}
+
+// POST /api/roblox/unlink — revoke every plugin token for this user (bumps the link
+// epoch), so all their Studio installs disconnect on their next request.
+async function webUnlink(c: Ctx, userId: string): Promise<Response> {
+  await revokeAllUserTokens(c.env, userId);
   return json({ ok: true });
 }
 

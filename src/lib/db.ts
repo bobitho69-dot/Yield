@@ -161,6 +161,19 @@ export async function getGithubAuth(env: Env, userId: string): Promise<{ login: 
   return { login: row.github_login, tokenEnc: row.github_token_enc };
 }
 
+// --- Linked Roblox account ("Sign in with Roblox" / account link) --------------
+export async function setRobloxAuth(env: Env, userId: string, robloxUserId: string, robloxUsername: string | null): Promise<void> {
+  await env.DB.prepare('UPDATE users SET roblox_user_id=?, roblox_username=?, updated_at=? WHERE id=?')
+    .bind(robloxUserId, robloxUsername, now(), userId)
+    .run();
+}
+
+export function getRobloxAuth(env: Env, userId: string): Promise<{ roblox_user_id: string | null; roblox_username: string | null } | null> {
+  return env.DB.prepare('SELECT roblox_user_id, roblox_username FROM users WHERE id=?')
+    .bind(userId)
+    .first<{ roblox_user_id: string | null; roblox_username: string | null }>();
+}
+
 export async function setProjectGithub(
   env: Env, id: string, repo: string, url: string, branch: string,
 ): Promise<void> {
@@ -558,6 +571,7 @@ export interface RobloxProjectRow {
   paired: number;
   place_name: string | null;
   place_id: string | null;
+  auto_created: number;
   paired_at: number | null;
   last_seen_at: number | null;
   roblox_api_key_enc: string | null;
@@ -580,6 +594,39 @@ export async function createRobloxProject(env: Env, userId: string, title: strin
 
 export function getRobloxProject(env: Env, id: string): Promise<RobloxProjectRow | null> {
   return env.DB.prepare('SELECT * FROM roblox_projects WHERE id = ?').bind(id).first<RobloxProjectRow>();
+}
+
+export function getRobloxProjectByPlace(env: Env, userId: string, placeId: string): Promise<RobloxProjectRow | null> {
+  return env.DB.prepare('SELECT * FROM roblox_projects WHERE user_id=? AND place_id=?').bind(userId, placeId).first<RobloxProjectRow>();
+}
+
+// The heart of "just pick up": given the Roblox PlaceId the plugin reported, return
+// the matching project for this user, auto-creating it (named after the place) the
+// first time that place is seen. No manual naming, ever.
+export async function findOrCreateRobloxProjectByPlace(
+  env: Env, userId: string, placeId: string, placeName: string | null,
+): Promise<RobloxProjectRow> {
+  const existing = await getRobloxProjectByPlace(env, userId, placeId);
+  if (existing) {
+    // Keep the display name fresh if the place was renamed in Studio.
+    if (placeName && placeName !== existing.place_name) {
+      await env.DB.prepare('UPDATE roblox_projects SET place_name=?, title=?, updated_at=? WHERE id=?')
+        .bind(placeName, placeName, now(), existing.id).run();
+      return (await getRobloxProject(env, existing.id))!;
+    }
+    return existing;
+  }
+  const id = newId();
+  const t = now();
+  const title = (placeName && placeName.trim()) || `Place ${placeId}`;
+  // ON CONFLICT guards the (user_id, place_id) unique index against a race between
+  // two near-simultaneous plugin pulls for the same freshly-opened place.
+  await env.DB.prepare(
+    `INSERT INTO roblox_projects (id,user_id,title,place_id,place_name,auto_created,paired,paired_at,last_seen_at,created_at,updated_at)
+     VALUES (?,?,?,?,?,1,1,?,?,?,?)
+     ON CONFLICT(user_id,place_id) DO UPDATE SET last_seen_at=excluded.last_seen_at`,
+  ).bind(id, userId, title, placeId, placeName, t, t, t, t).run();
+  return (await getRobloxProjectByPlace(env, userId, placeId))!;
 }
 
 export function listRobloxProjects(env: Env, userId: string): Promise<{ results: RobloxProjectRow[] }> {

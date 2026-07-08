@@ -31,6 +31,7 @@
         <div class="auth-btns">
           <a class="btn ghost" id="gh">Continue with GitHub</a>
           <a class="btn ghost" id="go">Continue with Google</a>
+          <a class="btn ghost" id="rbx">Continue with Roblox</a>
         </div>
       </div>
 
@@ -77,11 +78,13 @@
     // Show OAuth buttons only if configured.
     fetch('/api/auth/providers').then((r) => r.json()).then(({ providers }) => {
       if (!providers) return;
-      if (providers.github || providers.google) $('#oauth').classList.remove('hidden');
+      if (providers.github || providers.google || providers.roblox) $('#oauth').classList.remove('hidden');
       $('#gh').classList.toggle('hidden', !providers.github);
       $('#go').classList.toggle('hidden', !providers.google);
+      $('#rbx').classList.toggle('hidden', !providers.roblox);
       $('#gh').href = '/api/auth/github/login?redirect=' + encodeURIComponent(redirect);
       $('#go').href = '/api/auth/google/login?redirect=' + encodeURIComponent(redirect);
+      $('#rbx').href = '/api/auth/roblox/login?redirect=' + encodeURIComponent(redirect);
     }).catch(() => {});
   </script>
 </body>

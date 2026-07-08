@@ -159,8 +159,11 @@
           <div class="empty">
             <div class="big">🎮</div>
             <h2>Build Roblox games with AI</h2>
-            <p>Chat with an AI to write real Luau scripts, design 3D maps dressed with free community models, and sync it all live into Roblox Studio with the Yield plugin. Create a project to get started.</p>
-            <button class="btn primary" id="emptyNewBtn">＋ New Roblox game</button>
+            <p>Chat with an AI to write real Luau scripts, design 3D maps dressed with free community models, and sync it all live into Roblox Studio. <b>Link the plugin once</b> and every place you open in Studio shows up here automatically — no naming, no per-game setup. Or start a project right here.</p>
+            <div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">
+              <button class="btn primary" id="emptyLinkBtn">Link Roblox Studio</button>
+              <button class="btn ghost" id="emptyNewBtn">＋ New project</button>
+            </div>
           </div>
         </div>
         <div id="workspace" style="display:none">
@@ -267,22 +270,26 @@
           </section>
 
           <section id="tab-sync" style="display:none">
-            <div class="panel" id="pairPanel">
-              <h2 style="margin-top:0">Connect Roblox Studio</h2>
-              <div id="pairStatus"></div>
-              <div id="pairCodeArea"></div>
+            <div class="panel" id="linkPanel">
+              <h2 style="margin-top:0">Link Roblox Studio</h2>
+              <p style="color:var(--muted);font-size:.88rem;margin-top:-.4rem">Link your Studio to Yield <b>once</b>. After that, every place you open in Studio auto-syncs by its PlaceId — this list of games fills in automatically as you open them, with no naming or per-game pairing ever again.</p>
+              <div id="linkStatus"></div>
+              <div id="linkCodeArea"></div>
               <div class="steps">
                 <div class="step"><span class="sn">1</span><p><a href="/api/roblox/plugin.lua" id="downloadPluginLink" style="color:var(--brand-2)">Download the Yield plugin</a> and drop the .lua file into your local Roblox Studio Plugins folder (Windows: <code>%LOCALAPPDATA%\Roblox\Plugins</code>, Mac: <code>~/Documents/Roblox/Plugins</code>), then restart Studio.</p></div>
-                <div class="step"><span class="sn">2</span><p>Click <b>Generate pairing code</b> below, open the Yield panel in Studio's toolbar, and paste the code in.</p></div>
-                <div class="step"><span class="sn">3</span><p>Allow the HTTP request and script-injection permission prompts Studio shows the first time — that's expected. Your project will then sync automatically.</p></div>
+                <div class="step"><span class="sn">2</span><p>Click <b>Get link code</b> below, open the Yield panel in Studio's toolbar, and paste the code in — just this once.</p></div>
+                <div class="step"><span class="sn">3</span><p>Allow the HTTP-request and script-injection prompts Studio shows the first time. From then on, open any saved/published place and it syncs automatically.</p></div>
               </div>
-              <button class="btn primary" id="pairBtn">Generate pairing code</button>
-              <button class="btn ghost sm" id="disconnectPluginBtn" style="display:none;margin-left:.5rem">Disconnect plugin</button>
+              <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+                <button class="btn primary" id="linkBtn">Get link code</button>
+                <a class="btn ghost sm" id="robloxSigninBtn" href="/api/auth/roblox/login?redirect=/roblox" style="display:none">Sign in with Roblox</a>
+                <button class="btn ghost sm" id="unlinkBtn" style="display:none">Unlink Studio</button>
+              </div>
             </div>
             <div class="panel">
-              <h2 style="margin-top:0">Sync activity</h2>
+              <h2 style="margin-top:0">Sync activity <span style="color:var(--muted);font-weight:400;font-size:.82rem" id="opsProjName"></span></h2>
               <table class="tbl" id="opsTable"><thead><tr><th>Type</th><th>Status</th><th>Detail</th><th>When</th></tr></thead><tbody></tbody></table>
-              <div id="opsEmpty" class="empty" style="display:none;padding:1.5rem"><p style="margin:0">No sync activity yet — generate some scripts or a map, then pair the plugin.</p></div>
+              <div id="opsEmpty" class="empty" style="display:none;padding:1.5rem"><p style="margin:0">No sync activity for this place yet — generate some scripts or a map, and the linked plugin applies them on its next sync.</p></div>
             </div>
           </section>
         </div>
@@ -310,7 +317,7 @@ const ago = (t) => { if (!t) return 'never'; const d = Date.now() / 1000 - t; if
 let toastTimer;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200); }
 
-const state = { projects: [], currentId: null, current: null, tab: 'build', streaming: false, opsPoll: null };
+const state = { projects: [], currentId: null, current: null, tab: 'build', streaming: false, opsPoll: null, robloxSignin: false };
 
 async function api(path, opts) {
   const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts });
@@ -332,6 +339,12 @@ async function api(path, opts) {
     const sel = $('#modelSel');
     (models.models || []).forEach((m) => { if (!m.id || m.id === 'auto') return; const o = document.createElement('option'); o.value = m.id; o.textContent = m.label || m.id; sel.appendChild(o); });
   } catch { /* auto-only fallback is fine */ }
+
+  // Only show "Sign in with Roblox" when its OAuth is actually configured.
+  try {
+    const prov = await fetch('/api/auth/providers').then((r) => r.json());
+    state.robloxSignin = !!(prov.providers && prov.providers.roblox);
+  } catch { /* button stays hidden */ }
 
   await loadProjects();
   const qp = new URLSearchParams(location.search).get('project');
@@ -360,6 +373,18 @@ function renderProjectList() {
 
 $('#newProjectBtn').onclick = createProject;
 $('#emptyNewBtn').onclick = createProject;
+// Link Studio straight from the empty state (account-level — no project needed yet).
+$('#emptyLinkBtn').onclick = async () => {
+  const btn = $('#emptyLinkBtn'); btn.disabled = true;
+  try {
+    const r = await api('/api/roblox/link', { method: 'POST' });
+    btn.parentElement.insertAdjacentHTML('afterend',
+      `<div style="margin-top:1rem"><div class="pair-code">${esc(r.code)}</div>` +
+      `<p style="color:var(--muted);font-size:.82rem;max-width:460px;margin:.4rem auto 0">` +
+      `Download the plugin (<a href="/api/roblox/plugin.lua" style="color:var(--brand-2)">Yield.lua</a>), drop it in your Studio Plugins folder, open the Yield panel, and paste this code — once. Then open any saved place and it appears here automatically.</p></div>`);
+    btn.style.display = 'none';
+  } catch (e) { toast(e.message); } finally { btn.disabled = false; }
+};
 async function createProject() {
   const title = prompt('Name your Roblox game', 'Untitled game');
   if (title === null) return;
@@ -765,34 +790,51 @@ $('#disconnectKeyBtn').onclick = async () => {
   toast('Disconnected.');
 };
 
-// ---------- Sync tab ----------
+// ---------- Sync tab (account-level Studio link + per-place activity) ----------
 function loadSyncStatus() {
   const p = state.current.project;
   $('#searchHint').textContent = p.robloxKeyConnected ? 'Marketplace search is live for this project.' : 'Connect your own Roblox Open Cloud API key to search free models directly from Yield.';
+  loadLinkStatus();
 }
-$('#pairBtn').onclick = async () => {
-  const btn = $('#pairBtn'); btn.disabled = true;
+
+// Account-level link status (shared across all places) — not per-project.
+async function loadLinkStatus() {
+  const r = await api('/api/roblox/link').catch(() => null);
+  if (!r) return;
+  const linked = r.linkedPlaces > 0 || !!r.lastSeenAt;
+  $('#linkStatus').innerHTML = `<span class="pair-badge ${linked ? 'on' : ''}">${linked ? '● Studio linked' : '○ Studio not linked yet'}` +
+    `${r.robloxUsername ? ' · @' + esc(r.robloxUsername) : ''}` +
+    `${r.linkedPlaces ? ' · ' + r.linkedPlaces + ' place' + (r.linkedPlaces === 1 ? '' : 's') : ''}` +
+    `${r.lastSeenAt ? ' · last seen ' + ago(r.lastSeenAt) : ''}</span>`;
+  $('#unlinkBtn').style.display = linked ? '' : 'none';
+  // Show "Sign in with Roblox" only when it's configured and not already connected.
+  $('#robloxSigninBtn').style.display = (state.robloxSignin && !r.robloxConnected) ? '' : 'none';
+}
+
+$('#linkBtn').onclick = async () => {
+  const btn = $('#linkBtn'); btn.disabled = true;
   try {
-    const r = await api('/api/roblox/projects/' + state.currentId + '/pair', { method: 'POST' });
-    $('#pairCodeArea').innerHTML = `<div class="pair-code">${esc(r.code)}</div><p style="text-align:center;color:var(--muted);font-size:.8rem">Expires in 10 minutes — paste it into the Yield panel in Roblox Studio.</p>`;
+    const r = await api('/api/roblox/link', { method: 'POST' });
+    $('#linkCodeArea').innerHTML = `<div class="pair-code">${esc(r.code)}</div><p style="text-align:center;color:var(--muted);font-size:.8rem">Expires in 10 minutes — paste it into the Yield panel in Roblox Studio, just this once. Every place you open after that syncs automatically.</p>`;
   } catch (e) { toast(e.message); } finally { btn.disabled = false; }
 };
-$('#disconnectPluginBtn').onclick = async () => {
-  if (!confirm('Disconnect the Studio plugin from this project? It will need a new pairing code to reconnect.')) return;
+$('#unlinkBtn').onclick = async () => {
+  if (!confirm('Unlink every Studio install from your Yield account? Each will need a new link code to reconnect.')) return;
   try {
-    await api('/api/roblox/projects/' + state.currentId + '/unpair', { method: 'POST' });
-    toast('Disconnected.');
-    loadOps();
+    await api('/api/roblox/unlink', { method: 'POST' });
+    toast('Unlinked.');
+    loadLinkStatus();
   } catch (e) { toast(e.message); }
 };
+
+// Per-place sync activity for the currently selected project.
 async function loadOps() {
   if (!state.currentId || state.tab !== 'sync') return;
+  loadLinkStatus();
   const r = await api('/api/roblox/projects/' + state.currentId + '/ops').catch(() => null);
   if (!r) return;
-  $('#pairStatus').innerHTML = `<span class="pair-badge ${r.paired ? 'on' : ''}">${r.paired ? '● Plugin connected' : '○ Plugin not connected'}${r.placeName ? ' · ' + esc(r.placeName) : ''}${r.lastSeenAt ? ' · last seen ' + ago(r.lastSeenAt) : ''}</span>`;
-  $('#disconnectPluginBtn').style.display = r.paired ? '' : 'none';
-  // Keep the sidebar's connection dot in sync — it's otherwise only set once at
-  // loadProjects() and would go stale the moment pairing status changes here.
+  $('#opsProjName').textContent = r.placeName ? '· ' + r.placeName : '';
+  // Keep the sidebar's connection dot in sync with this place's paired state.
   const proj = state.projects.find((p) => p.id === state.currentId);
   if (proj && proj.paired !== (r.paired ? 1 : 0)) { proj.paired = r.paired ? 1 : 0; renderProjectList(); }
   const tbody = $('#opsTable tbody');

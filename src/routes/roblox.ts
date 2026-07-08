@@ -260,7 +260,7 @@ async function handlePluginApi(req: Request, c: Ctx, segs: string[]): Promise<Re
 // --- AI script generation (SSE) -----------------------------------------------------
 async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow): Promise<Response> {
   const body = (await req.json().catch(() => ({}))) as { prompt?: string; model?: string; thinking?: string };
-  const prompt = (body.prompt || '').trim();
+  const prompt = (body.prompt || '').trim().slice(0, 8000);
   if (!prompt) return error(400, 'prompt required');
 
   const { response, send, close } = sse();
@@ -320,7 +320,11 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
             await chatStream(
               {
                 baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-                temperature: 0.3, top_p: 0.95, timeoutMs: 300000, ...(eff ? { extra: { reasoning_effort: eff } } : {}),
+                // A generous completion budget so a multi-script + ops answer is never
+                // truncated mid-output — without this the provider default (often small)
+                // cuts the model off and the reply "just quits". (Providers that reject
+                // the size retry with a safe cap via nvidia.ts's conservative fallback.)
+                temperature: 0.3, top_p: 0.95, max_tokens: 16000, timeoutMs: 300000, ...(eff ? { extra: { reasoning_effort: eff } } : {}),
               },
               async (delta) => { await streamer.feed(delta); },
               async (rr) => { await send('thinking', rr); },

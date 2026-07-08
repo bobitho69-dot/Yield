@@ -256,16 +256,17 @@
           </div>
         </div>
         <div class="panel">
-          <h2>Free models &amp; 3D generation <span class="dim" style="font-size:.8rem">(optional)</span></h2>
-          <p class="p-hint">Connect a Roblox Open Cloud API key so the chatbot can <b>search the marketplace</b> for free models (auto virus-scanned on insert) and <b>upload 3D-generated models</b> to your account. Without it, the AI still builds detailed maps by modeling props out of parts.</p>
+          <h2>Marketplace Key <span class="dim" style="font-size:.8rem">(optional)</span></h2>
+          <p class="p-hint">A Roblox <b>Open Cloud</b> API key, added <b>once for your whole account</b>. It lets the chatbot <b>search the marketplace</b> for free models (auto virus-scanned on insert) and <b>upload 3D-generated models</b> to your account. Without it, the AI still builds detailed maps by modeling props out of parts. Stored <b>encrypted</b> — never shown again, never sent back to your browser.</p>
           <div id="keyStatus" class="dim" style="font-size:.82rem;margin-bottom:.6rem"></div>
-          <div class="field"><label>API key</label><input id="robloxKeyInput" type="password" placeholder="paste your Open Cloud key"></div>
+          <div class="field"><label>Open Cloud API key</label><input id="robloxKeyInput" type="password" placeholder="paste your key — kept encrypted" autocomplete="off"></div>
           <div class="row2">
             <div class="field"><label>Creator type</label><select id="creatorTypeInput"><option value="User">User</option><option value="Group">Group</option></select></div>
-            <div class="field"><label>Creator id</label><input id="creatorIdInput" placeholder="your user or group id"></div>
+            <div class="field"><label>Creator id <span class="dim">(for 3D upload)</span></label><input id="creatorIdInput" placeholder="your user or group id" autocomplete="off"></div>
           </div>
-          <div style="display:flex;gap:.5rem"><button class="btn primary sm" id="connectKeyBtn">Connect</button><button class="btn ghost sm" id="disconnectKeyBtn">Disconnect</button></div>
-          <p class="dim" style="font-size:.76rem;margin-top:.6rem">Create one at create.roblox.com → Creator Dashboard → API Keys (needs asset read + upload for your creator). Stored encrypted.</p>
+          <div style="display:flex;gap:.5rem;align-items:center"><button class="btn primary sm" id="connectKeyBtn">Connect</button><button class="btn ghost sm" id="disconnectKeyBtn">Disconnect</button></div>
+          <div id="keyMsg" style="font-size:.78rem;margin-top:.5rem"></div>
+          <p class="dim" style="font-size:.76rem;margin-top:.6rem">Create one at create.roblox.com → Creator Dashboard → Open Cloud → API Keys (grant <b>Toolbox read</b> + <b>Assets read/write</b> for your creator). The creator id is the numeric id of your account or group.</p>
         </div>
       </div>
     </div>
@@ -383,8 +384,7 @@ async function selectProject(id) {
   const data = await api('/api/roblox/projects/' + id);
   state.current = data;
   $('#deleteProjectBtn').style.display = '';
-  renderTitle(); renderMessages(); renderScripts();
-  $('#keyStatus').textContent = data.project.robloxKeyConnected ? '● Connected — the chatbot can search free models and upload 3D models.' : 'Not connected — the AI models detailed props from parts instead.';
+  renderTitle(); renderMessages(); renderScripts(); loadMarketplaceStatus();
   const wantView = new URLSearchParams(location.search).get('view');
   if (wantView === 'explorer' || wantView === 'activity') setStudioView(wantView);
   history.replaceState(null, '', '/roblox?project=' + id);
@@ -538,20 +538,42 @@ $('#editorDelete').onclick = async () => {
 };
 
 // ---------- Studio drawer (link + key) ----------
-$('#toolsBtn').onclick = () => { $('#drawer').classList.add('show'); loadLink(); };
+$('#toolsBtn').onclick = () => { $('#drawer').classList.add('show'); loadLink(); loadMarketplaceStatus(); };
 $('#drawerClose').onclick = () => $('#drawer').classList.remove('show');
 $('#drawer').addEventListener('click', (e) => { if (e.target === $('#drawer')) $('#drawer').classList.remove('show'); });
+
+// Account-level Marketplace Key (a Roblox Open Cloud key) — added once, used by the
+// AI for free-model search + 3D upload across every game. The key is never returned
+// by the server; only a connected boolean + the non-secret creator id come back.
+async function loadMarketplaceStatus() {
+  try {
+    const r = await api('/api/roblox/marketplace-key');
+    const conn = !!r.connected;
+    $('#keyStatus').textContent = conn
+      ? (r.creatorId ? `● Connected · creator #${r.creatorId} (${r.creatorType || 'User'})` : '● Connected — add a creator id below to enable 3D-model upload')
+      : 'Not connected — the AI models detailed props from parts instead.';
+    if (conn && r.creatorType) $('#creatorTypeInput').value = r.creatorType;
+    if (conn && r.creatorId) $('#creatorIdInput').value = r.creatorId;
+    if (state.current && state.current.project) state.current.project.robloxKeyConnected = conn;
+  } catch { /* ignore */ }
+}
 $('#connectKeyBtn').onclick = async () => {
   const apiKey = $('#robloxKeyInput').value.trim();
-  if (!apiKey) return toast('Paste an API key first.');
-  try { await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey, creatorType: $('#creatorTypeInput').value, creatorId: $('#creatorIdInput').value.trim() }) }); } catch (e) { toast(e.message); return; }
-  $('#robloxKeyInput').value = ''; state.current.project.robloxKeyConnected = true;
-  $('#keyStatus').textContent = '● Connected — the chatbot can search free models and upload 3D models.'; toast('Roblox key connected.');
+  const msg = $('#keyMsg');
+  if (!apiKey) { msg.style.color = '#f58ea0'; msg.textContent = 'Paste your Open Cloud key first.'; return; }
+  msg.style.color = 'var(--muted)'; msg.textContent = 'Validating with Roblox…';
+  try {
+    const r = await api('/api/roblox/marketplace-key', { method: 'POST', body: JSON.stringify({ apiKey, creatorType: $('#creatorTypeInput').value, creatorId: $('#creatorIdInput').value.trim() }) });
+    $('#robloxKeyInput').value = '';
+    msg.style.color = '#5fe0a6';
+    msg.textContent = r.creatorId ? '✓ Connected — the chatbot can now search free models and upload 3D models.' : '✓ Connected — free-model search is on (add a creator id for 3D upload).';
+    loadMarketplaceStatus(); toast('Marketplace Key connected.');
+  } catch (e) { msg.style.color = '#f58ea0'; msg.textContent = e.message; }
 };
 $('#disconnectKeyBtn').onclick = async () => {
-  try { await api('/api/roblox/projects/' + state.currentId + '/roblox-key', { method: 'POST', body: JSON.stringify({ apiKey: '' }) }); } catch (e) { toast(e.message); return; }
-  state.current.project.robloxKeyConnected = false;
-  $('#keyStatus').textContent = 'Not connected — the AI models detailed props from parts instead.'; toast('Disconnected.');
+  try { await api('/api/roblox/marketplace-key', { method: 'POST', body: JSON.stringify({ apiKey: '' }) }); } catch (e) { toast(e.message); return; }
+  $('#keyMsg').textContent = ''; $('#creatorIdInput').value = '';
+  loadMarketplaceStatus(); toast('Disconnected.');
 };
 
 // ---------- Studio panel (link + activity + explorer) ----------

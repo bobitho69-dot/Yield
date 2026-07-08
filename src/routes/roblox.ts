@@ -45,6 +45,7 @@ import {
   createLinkCode, redeemLinkCode, mintUserToken, authenticatePlugin, revokeUserToken, revokeAllUserTokens,
   searchFreeModels, uploadRobloxModelAsset, type PinnedAsset, type RobloxCreator,
   setGameTree, getGameTree, formatGameTreeForPrompt, sanitizeGenericOp, type GameTreeNode,
+  setMarketplaceKey, getMarketplaceKey, marketplaceKeyStatus, validateMarketplaceKey,
 } from '../lib/roblox';
 import {
   ensureGuestUser,
@@ -89,6 +90,11 @@ export async function handleRoblox(req: Request, c: Ctx, rest: string): Promise<
   if (rest === 'link' && req.method === 'POST') return webLink(c, user.id);
   if (rest === 'link' && req.method === 'GET') return linkStatus(c, user.id);
   if (rest === 'unlink' && req.method === 'POST') return webUnlink(c, user.id);
+
+  // Account-level "Marketplace Key" (a Roblox Open Cloud key) — added once, used by
+  // the AI to search free models + upload 3D-generated models across every game.
+  if (rest === 'marketplace-key' && req.method === 'GET') return json(await marketplaceKeyStatus(c.env, user.id));
+  if (rest === 'marketplace-key' && req.method === 'POST') return connectMarketplaceKey(req, c, user.id);
 
   if (segs[0] !== 'projects') return error(404, 'Not found');
   const id = segs[1];
@@ -390,6 +396,42 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
   return response;
 }
 
+// POST /api/roblox/marketplace-key — connect/validate/clear the account-level
+// Marketplace Key. The plaintext key is validated, encrypted, and stored; it is
+// NEVER echoed back — only a boolean + the non-secret creator id are returned.
+async function connectMarketplaceKey(req: Request, c: Ctx, userId: string): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { apiKey?: string; creatorType?: string; creatorId?: string };
+  const apiKey = String(body.apiKey || '').trim();
+  if (!apiKey) { await setMarketplaceKey(c.env, userId, null, 'User', null); return json({ connected: false }); }
+  const check = await validateMarketplaceKey(apiKey);
+  if (!check.ok) return error(400, check.reason || 'That Marketplace Key was rejected.', { code: 'invalid_key' });
+  const enc = await encryptToken(c.env, apiKey);
+  const creatorType = body.creatorType === 'Group' ? 'Group' : 'User';
+  const creatorId = body.creatorId ? (String(body.creatorId).replace(/[^0-9]/g, '').slice(0, 30) || null) : null;
+  await setMarketplaceKey(c.env, userId, enc, creatorType, creatorId);
+  return json({ connected: true, creatorType, creatorId });
+}
+
+// The Roblox Open Cloud key + creator to use for a project: the account-level
+// Marketplace Key first (added once, used everywhere), falling back to a legacy
+// per-project key if one was set the old way. Returns decrypted key in-memory only.
+async function resolveRobloxKey(env: Env, userId: string, project: RobloxProjectRow): Promise<{ apiKey: string; creator: RobloxCreator | null } | null> {
+  const acct = await getMarketplaceKey(env, userId);
+  if (acct) {
+    try {
+      const apiKey = await decryptToken(env, acct.enc);
+      return { apiKey, creator: acct.creatorId ? { type: acct.creatorType, id: acct.creatorId } : null };
+    } catch { /* fall through to any legacy per-project key */ }
+  }
+  if (project.roblox_api_key_enc) {
+    try {
+      const apiKey = await decryptToken(env, project.roblox_api_key_enc);
+      return { apiKey, creator: project.roblox_creator_id ? { type: project.roblox_creator_type === 'Group' ? 'Group' : 'User', id: project.roblox_creator_id } : null };
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
 // --- Agentic ops: turn what the chat AI asked to DO into queued sync ops -----------
 // Direct ops (build_map, set/create/delete/rename/move instance, insert_model) are
 // validated and queued as-is. Meta ops the server resolves: find_model → marketplace
@@ -403,12 +445,9 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
 
   const { results: assetRows } = await listRobloxAssets(c.env, project.id);
   const library: PinnedAsset[] = assetRows.map((a) => ({ asset_id: a.asset_id, name: a.name, tags: a.tags }));
-  let apiKey: string | null = null;
-  let creator: RobloxCreator | null = null;
-  if (project.roblox_api_key_enc) {
-    try { apiKey = await decryptToken(c.env, project.roblox_api_key_enc); } catch { apiKey = null; }
-    if (apiKey && project.roblox_creator_id) creator = { type: project.roblox_creator_type === 'Group' ? 'Group' : 'User', id: project.roblox_creator_id };
-  }
+  const rk = await resolveRobloxKey(c.env, project.user_id, project);
+  const apiKey: string | null = rk?.apiKey ?? null;
+  const creator: RobloxCreator | null = rk?.creator ?? null;
   const posOf = (v: any, def: number[]) => (Array.isArray(v) && v.length === 3 ? v.map((n: any) => Number(n) || 0) : def);
 
   for (const op of ops.slice(0, 60)) {
@@ -428,12 +467,12 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
         try { const res = await searchFreeModels(apiKey, query); if (res.length) { assetId = res[0].assetId; if (!op.name) name = res[0].name || name; } } catch { /* degrade */ }
       }
       if (assetId) queued.push({ type: 'insert_model', assetId, name, position: posOf(op.position, [0, 5, 0]), rotation: posOf(op.rotation, [0, 0, 0]), scale: Number(op.scale) || 1 });
-      else notes.push(`I couldn't search the marketplace for "${query}" — connect a Roblox Open Cloud key so I can find + virus-scan + insert free models automatically.`);
+      else notes.push(`I couldn't search the marketplace for "${query}" — add your Marketplace Key (⋯ Studio → Marketplace Key) so I can find, virus-scan, and insert free models automatically.`);
     } else if (type === 'gen_model' || type === 'generate_model' || type === 'model3d') {
       const prompt = String(op.prompt || op.description || '').trim().slice(0, 200);
       if (!prompt) continue;
-      if (apiKey && creator) { pending++; c.ctx.waitUntil(generateAndInsertModel(c.env, project, prompt, op)); }
-      else notes.push(`To 3D-generate "${prompt}" I need a Roblox Open Cloud key + creator id connected (so I can upload the mesh to your account).`);
+      if (apiKey && creator) { pending++; c.ctx.waitUntil(generateAndInsertModel(c.env, project, prompt, op, apiKey, creator)); }
+      else notes.push(`To 3D-generate "${prompt}" I need your Marketplace Key + creator id connected (⋯ Studio → Marketplace Key) so I can upload the mesh to your account.`);
     } else {
       const clean = sanitizeGenericOp(op);
       if (clean) queued.push(clean);
@@ -444,13 +483,10 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
 
 // 3D-generate a mesh, upload it to the user's Roblox account, pin it, and queue a
 // scanned insert — runs detached (3D gen is slow) so the chat turn stays responsive.
-async function generateAndInsertModel(env: Env, project: RobloxProjectRow, prompt: string, op: any): Promise<void> {
+async function generateAndInsertModel(env: Env, project: RobloxProjectRow, prompt: string, op: any, apiKey: string, creator: RobloxCreator): Promise<void> {
   try {
-    if (!project.roblox_api_key_enc || !project.roblox_creator_id) return;
     const glb = await generate3dModel(env, prompt);
     if (!glb) return;
-    const apiKey = await decryptToken(env, project.roblox_api_key_enc);
-    const creator: RobloxCreator = { type: project.roblox_creator_type === 'Group' ? 'Group' : 'User', id: project.roblox_creator_id };
     const assetId = await uploadRobloxModelAsset(apiKey, creator, glb, prompt.slice(0, 50), `AI-generated for Yield: ${prompt}`.slice(0, 1000));
     if (!assetId) return;
     await addRobloxAsset(env, project.id, assetId, prompt.slice(0, 80), 'ai-generated');
@@ -536,9 +572,10 @@ async function generateMap(req: Request, c: Ctx, project: RobloxProjectRow): Pro
   // marketplace search). Runs after the response is sent; the model(s) show up via
   // a follow-up insert_model op once ready, so map generation itself stays fast.
   let pendingCustomModels = 0;
-  if (project.roblox_api_key_enc && project.roblox_creator_id && unresolved.length) {
+  const mapKey = await resolveRobloxKey(c.env, project.user_id, project);
+  if (mapKey?.apiKey && mapKey.creator && unresolved.length) {
     pendingCustomModels = Math.min(2, unresolved.length);
-    c.ctx.waitUntil(generateCustomModelsForRoles(c.env, project, unresolved.slice(0, pendingCustomModels)));
+    c.ctx.waitUntil(generateCustomModelsForRoles(c.env, project, unresolved.slice(0, pendingCustomModels), mapKey.apiKey, mapKey.creator));
   }
 
   return json({
@@ -562,11 +599,7 @@ async function generateMap(req: Request, c: Ctx, project: RobloxProjectRow): Pro
 // the user's own Roblox account, pinning it to the library and queuing an insert
 // once it's ready. Every step is best-effort — one role failing never blocks the
 // others, and this whole function runs detached from the map-generation response.
-async function generateCustomModelsForRoles(env: Env, project: RobloxProjectRow, roles: string[]): Promise<void> {
-  if (!project.roblox_api_key_enc || !project.roblox_creator_id) return;
-  let apiKey: string;
-  try { apiKey = await decryptToken(env, project.roblox_api_key_enc); } catch { return; }
-  const creator: RobloxCreator = { type: project.roblox_creator_type === 'Group' ? 'Group' : 'User', id: project.roblox_creator_id };
+async function generateCustomModelsForRoles(env: Env, project: RobloxProjectRow, roles: string[], apiKey: string, creator: RobloxCreator): Promise<void> {
   for (const role of roles) {
     try {
       const glb = await generate3dModel(env, role);
@@ -671,9 +704,9 @@ async function searchModels(req: Request, c: Ctx): Promise<Response> {
   const project = await getRobloxProject(c.env, String(body.projectId));
   if (!project || project.user_id !== c.user.id) return error(403, 'Not your project');
   const browseUrl = `https://create.roblox.com/store?Category=3&SearchKeyword=${encodeURIComponent(query)}`;
-  if (!project.roblox_api_key_enc) return json({ configured: false, results: [], browseUrl });
-  const apiKey = await decryptToken(c.env, project.roblox_api_key_enc);
-  const results = await searchFreeModels(apiKey, query);
+  const rk = await resolveRobloxKey(c.env, c.user.id, project);
+  if (!rk?.apiKey) return json({ configured: false, results: [], browseUrl });
+  const results = await searchFreeModels(rk.apiKey, query);
   return json({ configured: true, results, browseUrl });
 }
 
@@ -681,8 +714,9 @@ async function searchModels(req: Request, c: Ctx): Promise<Response> {
 // (TRELLIS) and upload it to the user's own Roblox account as a real asset,
 // pinning it to the library. Needs a connected Roblox Open Cloud key + creator id.
 async function generateModelAsset(req: Request, c: Ctx, project: RobloxProjectRow): Promise<Response> {
-  if (!project.roblox_api_key_enc || !project.roblox_creator_id) {
-    return error(400, 'Connect a Roblox Open Cloud API key (with a creator id) in the Assets tab first.', { code: 'roblox_key_required' });
+  const rk = await resolveRobloxKey(c.env, c.user!.id, project);
+  if (!rk?.apiKey || !rk.creator) {
+    return error(400, 'Connect your Marketplace Key (a Roblox Open Cloud key with a creator id) in the Studio panel first.', { code: 'roblox_key_required' });
   }
   const body = (await req.json().catch(() => ({}))) as { prompt?: string; name?: string };
   const prompt = (body.prompt || '').trim();
@@ -697,10 +731,8 @@ async function generateModelAsset(req: Request, c: Ctx, project: RobloxProjectRo
   if (!glb) return error(502, "3D model generation isn't configured or failed — try again.");
   await recordGeneration(c);
 
-  let apiKey: string;
-  try { apiKey = await decryptToken(c.env, project.roblox_api_key_enc); }
-  catch { return error(502, 'Could not read the connected Roblox API key — reconnect it in the Assets tab.'); }
-  const creator: RobloxCreator = { type: project.roblox_creator_type === 'Group' ? 'Group' : 'User', id: project.roblox_creator_id };
+  const apiKey = rk.apiKey;
+  const creator: RobloxCreator = rk.creator;
   const name = (body.name || prompt).slice(0, 50);
   const assetId = await uploadRobloxModelAsset(apiKey, creator, glb, name, `AI-generated for Yield: ${prompt}`.slice(0, 1000));
   if (!assetId) return error(502, 'Generated the model, but uploading it to Roblox failed — check the API key has asset-upload permission for that creator and try again.');

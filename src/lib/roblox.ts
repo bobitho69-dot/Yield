@@ -518,6 +518,44 @@ export function sanitizeGenericOp(op: any): Record<string, unknown> | null {
   }
 }
 
+// --- Marketplace Key: the user's Roblox Open Cloud key -----------------------------
+// Yield calls it the "Marketplace Key". It's ACCOUNT-LEVEL (added once, used for
+// every game the user builds) so the AI can search free marketplace models and
+// upload 3D-generated models. Stored AES-GCM ENCRYPTED (the caller encrypts via
+// encryptToken before calling here) in KV — never in D1, never returned to the
+// client, never logged. Only a boolean "connected" + the (non-secret) creator id
+// are ever surfaced.
+export interface MarketplaceKeyRecord { enc: string; creatorType: 'User' | 'Group'; creatorId: string | null }
+
+export async function setMarketplaceKey(env: Env, userId: string, encKey: string | null, creatorType: 'User' | 'Group', creatorId: string | null): Promise<void> {
+  const k = `roblox_mkt_key:${userId}`;
+  if (!encKey) { await env.KV.delete(k); return; }
+  await env.KV.put(k, JSON.stringify({ enc: encKey, creatorType, creatorId, connectedAt: now() }));
+}
+export async function getMarketplaceKey(env: Env, userId: string): Promise<MarketplaceKeyRecord | null> {
+  const v = await env.KV.get(`roblox_mkt_key:${userId}`);
+  if (!v) return null;
+  try { const o = JSON.parse(v); return { enc: o.enc, creatorType: o.creatorType === 'Group' ? 'Group' : 'User', creatorId: o.creatorId ?? null }; } catch { return null; }
+}
+// Non-secret status for the UI (never includes the key itself).
+export async function marketplaceKeyStatus(env: Env, userId: string): Promise<{ connected: boolean; creatorType?: 'User' | 'Group'; creatorId?: string | null; connectedAt?: number }> {
+  const v = await env.KV.get(`roblox_mkt_key:${userId}`);
+  if (!v) return { connected: false };
+  try { const o = JSON.parse(v); return { connected: true, creatorType: o.creatorType === 'Group' ? 'Group' : 'User', creatorId: o.creatorId ?? null, connectedAt: o.connectedAt }; } catch { return { connected: false }; }
+}
+// Best-effort validation so we never store a junk/expired key: an authenticated
+// probe that only REJECTS on a clear auth failure (401/403); any other outcome
+// (200/404/429/5xx/network) is accepted so Roblox flakiness never blocks the user.
+export async function validateMarketplaceKey(apiKey: string): Promise<{ ok: boolean; reason?: string }> {
+  if (!apiKey || apiKey.trim().length < 12) return { ok: false, reason: 'That key looks too short — paste the full Open Cloud API key.' };
+  if (/\s/.test(apiKey.trim())) return { ok: false, reason: 'The key contains spaces — copy it exactly, with no line breaks.' };
+  try {
+    const r = await fetch('https://apis.roblox.com/toolbox-service/v1/items?category=Model&keyword=tree&limit=1', { headers: { 'x-api-key': apiKey.trim(), accept: 'application/json' } });
+    if (r.status === 401 || r.status === 403) return { ok: false, reason: 'Roblox rejected the key — make sure it has Toolbox/Assets read permission and has not expired.' };
+    return { ok: true };
+  } catch { return { ok: true }; }
+}
+
 // --- Free-model marketplace search (best-effort; needs the user's own Roblox ----
 // Open Cloud API key). VERIFY the exact path/response shape at
 // create.roblox.com/docs/cloud/api/toolbox-service — Roblox's Open Cloud surface

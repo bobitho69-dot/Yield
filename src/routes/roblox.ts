@@ -17,7 +17,7 @@
 //   GET               /api/roblox/projects/:id/ops            recent sync activity log
 //   POST/GET          /api/roblox/link                        mint a one-time Studio link code / link status
 //   POST              /api/roblox/unlink                      revoke every plugin token for this user
-//   POST              /api/roblox/models/search                marketplace search (needs a connected key)
+//   POST              /api/roblox/models/search                marketplace search (legacy/best-effort — the AI's find_model searches in Studio instead)
 //   GET               /api/roblox/plugin.lua                   download the Studio plugin (public)
 // Plugin (Authorization: Bearer <permanent user token>):
 //   POST /api/roblox/plugin/link      {code} -> {token, robloxUsername}   (one-time; permanent token)
@@ -43,7 +43,7 @@ import { ROBLOX_CONVO_SYSTEM, ROBLOX_EDIT_NOTE, ROBLOX_MAP_SYSTEM } from '../lib
 import {
   makeScriptStreamer, sanitizeScriptPath, sanitizeClassName, sanitizeMapSpec,
   createLinkCode, redeemLinkCode, mintUserToken, authenticatePlugin, revokeUserToken, revokeAllUserTokens,
-  searchFreeModels, uploadRobloxModelAsset, type PinnedAsset, type RobloxCreator,
+  searchFreeModels, uploadRobloxModelAsset, type PinnedAsset, type RobloxCreator, type UnresolvedRole,
   setGameTree, getGameTree, formatGameTreeForPrompt, sanitizeGenericOp, type GameTreeNode,
   setMarketplaceKey, getMarketplaceKey, marketplaceKeyStatus, validateMarketplaceKey,
   parseGlbMesh, glbBytesFromResult, extractOpsFromChat, isStudioLinked,
@@ -297,16 +297,24 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       const treeText = formatGameTreeForPrompt(await getGameTree(c.env, project.id));
       if (treeText) messages.push({ role: 'system', content: treeText });
       else messages.push({ role: 'system', content: 'No game snapshot has been pushed yet this session (the Studio plugin has not synced this place). You STILL have full access — build and queue the requested work normally; it applies on the plugin\'s next sync. If the user wants you to see the current contents first, tell them to click "Sync now" / "Push game" in the Yield panel in Roblox Studio (and re-download the plugin if theirs is outdated). Do NOT tell the user you cannot access their game.' });
-      // Tell the AI whether marketplace/3D tooling is actually available, so it builds
-      // scenery it CAN deliver instead of emitting unresolvable model requests.
+      // Tell the AI what tooling is available. find_model ALWAYS works (the Studio
+      // plugin searches the marketplace itself — no key involved), and gen_model
+      // works whenever the 3D generator is configured server-side. The Marketplace
+      // Key only adds the optional publish-to-account fallback for generated meshes.
       const [assetCount, keyStatus] = await Promise.all([listRobloxAssets(c.env, project.id), marketplaceKeyStatus(c.env, project.user_id)]);
       const hasKey = keyStatus.connected || !!project.roblox_api_key_enc;
       const hasLibrary = (assetCount.results?.length || 0) > 0;
+      const has3d = !!(c.env.TRELLIS_API_URL && c.env.NVIDIA_API_KEY);
       messages.push({
         role: 'system',
-        content: hasKey
-          ? `A Marketplace Key IS connected${hasLibrary ? ' and the pinned model library has assets' : ''}, so find_model (marketplace search), gen_model (custom 3D mesh), and matched "models" roles all work. Still prefer sculpting "props" from parts for most scenery; use find_model for hero marketplace assets and gen_model for custom meshes.`
-          : `NO Marketplace Key is connected. find_model and unmatched "models" roles will NOT resolve — do NOT use them, and NEVER tell the user you "need a model" or to find one. (gen_model DOES still work without a key — it builds the mesh directly in Studio, no publishing — but 3D generation is slow, so use it only for the occasional special hero prop.) Build the BULK of scenery (trees, rocks, houses, carts, fences) yourself as "props" sculpted from parts — plenty of parts, colors, and repetition. You can make an excellent map entirely from parts.`,
+        content:
+          `find_model (free-model marketplace search) IS available — the Studio plugin itself searches, virus-scans, and inserts the top match, no key needed. ` +
+          (has3d
+            ? 'gen_model (custom 3D mesh generation) IS available — it builds the mesh directly in Studio with no publishing; it is slow (~a minute each), so reserve it for special hero props. '
+            : 'gen_model (custom 3D mesh generation) is NOT configured on this server — do not use it. ') +
+          (hasLibrary ? 'The pinned model library has assets, so matched "models" roles work too. ' : '') +
+          (hasKey ? 'A Marketplace Key is connected (used only to publish generated meshes to the user\'s account when needed). ' : '') +
+          'Still sculpt the BULK of scenery (trees, rocks, houses, fences) yourself as "props" built from parts — use find_model for hero marketplace assets and gen_model for the occasional bespoke mesh. NEVER tell the user you "need a model" or lack access — you have the tools.',
       });
       const existing = await listRobloxFiles(c.env, project.id);
       if (existing.length) {
@@ -455,7 +463,8 @@ async function resolveRobloxKey(env: Env, userId: string, project: RobloxProject
 // --- Agentic ops: turn what the chat AI asked to DO into queued sync ops -----------
 // Direct ops (build_map, set/create/delete/rename/move instance, insert_model) are
 // validated and queued as-is. Meta ops the server resolves: find_model → marketplace
-// search (needs a key) → a scanned insert; gen_model → 3D generate + upload → insert.
+// search queued for the Studio plugin (no key) → a scanned insert; gen_model →
+// 3D generate → local mesh import (or key-based upload fallback) → insert.
 // Free models are ALWAYS virus-scanned by the plugin on insert.
 async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): Promise<{ queued: Record<string, unknown>[]; notes: string[]; pending: number }> {
   const queued: Record<string, unknown>[] = [];
@@ -475,22 +484,47 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
     if (type === 'build_map') {
       const specRaw = op.spec && typeof op.spec === 'object' ? op.spec : op;
       const clear = typeof specRaw.clear === 'boolean' ? specRaw.clear : false;
-      const { spec, unresolved } = sanitizeMapSpec(specRaw, library, clear);
+      const { spec, unresolvedDetail } = sanitizeMapSpec(specRaw, library, clear);
       queued.push({ type: 'build_map', spec });
-      if (unresolved.length) notes.push(`For the map I still need a model for: ${unresolved.slice(0, 8).join(', ')}. Tell me to find or generate them.`);
+      // Model roles with no pinned match: search the marketplace IN Studio and place
+      // the scanned top result right where the map wanted it (capped so one map
+      // can't trigger dozens of searches).
+      queued.push(...findModelOpsForRoles(unresolvedDetail, notes));
     } else if (type === 'find_model' || type === 'search_model') {
       const query = String(op.query || op.role || op.name || '').trim().slice(0, 120);
       if (!query) continue;
-      let assetId: string | null = null;
-      let name = String(op.name || query).slice(0, 60);
-      if (apiKey) {
-        try { const res = await searchFreeModels(apiKey, query); if (res.length) { assetId = res[0].assetId; if (!op.name) name = res[0].name || name; } } catch { /* degrade */ }
+      // Marketplace search happens IN Studio (InsertService:GetFreeModels) — Roblox
+      // has no Open Cloud scope for toolbox search, so no server-side key can do it.
+      // The plugin searches, virus-scans, and inserts the top match on next sync.
+      queued.push({
+        type: 'find_model', query, name: String(op.name || '').slice(0, 60),
+        position: posOf(op.position, [0, 5, 0]), rotation: posOf(op.rotation, [0, 0, 0]),
+        scale: Number(op.scale) || 1,
+      });
+    } else if (type === 'upsert_script') {
+      // Some models deliver scripts through the ops block instead of "=== script:"
+      // markers. Honor them — dropping a whole script silently reads as "the AI
+      // did nothing" even though it announced the code in chat.
+      const path = sanitizeScriptPath(String(op.path || ''));
+      const className = sanitizeClassName(String(op.className || 'Script'));
+      const source = String(op.source ?? op.code ?? '').slice(0, 200_000);
+      if (path && source.trim()) {
+        await upsertRobloxFile(c.env, project.id, path, className, source);
+        queued.push({ type: 'upsert_script', path, className, source });
       }
-      if (assetId) queued.push({ type: 'insert_model', assetId, name, position: posOf(op.position, [0, 5, 0]), rotation: posOf(op.rotation, [0, 0, 0]), scale: Number(op.scale) || 1 });
-      else notes.push(`I couldn't search the marketplace for "${query}" — add your Marketplace Key (⋯ Studio → Marketplace Key) so I can find, virus-scan, and insert free models automatically.`);
+    } else if (type === 'delete_script') {
+      const path = sanitizeScriptPath(String(op.path || ''));
+      if (path) {
+        await deleteRobloxFile(c.env, project.id, path);
+        queued.push({ type: 'delete_script', path });
+      }
     } else if (type === 'gen_model' || type === 'generate_model' || type === 'model3d') {
       const prompt = String(op.prompt || op.description || '').trim().slice(0, 200);
       if (!prompt) continue;
+      if (!c.env.TRELLIS_API_URL || !c.env.NVIDIA_API_KEY) {
+        notes.push(`3D model generation isn't configured on this server, so I couldn't generate "${prompt}" — I'll sculpt it from parts instead if you ask again.`);
+        continue;
+      }
       // Build the mesh LOCALLY in Studio (no publish, no key needed); fall back to an
       // Open Cloud upload only if the geometry can't be imported and a key exists.
       pending++;
@@ -503,15 +537,45 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
   return { queued, notes, pending };
 }
 
+// Turn map roles that matched no pinned asset into Studio-side marketplace searches
+// (find_model ops): the plugin's InsertService search finds the best free model,
+// virus-scans it, and drops it at the exact spot the map spec wanted. Capped at 12
+// placements per build so a huge map can't trigger an insert storm.
+function findModelOpsForRoles(roles: UnresolvedRole[], notes: string[]): Record<string, unknown>[] {
+  const ops: Record<string, unknown>[] = [];
+  const searched: string[] = [];
+  let budget = 12;
+  for (const u of roles) {
+    if (budget <= 0) break;
+    const copies = Math.min(Math.max(1, u.count), 6);
+    let placed = 0;
+    for (let i = 0; i < copies && budget > 0; i++, budget--, placed++) {
+      const position = copies > 1 ? [u.position[0] + i * 12, u.position[1], u.position[2]] : u.position;
+      ops.push({ type: 'find_model', query: u.role, name: '', position, rotation: u.rotation, scale: u.scale, tagAsMap: true });
+    }
+    if (placed > 0) searched.push(u.role);
+  }
+  if (searched.length) notes.push(`Searching the Roblox marketplace in Studio for: ${searched.slice(0, 8).join(', ')} — each match is virus-scanned and placed automatically on the next sync.`);
+  return ops;
+}
+
 // 3D-generate a mesh and place it. PRIMARY path: parse the .glb geometry and queue a
 // create_mesh op so the plugin builds a MeshPart LOCALLY (EditableMesh) — no publish,
 // no key. FALLBACK: if the geometry can't be imported (Draco-compressed / too large)
 // and a Marketplace Key is connected, upload it as an asset and insert by id. Runs
 // detached (3D gen is slow) so the chat turn stays responsive.
 async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt: string, op: any, apiKey: string | null, creator: RobloxCreator | null): Promise<void> {
+  // On any dead end, say so in the chat — a silently-vanishing model reads as "the
+  // AI can't make models" when the real story is a failed generation or import.
+  const tellUser = async (msg: string) => {
+    try { await addRobloxMessage(env, { project_id: project.id, role: 'assistant', content: msg }); } catch { /* best-effort */ }
+  };
   try {
     const res = await generate3dModel(env, prompt);
-    if (!res) return;
+    if (!res) {
+      await tellUser(`⚠ 3D generation for "${prompt}" failed this time — ask me to try again, or I can sculpt it from parts instead.`);
+      return;
+    }
     const position = Array.isArray(op.position) && op.position.length === 3 ? op.position.map((n: any) => Number(n) || 0) : [0, 5, 0];
     const scale = Number(op.scale) || 1;
     const name = prompt.slice(0, 60);
@@ -526,12 +590,20 @@ async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt:
     // Couldn't import the geometry locally — upload it (needs a key) as a fallback.
     if (apiKey && creator) {
       const assetId = await uploadRobloxModelAsset(apiKey, creator, res, prompt.slice(0, 50), `AI-generated for Yield: ${prompt}`.slice(0, 1000));
-      if (!assetId) return;
+      if (!assetId) {
+        await tellUser(`⚠ I generated "${prompt}" but couldn't import it into Studio or publish it to your account — ask me to try again.`);
+        return;
+      }
       await addRobloxAsset(env, project.id, assetId, prompt.slice(0, 80), 'ai-generated');
       await queueRobloxOps(env, project.id, [{ type: 'insert_model', assetId, name, position, rotation: [0, 0, 0], scale }]);
       await logUsage(env, { user_id: project.user_id, kind: 'roblox_model3d_agent' });
+      return;
     }
-  } catch { /* best-effort — a failed generation must not break anything */ }
+    await tellUser(`⚠ I generated "${prompt}" but its geometry couldn't be imported directly into Studio. Connect a Marketplace Key (Tools → Marketplace Key) and I can publish it to your account instead — or ask me to sculpt it from parts.`);
+  } catch (e) {
+    console.error('generateAndPlaceMesh failed:', e);
+    await tellUser(`⚠ 3D generation for "${prompt}" hit an error — ask me to try again.`);
+  }
 }
 
 // --- AI map generation (plain JSON — usually a single fast completion) --------------
@@ -597,24 +669,17 @@ async function generateMap(req: Request, c: Ctx, project: RobloxProjectRow): Pro
 
   const { results: assetRows } = await listRobloxAssets(c.env, project.id);
   const library: PinnedAsset[] = assetRows.map((a) => ({ asset_id: a.asset_id, name: a.name, tags: a.tags }));
-  const { spec, unresolved } = sanitizeMapSpec(raw, library, clear);
+  const { spec, unresolved, unresolvedDetail } = sanitizeMapSpec(raw, library, clear);
 
   await saveRobloxMap(c.env, project.id, prompt, spec);
-  await queueRobloxOps(c.env, project.id, [{ type: 'build_map', spec }]);
+  // Unmatched model roles become Studio-side marketplace searches (find_model ops):
+  // the plugin finds the best free model, virus-scans it, and places it exactly
+  // where the map spec wanted it — no key or manual pinning needed.
+  const searchNotes: string[] = [];
+  const searchOps = findModelOpsForRoles(unresolvedDetail, searchNotes);
+  await queueRobloxOps(c.env, project.id, [{ type: 'build_map', spec }, ...searchOps]);
   await recordGeneration(c);
   await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'roblox_map' });
-
-  // Best-effort, non-blocking: for a couple of unmatched roles, ask the 3D-model AI
-  // to generate a real custom mesh and upload it to the user's own Roblox account
-  // (needs a connected Open Cloud key + creator id — the same feature that powers
-  // marketplace search). Runs after the response is sent; the model(s) show up via
-  // a follow-up insert_model op once ready, so map generation itself stays fast.
-  let pendingCustomModels = 0;
-  const mapKey = await resolveRobloxKey(c.env, project.user_id, project);
-  if (mapKey?.apiKey && mapKey.creator && unresolved.length) {
-    pendingCustomModels = Math.min(2, unresolved.length);
-    c.ctx.waitUntil(generateCustomModelsForRoles(c.env, project, unresolved.slice(0, pendingCustomModels), mapKey.apiKey, mapKey.creator));
-  }
 
   return json({
     ok: true,
@@ -624,32 +689,8 @@ async function generateMap(req: Request, c: Ctx, project: RobloxProjectRow): Pro
     style: style || null,
     palette: palette || null,
     unresolved,
-    pendingCustomModels,
-    unresolvedHelp: unresolved.length
-      ? (pendingCustomModels
-          ? `Generating ${pendingCustomModels} custom 3D model(s) for these props now — they'll sync automatically once ready. The rest need a free model: search the marketplace or paste an asset id into your library, then regenerate.`
-          : 'These props need a free model — search the marketplace (connect a Roblox Open Cloud key) or paste an asset id into your library, then regenerate.')
-      : null,
+    unresolvedHelp: searchNotes[0] || null,
   });
-}
-
-// Generate a real 3D mesh (TRELLIS) for each unresolved map role and upload it to
-// the user's own Roblox account, pinning it to the library and queuing an insert
-// once it's ready. Every step is best-effort — one role failing never blocks the
-// others, and this whole function runs detached from the map-generation response.
-async function generateCustomModelsForRoles(env: Env, project: RobloxProjectRow, roles: string[], apiKey: string, creator: RobloxCreator): Promise<void> {
-  for (const role of roles) {
-    try {
-      const glb = await generate3dModel(env, role);
-      if (!glb) continue;
-      const assetId = await uploadRobloxModelAsset(apiKey, creator, glb, role.slice(0, 50), `AI-generated for Yield: ${role}`.slice(0, 1000));
-      if (!assetId) continue;
-      const name = role.slice(0, 80) || 'AI model';
-      await addRobloxAsset(env, project.id, assetId, name, 'ai-generated');
-      await queueRobloxOps(env, project.id, [{ type: 'insert_model', assetId, name, position: [0, 5, 0], rotation: [0, 0, 0], scale: 1 }]);
-      await logUsage(env, { user_id: project.user_id, kind: 'roblox_model3d_auto' });
-    } catch { /* one role failing must not block the rest */ }
-  }
 }
 
 // GET /api/roblox/projects/:id/maps — recent map-generation history.

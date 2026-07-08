@@ -552,6 +552,48 @@ local function applyInsertModel(op)
 	return detail
 end
 
+-- Marketplace search runs HERE in Studio (InsertService:GetFreeModels) because
+-- Roblox has no public Open Cloud scope for toolbox search -- no API key can grant
+-- it, so the server can't do this. The top match is loaded, virus-scanned, and
+-- placed like any other insert.
+local function applyFindModel(op)
+	local query = tostring(op.query or "")
+	if query == "" then
+		error("find_model op is missing a query")
+	end
+
+	local searchOk, pages = pcall(function()
+		return InsertService:GetFreeModels(query, 0)
+	end)
+	local hit = nil
+	if searchOk and type(pages) == "table" and type(pages[1]) == "table" and type(pages[1].Results) == "table" then
+		hit = pages[1].Results[1]
+	end
+	if not hit or not hit.AssetId then
+		if not searchOk then
+			error(("marketplace search for '%s' failed: %s"):format(query, tostring(pages)))
+		end
+		error(("marketplace search found nothing for '%s' -- try different words"):format(query))
+	end
+
+	local entry = {
+		assetId = hit.AssetId,
+		name = (op.name and op.name ~= "" and op.name) or hit.Name,
+		position = op.position,
+		rotation = op.rotation,
+		scale = op.scale,
+	}
+	local inst, removed = insertModel(entry, op.tagAsMap == true)
+	local detail = ("Marketplace '%s' -> inserted '%s' (id %s)"):format(query, inst.Name, tostring(hit.AssetId))
+	if removed and removed > 0 then
+		detail = detail .. (" -- scanned, removed %d virus script(s)"):format(removed)
+	else
+		detail = detail .. " -- scanned, clean"
+	end
+	logActivity(detail)
+	return detail
+end
+
 local function applyBuildMap(op)
 	local spec = op.spec
 	if type(spec) ~= "table" then
@@ -1094,6 +1136,8 @@ local function performSync()
 				detail = applyBuildMap(op)
 			elseif op.type == "insert_model" then
 				detail = applyInsertModel(op)
+			elseif op.type == "find_model" then
+				detail = applyFindModel(op)
 			elseif op.type == "create_mesh" then
 				detail = applyCreateMesh(op)
 			elseif op.type == "set_properties" then

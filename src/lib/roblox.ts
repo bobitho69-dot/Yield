@@ -55,8 +55,14 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
   const REASON_OPEN = /<(think|thinking|reasoning|tool_call)>/i;
   const STRUCTURAL = /^\s*(?:={2,}\s*(?:script|summary|recap|done|notes|ask|concept)\b|```)/i;
 
+  // A fenced ```yield-ops (aka yield-edits/yield-build/yield-actions) block: the AI's
+  // way to DO things in the game beyond writing scripts — build maps, edit/create/
+  // delete/move any instance, ask the server to find a free marketplace model, or
+  // generate a 3D model. Its body is a JSON array of op objects the server resolves.
+  const YIELD_OPS_LANG = /^yield[-_]?(ops|edits|edit|build|actions|action)$/i;
+
   let buf = '';
-  let mode: 'chat' | 'script' = 'chat';
+  let mode: 'chat' | 'script' | 'ops' = 'chat';
   let reasonClose: string | null = null;
   let fenceOpen = false;
   let fenceIndex = 0;
@@ -66,8 +72,29 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
   const imagePrompts: string[] = [];
   const scripts: { path: string; className: string; lines: string[] }[] = [];
   let cur: { path: string; className: string; lines: string[] } | null = null;
+  let opsBuf: string[] | null = null;
+  const opsRaw: any[] = [];
+
+  function flushOpsBlock() {
+    if (!opsBuf) return;
+    const text = opsBuf.join('\n').trim();
+    opsBuf = null;
+    if (!text) return;
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) opsRaw.push(...parsed);
+      else if (parsed && typeof parsed === 'object') opsRaw.push(parsed);
+    } catch { /* a malformed ops block is just dropped — scripts/chat still land */ }
+  }
 
   async function handleLine(line: string): Promise<void> {
+    // Inside a yield-ops block, accumulate raw JSON lines until the closing fence —
+    // never interpret them as chat/script/markers.
+    if (mode === 'ops') {
+      if (/^\s*\`\`\`/.test(line)) { flushOpsBlock(); mode = 'chat'; return; }
+      if (opsBuf) opsBuf.push(line);
+      return;
+    }
     if (reasonClose) {
       if (!STRUCTURAL.test(line)) {
         const close = line.toLowerCase().indexOf(reasonClose);
@@ -118,6 +145,7 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
     // Fallback: some coder models ignore the marker format and just use ```lua fences.
     const fenceM = line.match(/^\s*```([A-Za-z0-9.\-_/:+]*)\s*$/);
     if (fenceM) {
+      if (mode === 'chat' && YIELD_OPS_LANG.test(fenceM[1] || '')) { mode = 'ops'; opsBuf = []; await send('status', { stage: 'Editing the game…' }); return; }
       if (mode === 'script' && fenceOpen) { fenceOpen = false; mode = 'chat'; cur = null; return; }
       if (mode === 'chat') {
         fenceIndex += 1;
@@ -145,12 +173,13 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
       }
     },
     async end() {
+      if (mode === 'ops') { flushOpsBlock(); mode = 'chat'; }
       if (buf.length) { await handleLine(buf); buf = ''; }
     },
     reset() {
       buf = ''; mode = 'chat'; reasonClose = null; fenceOpen = false; lastStatus = ''; asked = false;
-      cur = null;
-      scripts.length = 0; chatLines.length = 0; imagePrompts.length = 0;
+      cur = null; opsBuf = null;
+      scripts.length = 0; chatLines.length = 0; imagePrompts.length = 0; opsRaw.length = 0;
     },
     get produced() {
       return scripts.some((f) => f.lines.some((l) => l.trim())) || chatLines.some((l) => l.trim());
@@ -164,7 +193,7 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
       const out: RobloxScriptOut[] = scripts
         .map((s) => ({ path: s.path, className: s.className, source: cleanSource(s.lines.join('\n')) }))
         .filter((s) => sanitizeScriptPath(s.path) && s.source.trim());
-      return { chat: chat || (out.length ? 'Here you go.' : ''), scripts: out, asked, images: imagePrompts.slice(0, 4) };
+      return { chat: chat || (out.length || opsRaw.length ? 'Here you go.' : ''), scripts: out, asked, images: imagePrompts.slice(0, 4), ops: opsRaw.slice(0, 200) };
     },
   };
 }
@@ -352,8 +381,32 @@ export interface SanitizedMapSpec {
   clear?: boolean;
   baseplate?: { size: [number, number]; material: string; color: string };
   parts: Record<string, unknown>[];
+  // AI-modeled props: detailed scenery the AI sculpts OUT OF PARTS itself (a Model
+  // whose child parts are positioned relative to the prop origin) — no marketplace
+  // asset needed, so it works with zero setup and lets the AI hit very high detail.
+  props?: { name: string; position: [number, number, number]; parts: Record<string, unknown>[] }[];
   models: ResolvedModelPlacement[];
   lighting?: Record<string, unknown>;
+}
+
+function sanitizePartList(raw: unknown, limit: number, defSize: [number, number, number], posRange: number): Record<string, unknown>[] {
+  const arr = Array.isArray(raw) ? raw.slice(0, limit) : [];
+  const out: Record<string, unknown>[] = [];
+  for (const p of arr) {
+    if (!p || typeof p !== 'object') continue;
+    out.push({
+      name: String((p as any).name || 'Part').slice(0, 60),
+      shape: SHAPES.has((p as any).shape) ? (p as any).shape : 'Block',
+      size: vec3((p as any).size, defSize, 0.1, 2000),
+      position: vec3((p as any).position, [0, 0, 0], -posRange, posRange),
+      rotation: vec3((p as any).rotation, [0, 0, 0], -360, 360),
+      color: hex((p as any).color, '#9a9a9a'),
+      material: MATERIALS.has((p as any).material) ? (p as any).material : 'Plastic',
+      anchored: (p as any).anchored !== false,
+      transparency: num((p as any).transparency, 0, 0, 1),
+    });
+  }
+  return out;
 }
 
 /** Clamp/validate an AI-produced map spec and resolve its model "roles" against the
@@ -372,20 +425,18 @@ export function sanitizeMapSpec(raw: any, library: PinnedAsset[], clear: boolean
     };
   }
 
-  const parts = Array.isArray(raw?.parts) ? raw.parts.slice(0, 80) : [];
-  for (const p of parts) {
-    if (!p || typeof p !== 'object') continue;
-    spec.parts.push({
-      name: String(p.name || 'Part').slice(0, 60),
-      shape: SHAPES.has(p.shape) ? p.shape : 'Block',
-      size: vec3(p.size, [4, 4, 4], 0.2, 2000),
-      position: vec3(p.position, [0, 5, 0], -5000, 5000),
-      rotation: vec3(p.rotation, [0, 0, 0], -360, 360),
-      color: hex(p.color, '#9a9a9a'),
-      material: MATERIALS.has(p.material) ? p.material : 'Plastic',
-      anchored: p.anchored !== false,
-      transparency: num(p.transparency, 0, 0, 1),
-    });
+  spec.parts = sanitizePartList(raw?.parts, 200, [4, 4, 4], 5000);
+
+  // AI-modeled props (Models built from parts) — the AI sculpts detailed scenery
+  // itself. Each prop's child parts are placed relative to the prop origin.
+  const rawProps = Array.isArray(raw?.props) ? raw.props.slice(0, 60) : [];
+  if (rawProps.length) {
+    spec.props = [];
+    for (const pr of rawProps) {
+      if (!pr || typeof pr !== 'object') continue;
+      const pieces = sanitizePartList((pr as any).parts, 80, [2, 2, 2], 500);
+      if (pieces.length) spec.props.push({ name: String((pr as any).name || 'Prop').slice(0, 60), position: vec3((pr as any).position, [0, 0, 0], -5000, 5000), parts: pieces });
+    }
   }
 
   const { placements, unresolved } = resolveModels(raw?.models, library);
@@ -401,6 +452,70 @@ export function sanitizeMapSpec(raw: any, library: PinnedAsset[], clear: boolean
   }
 
   return { spec, unresolved };
+}
+
+// --- Whole-game read: the tree the plugin pushes (the AI's "eyes" on the place) --
+// Stored in KV (no D1 migration needed) so a game of any size can be kept + fed to
+// the AI as context and rendered in the web Explorer.
+export interface GameTreeNode { path: string; className: string; props?: Record<string, unknown> }
+export interface GameTreePayload { tree: GameTreeNode[]; truncated?: boolean; at: number; scriptCount?: number }
+
+export async function setGameTree(env: Env, projectId: string, payload: GameTreePayload): Promise<void> {
+  try { await env.KV.put(`roblox_tree:${projectId}`, JSON.stringify(payload)); } catch { /* best-effort — a snapshot failing must not break the sync */ }
+}
+export async function getGameTree(env: Env, projectId: string): Promise<GameTreePayload | null> {
+  const v = await env.KV.get(`roblox_tree:${projectId}`);
+  if (!v) return null;
+  try { return JSON.parse(v) as GameTreePayload; } catch { return null; }
+}
+
+// Compact outline of the game the coder AI reads so it knows exactly what exists and
+// can target real paths when it edits — kept short to stay within the token budget.
+export function formatGameTreeForPrompt(payload: GameTreePayload | null, maxLines = 280): string {
+  if (!payload || !Array.isArray(payload.tree) || !payload.tree.length) return '';
+  const lines: string[] = [];
+  for (const n of payload.tree) {
+    if (lines.length >= maxLines) break;
+    let line = `${n.path} [${n.className}]`;
+    const p = n.props as any;
+    if (p && Array.isArray(p.size)) line += ` size=${p.size.join('x')} pos=(${(p.position || []).join(',')}) ${p.material || ''} ${p.color || ''}`.replace(/\s+/g, ' ').trimEnd();
+    lines.push(line);
+  }
+  const more = payload.tree.length > lines.length ? `\n…and ${payload.tree.length - lines.length} more` : '';
+  return `The linked Studio place currently contains ${payload.tree.length} instance(s)${payload.truncated ? ' (truncated)' : ''}:\n${lines.join('\n')}${more}`;
+}
+
+// --- Agentic edit ops: validate the direct ops the AI emits in a yield-ops block --
+// (find_model / gen_model are resolved separately in the route, since they need the
+// user's Roblox key + the marketplace/3D APIs.) Never throws — a bad op returns null.
+const OP_PATH_RE = /^[A-Za-z0-9_ .\-]+(?:\/[A-Za-z0-9_ .\-]+)*$/;
+function cleanOpPath(p: unknown): string | null {
+  const s = String(p ?? '').trim().replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+  return s.length >= 1 && s.length <= 400 && OP_PATH_RE.test(s) ? s : null;
+}
+function cleanOpProps(pr: unknown): Record<string, unknown> {
+  if (!pr || typeof pr !== 'object' || Array.isArray(pr)) return {};
+  return Object.fromEntries(Object.entries(pr as Record<string, unknown>).slice(0, 40).map(([k, v]) => [String(k).slice(0, 60), v]));
+}
+export function sanitizeGenericOp(op: any): Record<string, unknown> | null {
+  if (!op || typeof op !== 'object') return null;
+  const type = String(op.type || '');
+  switch (type) {
+    case 'set_properties': { const path = cleanOpPath(op.path); return path ? { type, path, properties: cleanOpProps(op.properties) } : null; }
+    case 'create_instance': {
+      const parent = cleanOpPath(op.parent);
+      const className = String(op.className || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 40);
+      return parent && className ? { type, parent, className, name: String(op.name || className).slice(0, 60), properties: cleanOpProps(op.properties) } : null;
+    }
+    case 'delete_instance': { const path = cleanOpPath(op.path); return path ? { type, path } : null; }
+    case 'rename_instance': { const path = cleanOpPath(op.path); const name = String(op.name || '').slice(0, 60); return path && name ? { type, path, name } : null; }
+    case 'move_instance': { const path = cleanOpPath(op.path); const parent = cleanOpPath(op.parent); return path && parent ? { type, path, parent } : null; }
+    case 'insert_model': {
+      const m = String(op.assetId ?? '').match(/\d{3,20}/);
+      return m ? { type, assetId: m[0], name: String(op.name || 'Model').slice(0, 60), position: vec3(op.position, [0, 5, 0], -5000, 5000), rotation: vec3(op.rotation, [0, 0, 0], -360, 360), scale: num(op.scale, 1, 0.1, 20) } : null;
+    }
+    default: return null;
+  }
 }
 
 // --- Free-model marketplace search (best-effort; needs the user's own Roblox ----

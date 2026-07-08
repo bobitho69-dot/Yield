@@ -65,7 +65,7 @@ crons = ["0 6 * * *"]
 # --- Non-secret vars (override per environment) --------------------------------
 [vars]
 APP_NAME = "Yield"
-APP_URL = "https://yield.example.workers.dev"
+APP_URL = "https://yield.bobitho69.workers.dev"
 
 # NVIDIA endpoints (OpenAI-compatible chat + NemoGuard jailbreak classifier).
 NVIDIA_CHAT_BASE = "https://integrate.api.nvidia.com/v1"

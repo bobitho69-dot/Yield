@@ -161,6 +161,19 @@ export async function getGithubAuth(env: Env, userId: string): Promise<{ login: 
   return { login: row.github_login, tokenEnc: row.github_token_enc };
 }
 
+// --- Linked Roblox account ("Sign in with Roblox" / account link) --------------
+export async function setRobloxAuth(env: Env, userId: string, robloxUserId: string, robloxUsername: string | null): Promise<void> {
+  await env.DB.prepare('UPDATE users SET roblox_user_id=?, roblox_username=?, updated_at=? WHERE id=?')
+    .bind(robloxUserId, robloxUsername, now(), userId)
+    .run();
+}
+
+export function getRobloxAuth(env: Env, userId: string): Promise<{ roblox_user_id: string | null; roblox_username: string | null } | null> {
+  return env.DB.prepare('SELECT roblox_user_id, roblox_username FROM users WHERE id=?')
+    .bind(userId)
+    .first<{ roblox_user_id: string | null; roblox_username: string | null }>();
+}
+
 export async function setProjectGithub(
   env: Env, id: string, repo: string, url: string, branch: string,
 ): Promise<void> {
@@ -547,4 +560,261 @@ export function getSecretRows(env: Env, userId: string, projectId: string): Prom
   return env.DB.prepare("SELECT name,value_enc FROM secrets WHERE user_id=? AND (project_id=? OR project_id='')")
     .bind(userId, projectId)
     .all<{ name: string; value_enc: string }>();
+}
+
+// --- Yield Roblox (AI-built Roblox games synced to a Studio plugin) -----------
+export interface RobloxProjectRow {
+  id: string;
+  user_id: string;
+  title: string;
+  model: string | null;
+  paired: number;
+  place_name: string | null;
+  place_id: string | null;
+  auto_created: number;
+  paired_at: number | null;
+  last_seen_at: number | null;
+  roblox_api_key_enc: string | null;
+  roblox_creator_type: string | null;
+  roblox_creator_id: string | null;
+  map_style: string | null;
+  map_palette: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export async function createRobloxProject(env: Env, userId: string, title: string): Promise<RobloxProjectRow> {
+  const id = newId();
+  const t = now();
+  await env.DB.prepare('INSERT INTO roblox_projects (id,user_id,title,created_at,updated_at) VALUES (?,?,?,?,?)')
+    .bind(id, userId, title || 'Untitled game', t, t)
+    .run();
+  return (await getRobloxProject(env, id))!;
+}
+
+export function getRobloxProject(env: Env, id: string): Promise<RobloxProjectRow | null> {
+  return env.DB.prepare('SELECT * FROM roblox_projects WHERE id = ?').bind(id).first<RobloxProjectRow>();
+}
+
+export function getRobloxProjectByPlace(env: Env, userId: string, placeId: string): Promise<RobloxProjectRow | null> {
+  return env.DB.prepare('SELECT * FROM roblox_projects WHERE user_id=? AND place_id=?').bind(userId, placeId).first<RobloxProjectRow>();
+}
+
+// The heart of "just pick up": given the Roblox PlaceId the plugin reported, return
+// the matching project for this user, auto-creating it (named after the place) the
+// first time that place is seen. No manual naming, ever.
+export async function findOrCreateRobloxProjectByPlace(
+  env: Env, userId: string, placeId: string, placeName: string | null,
+): Promise<RobloxProjectRow> {
+  const existing = await getRobloxProjectByPlace(env, userId, placeId);
+  if (existing) {
+    // Keep the display name fresh if the place was renamed in Studio.
+    if (placeName && placeName !== existing.place_name) {
+      await env.DB.prepare('UPDATE roblox_projects SET place_name=?, title=?, updated_at=? WHERE id=?')
+        .bind(placeName, placeName, now(), existing.id).run();
+      return (await getRobloxProject(env, existing.id))!;
+    }
+    return existing;
+  }
+  const id = newId();
+  const t = now();
+  const title = (placeName && placeName.trim()) || `Place ${placeId}`;
+  // ON CONFLICT guards the (user_id, place_id) unique index against a race between
+  // two near-simultaneous plugin pulls for the same freshly-opened place.
+  await env.DB.prepare(
+    `INSERT INTO roblox_projects (id,user_id,title,place_id,place_name,auto_created,paired,paired_at,last_seen_at,created_at,updated_at)
+     VALUES (?,?,?,?,?,1,1,?,?,?,?)
+     ON CONFLICT(user_id,place_id) DO UPDATE SET last_seen_at=excluded.last_seen_at`,
+  ).bind(id, userId, title, placeId, placeName, t, t, t, t).run();
+  return (await getRobloxProjectByPlace(env, userId, placeId))!;
+}
+
+export function listRobloxProjects(env: Env, userId: string): Promise<{ results: RobloxProjectRow[] }> {
+  return env.DB.prepare('SELECT * FROM roblox_projects WHERE user_id=? ORDER BY updated_at DESC LIMIT 100')
+    .bind(userId)
+    .all<RobloxProjectRow>();
+}
+
+export async function renameRobloxProject(env: Env, id: string, title: string): Promise<void> {
+  await env.DB.prepare('UPDATE roblox_projects SET title=?, updated_at=? WHERE id=?').bind(title, now(), id).run();
+}
+
+export async function touchRobloxProject(env: Env, id: string, model?: string | null): Promise<void> {
+  await env.DB.prepare('UPDATE roblox_projects SET model=COALESCE(?,model), updated_at=? WHERE id=?').bind(model ?? null, now(), id).run();
+}
+
+export async function deleteRobloxProject(env: Env, id: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM roblox_projects WHERE id = ?').bind(id).run();
+}
+
+export async function markRobloxPaired(env: Env, id: string, p: { placeName?: string | null; placeId?: string | null }): Promise<void> {
+  const t = now();
+  await env.DB.prepare('UPDATE roblox_projects SET paired=1, paired_at=?, last_seen_at=?, place_name=COALESCE(?,place_name), place_id=COALESCE(?,place_id), updated_at=? WHERE id=?')
+    .bind(t, t, p.placeName ?? null, p.placeId ?? null, t, id)
+    .run();
+}
+
+export async function markRobloxUnpaired(env: Env, id: string): Promise<void> {
+  await env.DB.prepare('UPDATE roblox_projects SET paired=0, updated_at=? WHERE id=?').bind(now(), id).run();
+}
+
+export async function touchRobloxSeen(env: Env, id: string, p: { placeName?: string | null; placeId?: string | null } = {}): Promise<void> {
+  await env.DB.prepare('UPDATE roblox_projects SET last_seen_at=?, place_name=COALESCE(?,place_name), place_id=COALESCE(?,place_id) WHERE id=?')
+    .bind(now(), p.placeName ?? null, p.placeId ?? null, id)
+    .run();
+}
+
+export async function setRobloxApiKey(env: Env, id: string, encOrNull: string | null, creatorType: string | null, creatorId: string | null): Promise<void> {
+  await env.DB.prepare('UPDATE roblox_projects SET roblox_api_key_enc=?, roblox_creator_type=?, roblox_creator_id=?, updated_at=? WHERE id=?')
+    .bind(encOrNull, creatorType, creatorId, now(), id)
+    .run();
+}
+
+// Remembered map art-direction preferences — pre-filled into the Map tab and always
+// given to the map AI so a project's look stays consistent across regenerations.
+export async function setRobloxMapPrefs(env: Env, id: string, style: string | null, palette: string | null): Promise<void> {
+  await env.DB.prepare('UPDATE roblox_projects SET map_style=COALESCE(?,map_style), map_palette=COALESCE(?,map_palette), updated_at=? WHERE id=?')
+    .bind(style, palette, now(), id)
+    .run();
+}
+
+// --- Roblox files (one row per Script/LocalScript/ModuleScript instance) ------
+export interface RobloxFileRow {
+  path: string;
+  class_name: string;
+  source: string;
+  updated_at: number;
+}
+
+export async function listRobloxFiles(env: Env, projectId: string): Promise<RobloxFileRow[]> {
+  const { results } = await env.DB.prepare('SELECT path,class_name,source,updated_at FROM roblox_files WHERE project_id=? ORDER BY path')
+    .bind(projectId)
+    .all<RobloxFileRow>();
+  return results;
+}
+
+export async function upsertRobloxFile(env: Env, projectId: string, path: string, className: string, source: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO roblox_files (id,project_id,path,class_name,source,updated_at) VALUES (?,?,?,?,?,?)
+     ON CONFLICT(project_id,path) DO UPDATE SET class_name=excluded.class_name, source=excluded.source, updated_at=excluded.updated_at`,
+  )
+    .bind(newId(), projectId, path, className, source, now())
+    .run();
+}
+
+// Batched variant of upsertRobloxFile — one D1 round-trip for N files instead of N
+// (used when a generation or a plugin snapshot writes many scripts at once).
+export async function upsertRobloxFiles(env: Env, projectId: string, files: { path: string; className: string; source: string }[]): Promise<void> {
+  if (!files.length) return;
+  const t = now();
+  const stmts = files.map((f) =>
+    env.DB.prepare(
+      `INSERT INTO roblox_files (id,project_id,path,class_name,source,updated_at) VALUES (?,?,?,?,?,?)
+       ON CONFLICT(project_id,path) DO UPDATE SET class_name=excluded.class_name, source=excluded.source, updated_at=excluded.updated_at`,
+    ).bind(newId(), projectId, f.path, f.className, f.source, t),
+  );
+  await env.DB.batch(stmts);
+}
+
+export async function deleteRobloxFile(env: Env, projectId: string, path: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM roblox_files WHERE project_id=? AND path=?').bind(projectId, path).run();
+}
+
+// --- Roblox chat history --------------------------------------------------------
+export async function addRobloxMessage(env: Env, m: { project_id: string; role: string; content: string; model?: string | null }): Promise<void> {
+  await env.DB.prepare('INSERT INTO roblox_messages (id,project_id,role,content,model,created_at) VALUES (?,?,?,?,?,?)')
+    .bind(newId(), m.project_id, m.role, m.content, m.model ?? null, now())
+    .run();
+}
+
+export function listRobloxMessages(env: Env, projectId: string): Promise<{ results: any[] }> {
+  return env.DB.prepare('SELECT role,content,model,created_at FROM roblox_messages WHERE project_id=? ORDER BY created_at LIMIT 200')
+    .bind(projectId)
+    .all();
+}
+
+// --- Roblox sync ops (outbox the plugin polls) ---------------------------------
+export interface RobloxOpRow {
+  id: string;
+  project_id: string;
+  op: string; // JSON
+  status: string;
+  detail: string | null;
+  created_at: number;
+  applied_at: number | null;
+}
+
+export async function queueRobloxOps(env: Env, projectId: string, ops: Record<string, unknown>[]): Promise<string[]> {
+  if (!ops.length) return [];
+  const t = now();
+  const ids = ops.map(() => newId());
+  const stmts = ops.map((op, i) =>
+    env.DB.prepare('INSERT INTO roblox_ops (id,project_id,op,status,created_at) VALUES (?,?,?,\'pending\',?)')
+      .bind(ids[i], projectId, JSON.stringify(op), t),
+  );
+  await env.DB.batch(stmts);
+  return ids;
+}
+
+export function listPendingRobloxOps(env: Env, projectId: string, limit = 100): Promise<{ results: RobloxOpRow[] }> {
+  return env.DB.prepare("SELECT * FROM roblox_ops WHERE project_id=? AND status='pending' ORDER BY created_at LIMIT ?")
+    .bind(projectId, limit)
+    .all<RobloxOpRow>();
+}
+
+export async function ackRobloxOps(env: Env, projectId: string, results: { id: string; ok: boolean; detail?: string }[]): Promise<void> {
+  const t = now();
+  const stmts = results.slice(0, 300).map((r) =>
+    env.DB.prepare("UPDATE roblox_ops SET status=?, detail=?, applied_at=? WHERE id=? AND project_id=?")
+      .bind(r.ok ? 'applied' : 'failed', (r.detail || '').slice(0, 500) || null, t, r.id, projectId),
+  );
+  if (stmts.length) await env.DB.batch(stmts);
+}
+
+export function listRecentRobloxOps(env: Env, projectId: string, limit = 40): Promise<{ results: RobloxOpRow[] }> {
+  return env.DB.prepare('SELECT * FROM roblox_ops WHERE project_id=? ORDER BY created_at DESC LIMIT ?')
+    .bind(projectId, limit)
+    .all<RobloxOpRow>();
+}
+
+// --- Roblox free-model asset library ---------------------------------------------
+export interface RobloxAssetRow {
+  asset_id: string;
+  name: string;
+  tags: string | null;
+  created_at: number;
+}
+
+export function listRobloxAssets(env: Env, projectId: string): Promise<{ results: RobloxAssetRow[] }> {
+  return env.DB.prepare('SELECT asset_id,name,tags,created_at FROM roblox_assets WHERE project_id=? ORDER BY created_at DESC')
+    .bind(projectId)
+    .all<RobloxAssetRow>();
+}
+
+export async function addRobloxAsset(env: Env, projectId: string, assetId: string, name: string, tags: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO roblox_assets (id,project_id,asset_id,name,tags,created_at) VALUES (?,?,?,?,?,?)
+     ON CONFLICT(project_id,asset_id) DO UPDATE SET name=excluded.name, tags=excluded.tags`,
+  )
+    .bind(newId(), projectId, assetId, name, tags, now())
+    .run();
+}
+
+export async function deleteRobloxAsset(env: Env, projectId: string, assetId: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM roblox_assets WHERE project_id=? AND asset_id=?').bind(projectId, assetId).run();
+}
+
+// --- Roblox generated map layouts (history) ---------------------------------------
+export async function saveRobloxMap(env: Env, projectId: string, prompt: string, spec: unknown): Promise<string> {
+  const id = newId();
+  await env.DB.prepare('INSERT INTO roblox_maps (id,project_id,prompt,spec,created_at) VALUES (?,?,?,?,?)')
+    .bind(id, projectId, prompt, JSON.stringify(spec), now())
+    .run();
+  return id;
+}
+
+export function listRobloxMaps(env: Env, projectId: string, limit = 20): Promise<{ results: { id: string; prompt: string; spec: string; created_at: number }[] }> {
+  return env.DB.prepare('SELECT id,prompt,spec,created_at FROM roblox_maps WHERE project_id=? ORDER BY created_at DESC LIMIT ?')
+    .bind(projectId, limit)
+    .all();
 }

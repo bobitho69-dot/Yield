@@ -46,7 +46,7 @@ import {
   searchFreeModels, uploadRobloxModelAsset, type PinnedAsset, type RobloxCreator,
   setGameTree, getGameTree, formatGameTreeForPrompt, sanitizeGenericOp, type GameTreeNode,
   setMarketplaceKey, getMarketplaceKey, marketplaceKeyStatus, validateMarketplaceKey,
-  parseGlbMesh, glbBytesFromResult,
+  parseGlbMesh, glbBytesFromResult, extractOpsFromChat, isStudioLinked,
 } from '../lib/roblox';
 import {
   ensureGuestUser,
@@ -368,7 +368,10 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       const result = streamer.result();
 
       if (result.asked) { await send('done', { asked: true }); return; }
-      if (!result.scripts.length && !result.chat && !result.images.length && !result.ops.length) {
+      // Recovery net: if the model printed its ops JSON into plain chat instead of a
+      // fenced block, extract them so the build still happens.
+      const agentOps = result.ops && result.ops.length ? result.ops : extractOpsFromChat(result.chat);
+      if (!result.scripts.length && !result.chat && !result.images.length && !agentOps.length) {
         await send('error', { message: 'The model produced nothing usable — try again, maybe with a simpler request.' });
         return;
       }
@@ -382,8 +385,8 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       // from one chat turn. resolveAgentOps validates + resolves them into sync ops.
       let agentQueued = 0;
       const agentNotes: string[] = [];
-      if (result.ops && result.ops.length) {
-        const r = await resolveAgentOps(c, project, result.ops);
+      if (agentOps.length) {
+        const r = await resolveAgentOps(c, project, agentOps);
         if (r.queued.length) await queueRobloxOps(c.env, project.id, r.queued);
         agentQueued = r.queued.length + r.pending;
         agentNotes.push(...r.notes);
@@ -789,13 +792,17 @@ async function webLink(c: Ctx, userId: string): Promise<Response> {
 // GET /api/roblox/link — whether a Roblox account is connected + when a linked plugin
 // was last seen (across any place), for the "connected" UI.
 async function linkStatus(c: Ctx, userId: string): Promise<Response> {
-  const [ra, { results }] = await Promise.all([
+  const [ra, linked, { results }] = await Promise.all([
     getRobloxAuth(c.env, userId),
+    isStudioLinked(c.env, userId),
     listRobloxProjects(c.env, userId),
   ]);
   const lastSeenAt = results.reduce<number | null>((max, p) => Math.max(max ?? 0, p.last_seen_at ?? 0) || null, null);
   const linkedPlaces = results.filter((p) => p.place_id).length;
   return json({
+    // TRUE link state: an active plugin token exists right now — NOT inferred from
+    // project history (which stays populated after an unlink and lied to the UI).
+    linked,
     robloxConnected: !!ra?.roblox_user_id,
     robloxUsername: ra?.roblox_username ?? null,
     lastSeenAt,
@@ -827,7 +834,10 @@ function opLabel(op: any): string {
     case 'upsert_script': return String(op.path || 'script');
     case 'delete_script': return String(op.path || 'script');
     case 'insert_model': return `${op.name || 'model'}${op.assetId ? ' #' + op.assetId : ''}`;
-    case 'build_map': return `${op.spec?.parts?.length || 0} part(s) · ${op.spec?.models?.length || 0} model(s)`;
+    case 'create_mesh': return String(op.name || 'mesh');
+    case 'set_properties': case 'delete_instance': case 'rename_instance': case 'move_instance': return String(op.path || '');
+    case 'create_instance': return `${op.className || ''} ${op.name || ''}`.trim();
+    case 'build_map': return `${op.spec?.parts?.length || 0} part(s) · ${(op.spec?.props?.length || 0)} prop(s) · ${op.spec?.models?.length || 0} model(s)`;
     default: return '';
   }
 }

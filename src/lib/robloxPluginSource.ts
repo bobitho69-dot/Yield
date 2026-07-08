@@ -1012,6 +1012,7 @@ end
 
 local setStatusLabel -- forward declaration, assigned once the UI exists
 local pushSnapshot -- forward declaration (assigned below); used by the auto-sync loop + link
+local handleAuthRevoked -- forward declaration; clears a dead session and shows the link view
 
 local function performSync()
 	if isSyncing or not token then
@@ -1038,6 +1039,14 @@ local function performSync()
 		nil
 	)
 	if not pullOk then
+		-- HTTP 401 = this session's token was revoked (web-side unlink, or a NEW link
+		-- replaced it — one code = one link). Don't retry forever with a dead token:
+		-- clear the session and show the link view for a fresh code.
+		if tostring(body):find("HTTP 401", 1, true) and handleAuthRevoked then
+			isSyncing = false
+			handleAuthRevoked()
+			return
+		end
 		logActivity("Sync failed: " .. tostring(body))
 		if setStatusLabel then
 			setStatusLabel("Connected - last sync failed, will retry")
@@ -1308,6 +1317,8 @@ function pushSnapshot()
 
 	if ok then
 		logActivity(("Pushed %d scripts + %d instances to Yield"):format(#scripts, #tree))
+	elseif tostring(body):find("HTTP 401", 1, true) and handleAuthRevoked then
+		handleAuthRevoked()
 	else
 		logActivity("Push failed: " .. tostring(body))
 	end
@@ -1626,6 +1637,18 @@ local function clearSession()
 	robloxUsername = nil
 	plugin:SetSetting("yield_token", nil)
 	plugin:SetSetting("yield_roblox_user", nil)
+end
+
+-- Called when the server answers 401: this install's session was revoked (unlinked
+-- from the website, or replaced by a newer link — one code = one link). Clears the
+-- dead token and returns to the link view instead of failing silently forever.
+handleAuthRevoked = function()
+	stopAutoSyncLoop()
+	clearSession()
+	clearActivityLog()
+	showPairingView()
+	pairStatusLabel.Text = "This Studio was unlinked from Yield -- get a new link code from the website to reconnect."
+	pairStatusLabel.TextColor3 = THEME.danger
 end
 
 -- ============================================================

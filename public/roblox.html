@@ -267,7 +267,7 @@
         </div>
         <div class="panel">
           <h2>Marketplace Key <span class="dim" style="font-size:.8rem">(optional)</span></h2>
-          <p class="p-hint">A Roblox <b>Open Cloud</b> API key (Assets permission), added <b>once for your whole account</b>. It lets the chatbot <b>upload 3D-generated models</b> to your account, and attempt <b>free-model marketplace search</b> (best-effort; anything it inserts is auto virus-scanned). Without it, the AI still builds detailed maps by modeling props out of parts. Stored <b>encrypted</b> — never shown again, never sent back to your browser.</p>
+          <p class="p-hint">A Roblox <b>Open Cloud</b> API key (Assets Read+Write permission), added <b>once for your whole account</b>. Only used to <b>publish AI-generated 3D models to your Roblox account</b> when a mesh can't be imported straight into Studio — a rare fallback. <b>Marketplace search doesn't need it</b>: the Studio plugin searches, virus-scans, and inserts free models itself. Stored <b>encrypted</b> — never shown again, never sent back to your browser.</p>
           <div id="keyStatus" class="dim" style="font-size:.82rem;margin-bottom:.6rem"></div>
           <div class="field"><label>Open Cloud API key</label><input id="robloxKeyInput" type="password" placeholder="paste your key — kept encrypted" autocomplete="off"></div>
           <div class="row2">

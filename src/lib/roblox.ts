@@ -65,6 +65,11 @@ function tryParseOps(raw: string, strictTypes: boolean): any[] | null {
   const a = cleaned.indexOf('[');
   const b = cleaned.lastIndexOf(']');
   if (a !== -1 && b > a) candidates.push(cleaned.slice(a, b + 1));
+  // A reply cut off mid-array (token limit) has no closing ] — salvage every op
+  // object that DID complete by trimming to the last complete } and closing the
+  // array ourselves. Losing the tail beats losing the whole build.
+  const c = cleaned.lastIndexOf('}');
+  if (a !== -1 && c > a && b < c) candidates.push(cleaned.slice(a, c + 1).replace(/,\s*$/, '') + ']');
   for (const s of candidates) {
     try {
       const p = JSON.parse(s);
@@ -136,9 +141,11 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
     opsMaybeChat = false;
     const parsed = tryParseOps(text, wasMaybe);
     if (parsed) { opsRaw.push(...parsed); return; }
-    // A ```json block that turned out NOT to be ops — it was just JSON the model
-    // wanted to show. Replay it as chat rather than silently eating it.
-    if (wasMaybe && text.trim()) {
+    // Never eat a block silently. A ```json block that isn't ops was just JSON the
+    // model wanted to show; an unparseable ```yield-ops block means the build the
+    // model described would otherwise vanish without a trace. Either way, replay it
+    // as chat so the user (and the recovery pass on the final text) can see it.
+    if (text.trim()) {
       for (const l of text.split('\n')) chatLines.push(l);
       await send('chat', text + '\n');
     }
@@ -244,8 +251,11 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
       }
     },
     async end() {
-      if (mode === 'ops') { await flushOpsBlock(); mode = 'chat'; }
+      // Flush the trailing partial line FIRST — when a reply is cut off mid-ops-line
+      // (token limit), that fragment belongs to the still-open ops block, and closing
+      // the block before feeding it would drop every op on that line.
       if (buf.length) { await handleLine(buf); buf = ''; }
+      if (mode === 'ops') { await flushOpsBlock(); mode = 'chat'; }
     },
     reset() {
       buf = ''; mode = 'chat'; reasonClose = null; fenceOpen = false; lastStatus = ''; asked = false;
@@ -444,24 +454,30 @@ function matchAsset(role: string, tags: string[], library: PinnedAsset[]): Pinne
 // bounding one sync payload/build pass to something the plugin can apply quickly.
 const MAX_MODEL_PLACEMENTS = 400;
 
-function resolveModels(raw: unknown, library: PinnedAsset[]): { placements: ResolvedModelPlacement[]; unresolved: string[] } {
+export interface UnresolvedRole { role: string; position: number[]; rotation: number[]; scale: number; count: number }
+
+function resolveModels(raw: unknown, library: PinnedAsset[]): { placements: ResolvedModelPlacement[]; unresolved: string[]; unresolvedDetail: UnresolvedRole[] } {
   const placements: ResolvedModelPlacement[] = [];
   // Every role the AI asked for that didn't end up with at least one placement —
   // either no pinned asset matched it, or the total-placement budget ran out first.
-  // Both are surfaced identically: the user needs to either pin/search a model for
-  // it, or (for a budget cutoff) accept a smaller scene / split it into two builds.
+  // unresolvedDetail keeps each such role's intended placement so the caller can
+  // queue a Studio-side marketplace search (find_model) that lands in the right spot.
   const unresolved: string[] = [];
+  const unresolvedDetail: UnresolvedRole[] = [];
   const arr = Array.isArray(raw) ? (raw as RawModelRole[]).slice(0, 40) : [];
   let total = 0;
   for (const m of arr) {
     const role = String(m.role || '').slice(0, 120);
     const tags = Array.isArray(m.tags) ? m.tags.map((t) => String(t).slice(0, 30)).slice(0, 8) : [];
-    const asset = matchAsset(role, tags, library);
-    if (!asset) { if (role) unresolved.push(role); continue; }
     const base = vec3(m.position, [0, 0, 0], -5000, 5000);
     const rotation = vec3(m.rotation, [0, 0, 0], -360, 360);
     const scale = num(m.scale, 1, 0.1, 10);
     const count = Math.max(1, Math.min(30, Math.round(m.count || 1)));
+    const asset = matchAsset(role, tags, library);
+    if (!asset) {
+      if (role) { unresolved.push(role); unresolvedDetail.push({ role, position: base, rotation, scale, count }); }
+      continue;
+    }
     let placedForRole = 0;
     for (let i = 0; i < count && total < MAX_MODEL_PLACEMENTS; i++, total++, placedForRole++) {
       // Spread repeats along X so a "row of trees" doesn't stack on one point.
@@ -471,9 +487,9 @@ function resolveModels(raw: unknown, library: PinnedAsset[]): { placements: Reso
     // Matched a real asset, but the scene-wide budget was already exhausted before
     // any (or all) of this role's copies could be placed — don't let it disappear
     // silently, the AI asked for it and it's not there.
-    if (placedForRole === 0 && role) unresolved.push(role);
+    if (placedForRole === 0 && role) { unresolved.push(role); unresolvedDetail.push({ role, position: base, rotation, scale, count }); }
   }
-  return { placements, unresolved };
+  return { placements, unresolved, unresolvedDetail };
 }
 
 export interface SanitizedMapSpec {
@@ -512,7 +528,7 @@ function sanitizePartList(raw: unknown, limit: number, defSize: [number, number,
  *  project's pinned asset library. Never throws — a malformed field is just dropped.
  *  `clear` controls whether the plugin wipes the previous YieldMap-tagged build first
  *  (true for a fresh/first build, false to add onto what's already there). */
-export function sanitizeMapSpec(raw: any, library: PinnedAsset[], clear: boolean): { spec: SanitizedMapSpec; unresolved: string[] } {
+export function sanitizeMapSpec(raw: any, library: PinnedAsset[], clear: boolean): { spec: SanitizedMapSpec; unresolved: string[]; unresolvedDetail: UnresolvedRole[] } {
   const spec: SanitizedMapSpec = { clear, parts: [], models: [] };
 
   if (raw?.baseplate) {
@@ -538,7 +554,7 @@ export function sanitizeMapSpec(raw: any, library: PinnedAsset[], clear: boolean
     }
   }
 
-  const { placements, unresolved } = resolveModels(raw?.models, library);
+  const { placements, unresolved, unresolvedDetail } = resolveModels(raw?.models, library);
   spec.models = placements;
 
   if (raw?.lighting && typeof raw.lighting === 'object') {
@@ -550,7 +566,7 @@ export function sanitizeMapSpec(raw: any, library: PinnedAsset[], clear: boolean
     if (Object.keys(l).length) spec.lighting = l;
   }
 
-  return { spec, unresolved };
+  return { spec, unresolved, unresolvedDetail };
 }
 
 // --- Whole-game read: the tree the plugin pushes (the AI's "eyes" on the place) --

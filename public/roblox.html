@@ -631,7 +631,9 @@ function stopStudioPoll() { if (state.studioPoll) { clearInterval(state.studioPo
 async function loadLink() {
   const r = await api('/api/roblox/link').catch(() => null);
   if (!r) return;
-  const linked = r.linkedPlaces > 0 || !!r.lastSeenAt;
+  // `linked` is the server's live token state; fall back to the old heuristic only
+  // if talking to a not-yet-redeployed API.
+  const linked = r.linked !== undefined ? !!r.linked : (r.linkedPlaces > 0 || !!r.lastSeenAt);
   const badge = $('#studioBadge');
   badge.className = 'badge' + (linked ? ' ok' : ''); badge.textContent = linked ? '● Linked' : '○ Not linked';
   $('#studioSub').textContent = linked

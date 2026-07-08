@@ -45,6 +45,57 @@ export function sanitizeClassName(raw: string): string {
 // "=== ask: ... ===" clarifying question, and a "=== summary ===" closing recap.
 export interface RobloxScriptOut { path: string; className: string; source: string }
 
+// Every op type the system understands (used to recognize an ops block no matter
+// how the model chose to fence it, and by the chat-fallback extractor below).
+const KNOWN_OP_TYPES = new Set([
+  'build_map', 'find_model', 'search_model', 'gen_model', 'generate_model', 'model3d',
+  'insert_model', 'create_mesh', 'set_properties', 'create_instance', 'delete_instance',
+  'rename_instance', 'move_instance', 'upsert_script', 'delete_script',
+]);
+
+// Lenient ops-JSON parse. Models routinely emit trailing commas, // comments, or
+// prose around the array — a strict JSON.parse would silently drop the whole build.
+// `strictTypes` additionally requires at least one recognized op type, so arbitrary
+// JSON the model merely *shows* in chat is never mistaken for ops.
+function tryParseOps(raw: string, strictTypes: boolean): any[] | null {
+  const t = (raw || '').trim();
+  if (!t) return null;
+  const cleaned = t.replace(/^\s*\/\/.*$/gm, '').replace(/,\s*([\]}])/g, '$1');
+  const candidates = [t, cleaned];
+  const a = cleaned.indexOf('[');
+  const b = cleaned.lastIndexOf(']');
+  if (a !== -1 && b > a) candidates.push(cleaned.slice(a, b + 1));
+  for (const s of candidates) {
+    try {
+      const p = JSON.parse(s);
+      const arr = Array.isArray(p) ? p : p && typeof p === 'object' ? [p] : null;
+      if (!arr || !arr.length || !arr.every((o) => o && typeof o === 'object' && !Array.isArray(o))) continue;
+      if (strictTypes && !arr.some((o) => KNOWN_OP_TYPES.has(String((o as any).type || '')))) continue;
+      return arr;
+    } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
+// Last-resort recovery: some models ignore the fence format entirely and print the
+// ops JSON straight into their chat text. Scan the final chat for fenced blocks or a
+// bare bracketed array containing recognized op types so the build still happens.
+export function extractOpsFromChat(text: string): any[] {
+  if (!text) return [];
+  const out: any[] = [];
+  const fenceRe = /```[A-Za-z0-9._\-]*\n([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  while ((m = fenceRe.exec(text))) {
+    const arr = tryParseOps(m[1], true);
+    if (arr) out.push(...arr);
+  }
+  if (!out.length) {
+    const arr = tryParseOps(text, true);
+    if (arr) out.push(...arr);
+  }
+  return out.slice(0, 200);
+}
+
 export function makeScriptStreamer(send: (event: string, data: unknown) => Promise<void>) {
   const SCRIPT = /^={2,}\s*script:\s*([^|=]+?)\s*\|\s*([A-Za-z]+)\s*={2,}\s*$/i;
   const SUMMARY = /^={2,}\s*(?:summary|recap|done|notes)\s*={2,}\s*$/i;
@@ -60,6 +111,7 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
   // delete/move any instance, ask the server to find a free marketplace model, or
   // generate a 3D model. Its body is a JSON array of op objects the server resolves.
   const YIELD_OPS_LANG = /^yield[-_]?(ops|edits|edit|build|actions|action)$/i;
+  const JSON_LANG = /^json[c5]?$/i;
 
   let buf = '';
   let mode: 'chat' | 'script' | 'ops' = 'chat';
@@ -73,25 +125,30 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
   const scripts: { path: string; className: string; lines: string[] }[] = [];
   let cur: { path: string; className: string; lines: string[] } | null = null;
   let opsBuf: string[] | null = null;
+  let opsMaybeChat = false; // fence was ```json — could be ops, or just JSON the model is showing
   const opsRaw: any[] = [];
 
-  function flushOpsBlock() {
-    if (!opsBuf) return;
-    const text = opsBuf.join('\n').trim();
+  async function flushOpsBlock() {
+    if (opsBuf === null) return;
+    const text = opsBuf.join('\n');
+    const wasMaybe = opsMaybeChat;
     opsBuf = null;
-    if (!text) return;
-    try {
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed)) opsRaw.push(...parsed);
-      else if (parsed && typeof parsed === 'object') opsRaw.push(parsed);
-    } catch { /* a malformed ops block is just dropped — scripts/chat still land */ }
+    opsMaybeChat = false;
+    const parsed = tryParseOps(text, wasMaybe);
+    if (parsed) { opsRaw.push(...parsed); return; }
+    // A ```json block that turned out NOT to be ops — it was just JSON the model
+    // wanted to show. Replay it as chat rather than silently eating it.
+    if (wasMaybe && text.trim()) {
+      for (const l of text.split('\n')) chatLines.push(l);
+      await send('chat', text + '\n');
+    }
   }
 
   async function handleLine(line: string): Promise<void> {
-    // Inside a yield-ops block, accumulate raw JSON lines until the closing fence —
+    // Inside an ops block, accumulate raw JSON lines until the closing fence —
     // never interpret them as chat/script/markers.
     if (mode === 'ops') {
-      if (/^\s*\`\`\`/.test(line)) { flushOpsBlock(); mode = 'chat'; return; }
+      if (/^\s*\`\`\`/.test(line)) { await flushOpsBlock(); mode = 'chat'; return; }
       if (opsBuf) opsBuf.push(line);
       return;
     }
@@ -145,7 +202,21 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
     // Fallback: some coder models ignore the marker format and just use ```lua fences.
     const fenceM = line.match(/^\s*```([A-Za-z0-9.\-_/:+]*)\s*$/);
     if (fenceM) {
-      if (mode === 'chat' && YIELD_OPS_LANG.test(fenceM[1] || '')) { mode = 'ops'; opsBuf = []; await send('status', { stage: 'Editing the game…' }); return; }
+      const lang = fenceM[1] || '';
+      const opsFence = YIELD_OPS_LANG.test(lang);
+      const jsonFence = JSON_LANG.test(lang);
+      // An ops fence opens from chat OR straight after a marker-style script block
+      // (models often skip the summary marker — previously that fence was swallowed
+      // into the script's source and the whole build was lost). ```json is a
+      // CANDIDATE ops block: kept if it parses to recognized ops, replayed as chat
+      // otherwise (previously it became a bogus Script whose source was raw JSON —
+      // injected straight into the user's game).
+      if ((opsFence || jsonFence) && (mode === 'chat' || (mode === 'script' && !fenceOpen))) {
+        if (mode === 'script') cur = null;
+        mode = 'ops'; opsBuf = []; opsMaybeChat = jsonFence && !opsFence;
+        if (opsFence) await send('status', { stage: 'Editing the game…' });
+        return;
+      }
       if (mode === 'script' && fenceOpen) { fenceOpen = false; mode = 'chat'; cur = null; return; }
       if (mode === 'chat') {
         fenceIndex += 1;
@@ -173,12 +244,12 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
       }
     },
     async end() {
-      if (mode === 'ops') { flushOpsBlock(); mode = 'chat'; }
+      if (mode === 'ops') { await flushOpsBlock(); mode = 'chat'; }
       if (buf.length) { await handleLine(buf); buf = ''; }
     },
     reset() {
       buf = ''; mode = 'chat'; reasonClose = null; fenceOpen = false; lastStatus = ''; asked = false;
-      cur = null; opsBuf = null;
+      cur = null; opsBuf = null; opsMaybeChat = false;
       scripts.length = 0; chatLines.length = 0; imagePrompts.length = 0; opsRaw.length = 0;
     },
     get produced() {
@@ -258,11 +329,23 @@ async function linkEpoch(env: Env, userId: string): Promise<number> {
   return v ? parseInt(v, 10) || 1 : 1;
 }
 
+// ONE active link per user ("one code = one link = one session"): minting a new
+// token bumps the epoch FIRST, which invalidates every previously-issued token —
+// re-linking (from a second Studio, or after a delete/unlink) replaces the old
+// session instead of piling up stale tokens. A `roblox_linked:<userId>` marker is
+// the truthful "is a plugin linked right now" signal for the web UI (previously the
+// UI guessed from project history, which stayed "linked" after an unlink).
 export async function mintUserToken(env: Env, userId: string): Promise<string> {
-  const epoch = await linkEpoch(env, userId);
+  const next = (await linkEpoch(env, userId)) + 1;
+  await env.KV.put(`roblox_link_epoch:${userId}`, String(next));
   const token = `rbxu_${newId()}${newId()}`;
-  await env.KV.put(`roblox_user_token:${token}`, JSON.stringify({ userId, epoch }));
+  await env.KV.put(`roblox_user_token:${token}`, JSON.stringify({ userId, epoch: next }));
+  await env.KV.put(`roblox_linked:${userId}`, JSON.stringify({ linkedAt: now() }));
   return token;
+}
+
+export async function isStudioLinked(env: Env, userId: string): Promise<boolean> {
+  return (await env.KV.get(`roblox_linked:${userId}`)) !== null;
 }
 
 export async function resolveUserToken(env: Env, token: string): Promise<{ userId: string } | null> {
@@ -278,14 +361,24 @@ export async function resolveUserToken(env: Env, token: string): Promise<{ userI
 }
 
 export async function revokeUserToken(env: Env, token: string): Promise<void> {
-  if (token) await env.KV.delete(`roblox_user_token:${token}`).catch(() => {});
+  if (!token) return;
+  const val = await env.KV.get(`roblox_user_token:${token}`);
+  await env.KV.delete(`roblox_user_token:${token}`).catch(() => {});
+  // Single-link semantics: this token WAS the user's one session — clear the marker.
+  if (val) {
+    try {
+      const { userId } = JSON.parse(val) as { userId?: string };
+      if (userId) await env.KV.delete(`roblox_linked:${userId}`).catch(() => {});
+    } catch { /* ignore */ }
+  }
 }
 
-// Web-side "unlink everything": bump the epoch so all outstanding tokens for this
-// user stop resolving on their next request.
+// Web-side "unlink": bump the epoch so all outstanding tokens for this user stop
+// resolving on their next request, and clear the linked marker.
 export async function revokeAllUserTokens(env: Env, userId: string): Promise<void> {
   const next = (await linkEpoch(env, userId)) + 1;
   await env.KV.put(`roblox_link_epoch:${userId}`, String(next));
+  await env.KV.delete(`roblox_linked:${userId}`).catch(() => {});
 }
 
 /** Pull the bearer token off a plugin request and resolve it to a user id. */
@@ -295,7 +388,13 @@ export async function authenticatePlugin(env: Env, req: Request): Promise<{ user
   if (!m) return null;
   const token = m[1].trim();
   const resolved = await resolveUserToken(env, token);
-  return resolved ? { userId: resolved.userId, token } : null;
+  if (!resolved) return null;
+  // Self-heal the "linked" marker for tokens minted before the marker existed, so
+  // already-linked plugins show as linked in the web UI without re-linking.
+  if ((await env.KV.get(`roblox_linked:${resolved.userId}`)) === null) {
+    await env.KV.put(`roblox_linked:${resolved.userId}`, JSON.stringify({ linkedAt: now() })).catch(() => {});
+  }
+  return { userId: resolved.userId, token };
 }
 
 // --- Map spec sanitization + free-model role resolution -------------------------
@@ -612,8 +711,10 @@ function b64ToBytes(b64: string): Uint8Array {
 // null on anything it can't handle (Draco compression, non-float positions, oversize)
 // so the caller can fall back to the upload path or skip.
 export interface LocalMesh { verts: number[]; tris: number[] }
-const MESH_MAX_VERTS = 12000;
-const MESH_MAX_TRIS = 20000;
+// Caps keep the serialized op comfortably inside D1's row/value limits (a queued op
+// row carries the whole geometry as JSON) and Studio's EditableMesh happy.
+const MESH_MAX_VERTS = 8000;
+const MESH_MAX_TRIS = 12000;
 
 // Turn generate3dModel's result (a data: URL or a plain URL) into raw glb bytes.
 export async function glbBytesFromResult(res: string | null): Promise<Uint8Array | null> {

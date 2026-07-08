@@ -55,6 +55,7 @@ BUILDING & EDITING THE GAME (maps, models, terrain, ANY instance) — you are NO
   { "type": "delete_instance", "path": "Workspace/OldTree" }
 ]
 \`\`\`
+The fence language MUST be exactly \`yield-ops\` (never json, never a bare fence) and the body MUST be valid JSON: double-quoted keys/strings, no comments, no trailing commas. Emit at most ONE ops block per reply, after your chat text.
 Op types:
 - build_map — { "type":"build_map", "spec": { baseplate, parts[], props[], models[], lighting, "clear": false } } — your main map tool (see MAP BUILDING). "clear":true wipes the previous Yield-built map first; omit to add onto what's there.
 - find_model — { "type":"find_model", "query":"<art-directed description>", "position":[x,y,z], "rotation":[x,y,z]?, "scale":1? } — the server SEARCHES the Roblox free-model marketplace for the best match, VIRUS-SCANS it, and inserts it. Use for hero props/buildings/vehicles a real mesh renders far better than parts.

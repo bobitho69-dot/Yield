@@ -44,6 +44,8 @@ import {
   makeScriptStreamer, sanitizeScriptPath, sanitizeClassName, sanitizeMapSpec,
   createLinkCode, redeemLinkCode, mintUserToken, authenticatePlugin, revokeUserToken, revokeAllUserTokens,
   searchFreeModels, uploadRobloxModelAsset, type PinnedAsset, type RobloxCreator,
+  setGameTree, getGameTree, formatGameTreeForPrompt, sanitizeGenericOp, type GameTreeNode,
+  setMarketplaceKey, getMarketplaceKey, marketplaceKeyStatus, validateMarketplaceKey,
 } from '../lib/roblox';
 import {
   ensureGuestUser,
@@ -88,6 +90,11 @@ export async function handleRoblox(req: Request, c: Ctx, rest: string): Promise<
   if (rest === 'link' && req.method === 'POST') return webLink(c, user.id);
   if (rest === 'link' && req.method === 'GET') return linkStatus(c, user.id);
   if (rest === 'unlink' && req.method === 'POST') return webUnlink(c, user.id);
+
+  // Account-level "Marketplace Key" (a Roblox Open Cloud key) — added once, used by
+  // the AI to search free models + upload 3D-generated models across every game.
+  if (rest === 'marketplace-key' && req.method === 'GET') return json(await marketplaceKeyStatus(c.env, user.id));
+  if (rest === 'marketplace-key' && req.method === 'POST') return connectMarketplaceKey(req, c, user.id);
 
   if (segs[0] !== 'projects') return error(404, 'Not found');
   const id = segs[1];
@@ -134,6 +141,7 @@ export async function handleRoblox(req: Request, c: Ctx, rest: string): Promise<
   if (sub === 'assets') return handleAssets(req, c, project, sub2);
   if (sub === 'roblox-key' && req.method === 'POST') return connectRobloxKey(req, c, project);
   if (sub === 'ops' && req.method === 'GET') return opsLog(c, project);
+  if (sub === 'tree' && req.method === 'GET') return json({ tree: await getGameTree(c.env, project.id) });
   if (sub === 'insert-asset' && req.method === 'POST') return insertAsset(req, c, project);
   if (sub === 'generate-model' && req.method === 'POST') return generateModelAsset(req, c, project);
 
@@ -228,6 +236,14 @@ async function handlePluginApi(req: Request, c: Ctx, segs: string[]): Promise<Re
       .map((s: any) => ({ path: sanitizeScriptPath(String(s.path || '')), className: sanitizeClassName(String(s.className || '')), source: String(s.source || '').slice(0, 200_000) }))
       .filter((s: any): s is { path: string; className: string; source: string } => !!s.path);
     if (toSave.length) await upsertRobloxFiles(c.env, project.id, toSave);
+    // Whole-game tree (full read): store it so the AI can see every instance and the
+    // web Explorer can render the game. Kept in KV — no D1 migration, any size ok.
+    if (Array.isArray(bodyForPlace.tree)) {
+      const tree: GameTreeNode[] = bodyForPlace.tree.slice(0, 1500)
+        .filter((n: any) => n && typeof n.path === 'string')
+        .map((n: any) => ({ path: String(n.path).slice(0, 400), className: String(n.className || 'Instance').slice(0, 40), ...(n.props && typeof n.props === 'object' ? { props: n.props } : {}) }));
+      await setGameTree(c.env, project.id, { tree, truncated: !!bodyForPlace.treeTruncated, at: Date.now(), scriptCount: toSave.length });
+    }
     await touchRobloxSeen(c.env, project.id, { placeName });
     return json({ ok: true, saved: toSave.length });
   }
@@ -275,6 +291,10 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       await send('meta', { model: model.id, label: model.label, routeReason });
 
       const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [{ role: 'system', content: ROBLOX_CONVO_SYSTEM }];
+      // Full-game read: the tree the plugin last pushed, so the AI can SEE the whole
+      // place (map + every instance) and target real paths when it edits.
+      const treeText = formatGameTreeForPrompt(await getGameTree(c.env, project.id));
+      if (treeText) messages.push({ role: 'system', content: treeText });
       const existing = await listRobloxFiles(c.env, project.id);
       if (existing.length) {
         messages.push({ role: 'system', content: ROBLOX_EDIT_NOTE });
@@ -331,7 +351,7 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       const result = streamer.result();
 
       if (result.asked) { await send('done', { asked: true }); return; }
-      if (!result.scripts.length && !result.chat && !result.images.length) {
+      if (!result.scripts.length && !result.chat && !result.images.length && !result.ops.length) {
         await send('error', { message: 'The model produced nothing usable — try again, maybe with a simpler request.' });
         return;
       }
@@ -339,6 +359,17 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       if (result.scripts.length) {
         await upsertRobloxFiles(c.env, project.id, result.scripts);
         await queueRobloxOps(c.env, project.id, result.scripts.map((s) => ({ type: 'upsert_script', path: s.path, className: s.className, source: s.source })));
+      }
+      // Agentic ops: the AI can build maps, edit/create/delete/move any instance,
+      // find + insert scanned free marketplace models, and 3D-generate models — all
+      // from one chat turn. resolveAgentOps validates + resolves them into sync ops.
+      let agentQueued = 0;
+      const agentNotes: string[] = [];
+      if (result.ops && result.ops.length) {
+        const r = await resolveAgentOps(c, project, result.ops);
+        if (r.queued.length) await queueRobloxOps(c.env, project.id, r.queued);
+        agentQueued = r.queued.length + r.pending;
+        agentNotes.push(...r.notes);
       }
       // Concept-art images the AI asked to show (never placed in-game — just a
       // visual aid in chat), reusing the same image-gen the web builder uses.
@@ -353,7 +384,7 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       await recordGeneration(c);
       await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'roblox_generate', model: model.id });
 
-      await send('done', { scripts: result.scripts.map((s) => ({ path: s.path, className: s.className })), queued: result.scripts.length > 0 });
+      await send('done', { scripts: result.scripts.map((s) => ({ path: s.path, className: s.className })), queued: result.scripts.length > 0, edits: agentQueued, notes: agentNotes });
     } catch (e: any) {
       console.error('roblox generate failed:', e?.stack || e);
       await send('error', { message: String(e?.message || e).slice(0, 300) });
@@ -363,6 +394,106 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
   };
   c.ctx.waitUntil(run());
   return response;
+}
+
+// POST /api/roblox/marketplace-key — connect/validate/clear the account-level
+// Marketplace Key. The plaintext key is validated, encrypted, and stored; it is
+// NEVER echoed back — only a boolean + the non-secret creator id are returned.
+async function connectMarketplaceKey(req: Request, c: Ctx, userId: string): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { apiKey?: string; creatorType?: string; creatorId?: string };
+  const apiKey = String(body.apiKey || '').trim();
+  if (!apiKey) { await setMarketplaceKey(c.env, userId, null, 'User', null); return json({ connected: false }); }
+  const check = await validateMarketplaceKey(apiKey);
+  if (!check.ok) return error(400, check.reason || 'That Marketplace Key was rejected.', { code: 'invalid_key' });
+  const enc = await encryptToken(c.env, apiKey);
+  const creatorType = body.creatorType === 'Group' ? 'Group' : 'User';
+  const creatorId = body.creatorId ? (String(body.creatorId).replace(/[^0-9]/g, '').slice(0, 30) || null) : null;
+  await setMarketplaceKey(c.env, userId, enc, creatorType, creatorId);
+  return json({ connected: true, creatorType, creatorId });
+}
+
+// The Roblox Open Cloud key + creator to use for a project: the account-level
+// Marketplace Key first (added once, used everywhere), falling back to a legacy
+// per-project key if one was set the old way. Returns decrypted key in-memory only.
+async function resolveRobloxKey(env: Env, userId: string, project: RobloxProjectRow): Promise<{ apiKey: string; creator: RobloxCreator | null } | null> {
+  const acct = await getMarketplaceKey(env, userId);
+  if (acct) {
+    try {
+      const apiKey = await decryptToken(env, acct.enc);
+      return { apiKey, creator: acct.creatorId ? { type: acct.creatorType, id: acct.creatorId } : null };
+    } catch { /* fall through to any legacy per-project key */ }
+  }
+  if (project.roblox_api_key_enc) {
+    try {
+      const apiKey = await decryptToken(env, project.roblox_api_key_enc);
+      return { apiKey, creator: project.roblox_creator_id ? { type: project.roblox_creator_type === 'Group' ? 'Group' : 'User', id: project.roblox_creator_id } : null };
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+// --- Agentic ops: turn what the chat AI asked to DO into queued sync ops -----------
+// Direct ops (build_map, set/create/delete/rename/move instance, insert_model) are
+// validated and queued as-is. Meta ops the server resolves: find_model → marketplace
+// search (needs a key) → a scanned insert; gen_model → 3D generate + upload → insert.
+// Free models are ALWAYS virus-scanned by the plugin on insert.
+async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): Promise<{ queued: Record<string, unknown>[]; notes: string[]; pending: number }> {
+  const queued: Record<string, unknown>[] = [];
+  const notes: string[] = [];
+  let pending = 0;
+  if (!Array.isArray(ops) || !ops.length) return { queued, notes, pending };
+
+  const { results: assetRows } = await listRobloxAssets(c.env, project.id);
+  const library: PinnedAsset[] = assetRows.map((a) => ({ asset_id: a.asset_id, name: a.name, tags: a.tags }));
+  const rk = await resolveRobloxKey(c.env, project.user_id, project);
+  const apiKey: string | null = rk?.apiKey ?? null;
+  const creator: RobloxCreator | null = rk?.creator ?? null;
+  const posOf = (v: any, def: number[]) => (Array.isArray(v) && v.length === 3 ? v.map((n: any) => Number(n) || 0) : def);
+
+  for (const op of ops.slice(0, 60)) {
+    const type = String(op?.type || '');
+    if (type === 'build_map') {
+      const specRaw = op.spec && typeof op.spec === 'object' ? op.spec : op;
+      const clear = typeof specRaw.clear === 'boolean' ? specRaw.clear : false;
+      const { spec, unresolved } = sanitizeMapSpec(specRaw, library, clear);
+      queued.push({ type: 'build_map', spec });
+      if (unresolved.length) notes.push(`For the map I still need a model for: ${unresolved.slice(0, 8).join(', ')}. Tell me to find or generate them.`);
+    } else if (type === 'find_model' || type === 'search_model') {
+      const query = String(op.query || op.role || op.name || '').trim().slice(0, 120);
+      if (!query) continue;
+      let assetId: string | null = null;
+      let name = String(op.name || query).slice(0, 60);
+      if (apiKey) {
+        try { const res = await searchFreeModels(apiKey, query); if (res.length) { assetId = res[0].assetId; if (!op.name) name = res[0].name || name; } } catch { /* degrade */ }
+      }
+      if (assetId) queued.push({ type: 'insert_model', assetId, name, position: posOf(op.position, [0, 5, 0]), rotation: posOf(op.rotation, [0, 0, 0]), scale: Number(op.scale) || 1 });
+      else notes.push(`I couldn't search the marketplace for "${query}" — add your Marketplace Key (⋯ Studio → Marketplace Key) so I can find, virus-scan, and insert free models automatically.`);
+    } else if (type === 'gen_model' || type === 'generate_model' || type === 'model3d') {
+      const prompt = String(op.prompt || op.description || '').trim().slice(0, 200);
+      if (!prompt) continue;
+      if (apiKey && creator) { pending++; c.ctx.waitUntil(generateAndInsertModel(c.env, project, prompt, op, apiKey, creator)); }
+      else notes.push(`To 3D-generate "${prompt}" I need your Marketplace Key + creator id connected (⋯ Studio → Marketplace Key) so I can upload the mesh to your account.`);
+    } else {
+      const clean = sanitizeGenericOp(op);
+      if (clean) queued.push(clean);
+    }
+  }
+  return { queued, notes, pending };
+}
+
+// 3D-generate a mesh, upload it to the user's Roblox account, pin it, and queue a
+// scanned insert — runs detached (3D gen is slow) so the chat turn stays responsive.
+async function generateAndInsertModel(env: Env, project: RobloxProjectRow, prompt: string, op: any, apiKey: string, creator: RobloxCreator): Promise<void> {
+  try {
+    const glb = await generate3dModel(env, prompt);
+    if (!glb) return;
+    const assetId = await uploadRobloxModelAsset(apiKey, creator, glb, prompt.slice(0, 50), `AI-generated for Yield: ${prompt}`.slice(0, 1000));
+    if (!assetId) return;
+    await addRobloxAsset(env, project.id, assetId, prompt.slice(0, 80), 'ai-generated');
+    const position = Array.isArray(op.position) && op.position.length === 3 ? op.position.map((n: any) => Number(n) || 0) : [0, 5, 0];
+    await queueRobloxOps(env, project.id, [{ type: 'insert_model', assetId, name: prompt.slice(0, 60), position, rotation: [0, 0, 0], scale: Number(op.scale) || 1 }]);
+    await logUsage(env, { user_id: project.user_id, kind: 'roblox_model3d_agent' });
+  } catch { /* best-effort — a failed generation must not break anything */ }
 }
 
 // --- AI map generation (plain JSON — usually a single fast completion) --------------
@@ -441,9 +572,10 @@ async function generateMap(req: Request, c: Ctx, project: RobloxProjectRow): Pro
   // marketplace search). Runs after the response is sent; the model(s) show up via
   // a follow-up insert_model op once ready, so map generation itself stays fast.
   let pendingCustomModels = 0;
-  if (project.roblox_api_key_enc && project.roblox_creator_id && unresolved.length) {
+  const mapKey = await resolveRobloxKey(c.env, project.user_id, project);
+  if (mapKey?.apiKey && mapKey.creator && unresolved.length) {
     pendingCustomModels = Math.min(2, unresolved.length);
-    c.ctx.waitUntil(generateCustomModelsForRoles(c.env, project, unresolved.slice(0, pendingCustomModels)));
+    c.ctx.waitUntil(generateCustomModelsForRoles(c.env, project, unresolved.slice(0, pendingCustomModels), mapKey.apiKey, mapKey.creator));
   }
 
   return json({
@@ -467,11 +599,7 @@ async function generateMap(req: Request, c: Ctx, project: RobloxProjectRow): Pro
 // the user's own Roblox account, pinning it to the library and queuing an insert
 // once it's ready. Every step is best-effort — one role failing never blocks the
 // others, and this whole function runs detached from the map-generation response.
-async function generateCustomModelsForRoles(env: Env, project: RobloxProjectRow, roles: string[]): Promise<void> {
-  if (!project.roblox_api_key_enc || !project.roblox_creator_id) return;
-  let apiKey: string;
-  try { apiKey = await decryptToken(env, project.roblox_api_key_enc); } catch { return; }
-  const creator: RobloxCreator = { type: project.roblox_creator_type === 'Group' ? 'Group' : 'User', id: project.roblox_creator_id };
+async function generateCustomModelsForRoles(env: Env, project: RobloxProjectRow, roles: string[], apiKey: string, creator: RobloxCreator): Promise<void> {
   for (const role of roles) {
     try {
       const glb = await generate3dModel(env, role);
@@ -576,9 +704,9 @@ async function searchModels(req: Request, c: Ctx): Promise<Response> {
   const project = await getRobloxProject(c.env, String(body.projectId));
   if (!project || project.user_id !== c.user.id) return error(403, 'Not your project');
   const browseUrl = `https://create.roblox.com/store?Category=3&SearchKeyword=${encodeURIComponent(query)}`;
-  if (!project.roblox_api_key_enc) return json({ configured: false, results: [], browseUrl });
-  const apiKey = await decryptToken(c.env, project.roblox_api_key_enc);
-  const results = await searchFreeModels(apiKey, query);
+  const rk = await resolveRobloxKey(c.env, c.user.id, project);
+  if (!rk?.apiKey) return json({ configured: false, results: [], browseUrl });
+  const results = await searchFreeModels(rk.apiKey, query);
   return json({ configured: true, results, browseUrl });
 }
 
@@ -586,8 +714,9 @@ async function searchModels(req: Request, c: Ctx): Promise<Response> {
 // (TRELLIS) and upload it to the user's own Roblox account as a real asset,
 // pinning it to the library. Needs a connected Roblox Open Cloud key + creator id.
 async function generateModelAsset(req: Request, c: Ctx, project: RobloxProjectRow): Promise<Response> {
-  if (!project.roblox_api_key_enc || !project.roblox_creator_id) {
-    return error(400, 'Connect a Roblox Open Cloud API key (with a creator id) in the Assets tab first.', { code: 'roblox_key_required' });
+  const rk = await resolveRobloxKey(c.env, c.user!.id, project);
+  if (!rk?.apiKey || !rk.creator) {
+    return error(400, 'Connect your Marketplace Key (a Roblox Open Cloud key with a creator id) in the Studio panel first.', { code: 'roblox_key_required' });
   }
   const body = (await req.json().catch(() => ({}))) as { prompt?: string; name?: string };
   const prompt = (body.prompt || '').trim();
@@ -602,10 +731,8 @@ async function generateModelAsset(req: Request, c: Ctx, project: RobloxProjectRo
   if (!glb) return error(502, "3D model generation isn't configured or failed — try again.");
   await recordGeneration(c);
 
-  let apiKey: string;
-  try { apiKey = await decryptToken(c.env, project.roblox_api_key_enc); }
-  catch { return error(502, 'Could not read the connected Roblox API key — reconnect it in the Assets tab.'); }
-  const creator: RobloxCreator = { type: project.roblox_creator_type === 'Group' ? 'Group' : 'User', id: project.roblox_creator_id };
+  const apiKey = rk.apiKey;
+  const creator: RobloxCreator = rk.creator;
   const name = (body.name || prompt).slice(0, 50);
   const assetId = await uploadRobloxModelAsset(apiKey, creator, glb, name, `AI-generated for Yield: ${prompt}`.slice(0, 1000));
   if (!assetId) return error(502, 'Generated the model, but uploading it to Roblox failed — check the API key has asset-upload permission for that creator and try again.');
@@ -653,7 +780,19 @@ async function opsLog(c: Ctx, project: RobloxProjectRow): Promise<Response> {
   const ops = results.map((r) => {
     let parsed: any = {};
     try { parsed = JSON.parse(r.op); } catch { /* ignore malformed row */ }
-    return { id: r.id, type: parsed.type, status: r.status, detail: r.detail, created_at: r.created_at, applied_at: r.applied_at };
+    return { id: r.id, type: parsed.type, label: opLabel(parsed), status: r.status, detail: r.detail, created_at: r.created_at, applied_at: r.applied_at };
   });
   return json({ ops, paired: !!project.paired, lastSeenAt: project.last_seen_at, placeName: project.place_name, placeId: project.place_id });
+}
+
+// A short, human label for one queued Studio action — what the actions feed shows
+// (e.g. "ServerScriptService/Sword", "Pine Tree #123", "42 parts · 6 models").
+function opLabel(op: any): string {
+  switch (op?.type) {
+    case 'upsert_script': return String(op.path || 'script');
+    case 'delete_script': return String(op.path || 'script');
+    case 'insert_model': return `${op.name || 'model'}${op.assetId ? ' #' + op.assetId : ''}`;
+    case 'build_map': return `${op.spec?.parts?.length || 0} part(s) · ${op.spec?.models?.length || 0} model(s)`;
+    default: return '';
+  }
 }

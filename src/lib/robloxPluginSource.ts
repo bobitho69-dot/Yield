@@ -384,9 +384,96 @@ local function applyDeleteScript(op)
 	end
 end
 
+-- ============================================================
+-- MALICIOUS-SCRIPT SCAN
+-- Free models off the Roblox marketplace very often ship with virus scripts --
+-- require(assetId) backdoor loaders, loadstring payloads, HttpGet beacons, webhook
+-- exfiltration, etc. EVERY model Yield inserts (whether the AI searched for it or
+-- the user pasted an id) is scanned, and any script matching a known-bad signature
+-- is stripped BEFORE the model is used in your game.
+-- ============================================================
+
+local SCRIPT_CLASS_NAMES = {
+	Script = true,
+	LocalScript = true,
+	ModuleScript = true,
+}
+
+local VIRUS_SIGNATURES = {
+	"require%s*%(%s*%d",   -- require(1234567) -- the classic backdoor loader
+	"getfenv", "setfenv",
+	"loadstring",
+	"httpget", "http:get", "httpgetasync",
+	"marketplaceservice",
+	"getobjects",
+	"queue_on_teleport", "queueonteleport",
+	"firetouchinterest", "hookfunction",
+	"webhook", "discord.com/api",
+	"syn%.", "getgenv", "getrenv", "hookmetamethod",
+}
+
+local function scriptLooksMalicious(src)
+	if type(src) ~= "string" or src == "" then
+		return false, nil
+	end
+	local low = src:lower()
+	for _, sig in ipairs(VIRUS_SIGNATURES) do
+		if low:find(sig) then
+			return true, sig
+		end
+	end
+	if #src > 150000 then
+		return true, "oversized script"
+	end
+	-- A single very long unbroken token is the hallmark of an obfuscated payload.
+	local longest = 0
+	for tok in src:gmatch("[%w+/=_]+") do
+		if #tok > longest then
+			longest = #tok
+		end
+	end
+	if longest > 600 then
+		return true, "obfuscated blob"
+	end
+	return false, nil
+end
+
+-- Destroys any Script/LocalScript/ModuleScript inside rootInst that matches a virus
+-- signature. Returns removedCount, keptCount, flaggedNames.
+local function scanAndCleanModel(rootInst)
+	local removed, kept = 0, 0
+	local flagged = {}
+	local candidates = { rootInst }
+	for _, d in ipairs(rootInst:GetDescendants()) do
+		table.insert(candidates, d)
+	end
+	for _, d in ipairs(candidates) do
+		if SCRIPT_CLASS_NAMES[d.ClassName] then
+			local okSrc, src = pcall(function()
+				return d.Source
+			end)
+			local bad, why = false, nil
+			if okSrc then
+				bad, why = scriptLooksMalicious(src)
+			end
+			if bad then
+				table.insert(flagged, d.Name .. (why and (" [" .. why .. "]") or ""))
+				pcall(function()
+					d:Destroy()
+				end)
+				removed = removed + 1
+			else
+				kept = kept + 1
+			end
+		end
+	end
+	return removed, kept, flagged
+end
+
 -- Shared by the insert_model op and build_map's "models" list. Loads the asset,
--- unwraps InsertService's wrapper Model, positions/rotates/scales it, and (if
--- tagAsMap) marks it so a later build_map with clear=true can clean it up.
+-- unwraps InsertService's wrapper Model, positions/rotates/scales it, scans it for
+-- malicious scripts, and (if tagAsMap) marks it so a later build_map with
+-- clear=true can clean it up.
 local function insertModel(entry, tagAsMap)
 	local assetId = tonumber(entry.assetId)
 	if not assetId then
@@ -443,12 +530,25 @@ local function insertModel(entry, tagAsMap)
 		end)
 	end
 
-	return instanceToUse
+	-- Scan the freshly-loaded asset and strip any virus scripts before it's used.
+	local removed, _, flagged = scanAndCleanModel(instanceToUse)
+	if removed > 0 then
+		logActivity(("Virus scan: stripped %d script(s) from '%s' (%s)"):format(removed, instanceToUse.Name, table.concat(flagged, ", ")))
+	end
+
+	return instanceToUse, removed, flagged
 end
 
 local function applyInsertModel(op)
-	local inst = insertModel(op, false)
-	logActivity(("Inserted model '%s' (id %s)"):format(inst.Name, tostring(op.assetId)))
+	local inst, removed = insertModel(op, false)
+	local detail = ("Inserted '%s' (id %s)"):format(inst.Name, tostring(op.assetId))
+	if removed and removed > 0 then
+		detail = detail .. (" -- scanned, removed %d virus script(s)"):format(removed)
+	else
+		detail = detail .. " -- scanned, clean"
+	end
+	logActivity(detail)
+	return detail
 end
 
 local function applyBuildMap(op)
@@ -532,13 +632,72 @@ local function applyBuildMap(op)
 	end
 
 	local modelCount = 0
+	local scannedRemoved = 0
 	if type(spec.models) == "table" then
 		for _, entry in ipairs(spec.models) do
-			local ok, err = pcall(insertModel, entry, true)
+			local ok, removedOrErr = pcall(insertModel, entry, true)
 			if ok then
 				modelCount = modelCount + 1
+				if type(removedOrErr) == "number" then
+					scannedRemoved = scannedRemoved + removedOrErr
+				end
 			else
-				logActivity("Error inserting model in map: " .. tostring(err))
+				logActivity("Error inserting model in map: " .. tostring(removedOrErr))
+			end
+		end
+	end
+
+	-- AI-modeled props: the AI can sculpt a detailed prop OUT OF PARTS itself (no
+	-- marketplace asset needed) -- each prop is a Model whose child parts are placed
+	-- relative to the prop's origin, so it can build ornate, high-detail scenery.
+	local propCount = 0
+	if type(spec.props) == "table" then
+		for _, prop in ipairs(spec.props) do
+			local ok, err = pcall(function()
+				local model = new("Model", { Name = prop.name or "Prop", Parent = Workspace })
+				model:SetAttribute("YieldMap", true)
+				local ox, oy, oz = xyz(prop.position, 0, 0, 0)
+				local pieces = prop.parts
+				if type(pieces) == "table" then
+					for _, entry in ipairs(pieces) do
+						local shape = tostring(entry.shape or "Block"):lower()
+						local part
+						if shape == "wedge" then
+							part = Instance.new("WedgePart")
+						else
+							part = Instance.new("Part")
+							if shape == "cylinder" then
+								part.Shape = Enum.PartType.Cylinder
+							elseif shape == "ball" or shape == "sphere" then
+								part.Shape = Enum.PartType.Ball
+							else
+								part.Shape = Enum.PartType.Block
+							end
+						end
+						local sx, sy, sz = xyz(entry.size, 2, 2, 2)
+						local px, py, pz = xyz(entry.position, 0, 0, 0)
+						local rx, ry, rz = xyz(entry.rotation, 0, 0, 0)
+						part.Name = entry.name or "Part"
+						part.Size = Vector3.new(sx, sy, sz)
+						part.CFrame = CFrame.new(ox + px, oy + py, oz + pz) * CFrame.Angles(math.rad(rx), math.rad(ry), math.rad(rz))
+						part.Color = hexToColor3(entry.color, Color3.fromRGB(163, 162, 165))
+						part.Material = materialFromName(entry.material)
+						part.Anchored = entry.anchored ~= false
+						part.Transparency = entry.transparency or 0
+						part.Parent = model
+					end
+				end
+				if model.PrimaryPart == nil then
+					local firstPart = model:FindFirstChildWhichIsA("BasePart")
+					if firstPart then
+						model.PrimaryPart = firstPart
+					end
+				end
+			end)
+			if ok then
+				propCount = propCount + 1
+			else
+				logActivity("Error building prop: " .. tostring(err))
 			end
 		end
 	end
@@ -560,7 +719,207 @@ local function applyBuildMap(op)
 	end
 
 	ChangeHistoryService:SetWaypoint("Yield build map")
-	logActivity(("Built map: %d parts, %d models"):format(partCount, modelCount))
+	local detail = ("Built map: %d parts, %d props, %d models"):format(partCount, propCount, modelCount)
+	if scannedRemoved > 0 then
+		detail = detail .. (" -- virus scan stripped %d script(s)"):format(scannedRemoved)
+	end
+	logActivity(detail)
+	return detail
+end
+
+-- ============================================================
+-- GENERIC INSTANCE EDITS (full game access -- the AI can create/edit/delete/move
+-- ANY instance, not just scripts and generated maps)
+-- ============================================================
+
+-- Resolves a path, creating Folders for any missing segment along the way. Used as
+-- the parent for create_instance / move_instance.
+local function resolvePathCreating(path)
+	local segments = splitPath(path)
+	if #segments < 1 then
+		return nil, "empty path"
+	end
+	local current = resolveServiceRoot(segments[1])
+	if not current then
+		return nil, "unknown service: " .. tostring(segments[1])
+	end
+	for i = 2, #segments do
+		local child = current:FindFirstChild(segments[i])
+		if not child then
+			child = new("Folder", { Name = segments[i], Parent = current })
+		end
+		current = child
+	end
+	return current, nil
+end
+
+-- Coerces a decoded-JSON value to the type of the property being set, inferred from
+-- the instance's CURRENT value (which exists even right after Instance.new). Handles
+-- Vector3, Color3, EnumItem (incl. Material), CFrame, UDim2, number/bool/string.
+local function coercePropertyValue(inst, propName, value)
+	local okCur, current = pcall(function()
+		return inst[propName]
+	end)
+	local t = okCur and typeof(current) or nil
+	if t == "Vector3" then
+		local x, y, z = xyz(value, current.X, current.Y, current.Z)
+		return Vector3.new(tonumber(x) or 0, tonumber(y) or 0, tonumber(z) or 0)
+	elseif t == "Color3" then
+		if type(value) == "string" then
+			return hexToColor3(value, current)
+		elseif type(value) == "table" then
+			local r, g, b = xyz(value, current.R * 255, current.G * 255, current.B * 255)
+			return Color3.fromRGB(tonumber(r) or 0, tonumber(g) or 0, tonumber(b) or 0)
+		end
+		return current
+	elseif t == "EnumItem" then
+		if propName == "Material" and type(value) == "string" then
+			return materialFromName(value)
+		end
+		if type(value) == "string" then
+			local ok2, ev = pcall(function()
+				return current.EnumType[value]
+			end)
+			if ok2 and ev then
+				return ev
+			end
+		elseif type(value) == "number" then
+			local ok3, ev = pcall(function()
+				return current.EnumType:FromValue(value)
+			end)
+			if ok3 and ev then
+				return ev
+			end
+		end
+		return current
+	elseif t == "CFrame" then
+		if type(value) == "table" then
+			local px, py, pz = xyz(value.position or value, 0, 0, 0)
+			local rx, ry, rz = xyz(value.rotation, 0, 0, 0)
+			return CFrame.new(px, py, pz) * CFrame.Angles(math.rad(rx), math.rad(ry), math.rad(rz))
+		end
+		return current
+	elseif t == "UDim2" then
+		if type(value) == "table" then
+			return UDim2.new(
+				tonumber(value.scaleX or value[1]) or 0,
+				tonumber(value.offsetX or value[2]) or 0,
+				tonumber(value.scaleY or value[3]) or 0,
+				tonumber(value.offsetY or value[4]) or 0
+			)
+		end
+		return current
+	elseif t == "number" then
+		return tonumber(value) or current
+	elseif t == "boolean" then
+		return value and true or false
+	elseif t == "string" then
+		return tostring(value)
+	end
+	return value
+end
+
+local function setInstanceProperties(inst, properties)
+	if type(properties) ~= "table" then
+		return 0
+	end
+	local applied = 0
+	for propName, value in pairs(properties) do
+		if propName ~= "Parent" and propName ~= "ClassName" then
+			local coerced = coercePropertyValue(inst, propName, value)
+			local ok = pcall(function()
+				inst[propName] = coerced
+			end)
+			if ok then
+				applied = applied + 1
+			end
+		end
+	end
+	return applied
+end
+
+local function applySetProperties(op)
+	local inst = findExistingAtPath(op.path)
+	if not inst then
+		error("No instance at " .. tostring(op.path))
+	end
+	ChangeHistoryService:SetWaypoint("Yield edit: " .. tostring(op.path))
+	local n = setInstanceProperties(inst, op.properties)
+	ChangeHistoryService:SetWaypoint("Yield edit: " .. tostring(op.path))
+	local detail = ("Set %d propert%s on %s"):format(n, n == 1 and "y" or "ies", op.path)
+	logActivity(detail)
+	return detail
+end
+
+local function applyCreateInstance(op)
+	local className = tostring(op.className or "")
+	if className == "" then
+		error("create_instance needs a className")
+	end
+	local parent, err = resolvePathCreating(op.parent)
+	if not parent then
+		error(err or ("bad parent: " .. tostring(op.parent)))
+	end
+	ChangeHistoryService:SetWaypoint("Yield create: " .. className)
+	local okNew, inst = pcall(function()
+		return Instance.new(className)
+	end)
+	if not okNew then
+		error("Cannot create a " .. className .. ": " .. tostring(inst))
+	end
+	if op.name and op.name ~= "" then
+		inst.Name = op.name
+	end
+	setInstanceProperties(inst, op.properties)
+	inst.Parent = parent
+	ChangeHistoryService:SetWaypoint("Yield create: " .. className)
+	local detail = ("Created %s '%s' in %s"):format(className, inst.Name, tostring(op.parent))
+	logActivity(detail)
+	return detail
+end
+
+local function applyDeleteInstance(op)
+	local inst = findExistingAtPath(op.path)
+	if inst then
+		ChangeHistoryService:SetWaypoint("Yield delete: " .. op.path)
+		inst:Destroy()
+		ChangeHistoryService:SetWaypoint("Yield delete: " .. op.path)
+		logActivity("Deleted " .. op.path)
+		return "Deleted " .. op.path
+	end
+	logActivity("Nothing to delete at " .. tostring(op.path))
+	return "Nothing to delete at " .. tostring(op.path)
+end
+
+local function applyRenameInstance(op)
+	local inst = findExistingAtPath(op.path)
+	if not inst then
+		error("No instance at " .. tostring(op.path))
+	end
+	if not op.name or op.name == "" then
+		error("rename_instance needs a name")
+	end
+	ChangeHistoryService:SetWaypoint("Yield rename")
+	inst.Name = tostring(op.name)
+	local detail = ("Renamed %s -> %s"):format(op.path, op.name)
+	logActivity(detail)
+	return detail
+end
+
+local function applyMoveInstance(op)
+	local inst = findExistingAtPath(op.path)
+	if not inst then
+		error("No instance at " .. tostring(op.path))
+	end
+	local parent, err = resolvePathCreating(op.parent)
+	if not parent then
+		error(err or "bad parent")
+	end
+	ChangeHistoryService:SetWaypoint("Yield move")
+	inst.Parent = parent
+	local detail = ("Moved %s -> %s"):format(op.path, tostring(op.parent))
+	logActivity(detail)
+	return detail
 end
 
 -- ============================================================
@@ -568,6 +927,7 @@ end
 -- ============================================================
 
 local setStatusLabel -- forward declaration, assigned once the UI exists
+local pushSnapshot -- forward declaration (assigned below); used by the auto-sync loop + link
 
 local function performSync()
 	if isSyncing or not token then
@@ -631,22 +991,33 @@ local function performSync()
 
 	local results = {}
 	for _, op in ipairs(ops) do
+		local detail = nil
 		local opOk, opErr = pcall(function()
 			if op.type == "upsert_script" then
 				applyUpsertScript(op)
 			elseif op.type == "delete_script" then
 				applyDeleteScript(op)
 			elseif op.type == "build_map" then
-				applyBuildMap(op)
+				detail = applyBuildMap(op)
 			elseif op.type == "insert_model" then
-				applyInsertModel(op)
+				detail = applyInsertModel(op)
+			elseif op.type == "set_properties" then
+				detail = applySetProperties(op)
+			elseif op.type == "create_instance" then
+				detail = applyCreateInstance(op)
+			elseif op.type == "delete_instance" then
+				detail = applyDeleteInstance(op)
+			elseif op.type == "rename_instance" then
+				detail = applyRenameInstance(op)
+			elseif op.type == "move_instance" then
+				detail = applyMoveInstance(op)
 			else
 				error("Unknown op type: " .. tostring(op.type))
 			end
 		end)
 
 		if opOk then
-			table.insert(results, { id = op.id, ok = true })
+			table.insert(results, { id = op.id, ok = true, detail = detail })
 		else
 			table.insert(results, { id = op.id, ok = false, detail = tostring(opErr) })
 			logActivity(("Error (%s): %s"):format(tostring(op.type), tostring(opErr)))
@@ -676,6 +1047,7 @@ local function startAutoSyncLoop(widget)
 	end
 	autoSyncRunning = true
 	task.spawn(function()
+		local cycle = 0
 		while autoSyncRunning and token and widget.Enabled do
 			-- pcall-wrapped so ANY uncaught error inside performSync (not just the
 			-- per-op pcalls it already has) can't kill this coroutine and leave
@@ -685,6 +1057,12 @@ local function startAutoSyncLoop(widget)
 			if not ok then
 				isSyncing = false
 				logActivity("Auto-sync error: " .. tostring(err))
+			end
+			-- Every ~2 minutes, push a fresh whole-game snapshot so Yield's AI always
+			-- has a current read of the place (map + code) to reason over and edit.
+			cycle = cycle + 1
+			if cycle % 6 == 0 and pushSnapshot then
+				pcall(pushSnapshot)
 			end
 			task.wait(20)
 		end
@@ -715,13 +1093,10 @@ local PUSH_ROOTS = {
 	"Lighting",
 }
 
-local SCRIPT_CLASS_NAMES = {
-	Script = true,
-	LocalScript = true,
-	ModuleScript = true,
-}
-
 local MAX_PUSH_SCRIPTS = 300
+-- Whole-game read: how many instances (map + everything) to send up so the AI can
+-- "see" the full game and target real paths when it edits.
+local MAX_TREE_NODES = 1200
 
 local function pathForInstance(inst, rootName, rootInstance)
 	local segments = {}
@@ -768,7 +1143,58 @@ local function collectScriptsForPush()
 	return scripts, truncated
 end
 
-local function pushSnapshot()
+-- Compact summary of one instance for the whole-game tree: path + class, plus key
+-- geometry for parts so the AI understands the map's layout (sizes/positions/colors).
+local function summarizeInstance(inst, rootName, rootInstance)
+	local node = {
+		path = pathForInstance(inst, rootName, rootInstance),
+		className = inst.ClassName,
+	}
+	if inst:IsA("BasePart") then
+		pcall(function()
+			local round = function(n) return math.floor(n * 100 + 0.5) / 100 end
+			node.props = {
+				size = { round(inst.Size.X), round(inst.Size.Y), round(inst.Size.Z) },
+				position = { round(inst.Position.X), round(inst.Position.Y), round(inst.Position.Z) },
+				material = inst.Material.Name,
+				color = ("#%02X%02X%02X"):format(
+					math.floor(inst.Color.R * 255 + 0.5),
+					math.floor(inst.Color.G * 255 + 0.5),
+					math.floor(inst.Color.B * 255 + 0.5)
+				),
+				anchored = inst.Anchored,
+			}
+		end)
+	end
+	return node
+end
+
+-- Walks the whole game (every PUSH_ROOT service) into a flat, capped list of
+-- instances -- the map, models, GUIs, folders, and scripts alike -- so Yield has a
+-- complete read of the game to reason over and edit.
+local function collectGameTree()
+	local nodes = {}
+	local truncated = false
+	for _, rootName in ipairs(PUSH_ROOTS) do
+		local rootInstance = resolveServiceRoot(rootName)
+		if rootInstance then
+			for _, descendant in ipairs(rootInstance:GetDescendants()) do
+				if #nodes >= MAX_TREE_NODES then
+					truncated = true
+					break
+				end
+				table.insert(nodes, summarizeInstance(descendant, rootName, rootInstance))
+			end
+		end
+		if #nodes >= MAX_TREE_NODES then
+			truncated = true
+			break
+		end
+	end
+	return nodes, truncated
+end
+
+function pushSnapshot()
 	-- Same PlaceId 0 caveat as performSync: an unsaved/unpublished place has no id
 	-- to key the snapshot to, so don't push -- just tell the user.
 	if game.PlaceId == 0 then
@@ -784,14 +1210,18 @@ local function pushSnapshot()
 		logActivity("Warning: this place has more than " .. MAX_PUSH_SCRIPTS .. " scripts, only pushing the first " .. MAX_PUSH_SCRIPTS)
 	end
 
+	local tree, treeTruncated = collectGameTree()
+
 	local ok, body = apiRequest("POST", "/snapshot", {
 		scripts = scripts,
+		tree = tree,
+		treeTruncated = treeTruncated,
 		placeId = tostring(game.PlaceId),
 		placeName = game.Name,
 	})
 
 	if ok then
-		logActivity(("Pushed %d scripts to Yield"):format(#scripts))
+		logActivity(("Pushed %d scripts + %d instances to Yield"):format(#scripts, #tree))
 	else
 		logActivity("Push failed: " .. tostring(body))
 	end
@@ -982,7 +1412,7 @@ new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = syncButton })
 
 local pushButton = new("TextButton", {
 	Font = Enum.Font.GothamBold,
-	Text = "Push code",
+	Text = "Push game",
 	TextSize = 13,
 	TextColor3 = THEME.text,
 	BackgroundColor3 = THEME.panelAlt,
@@ -1166,6 +1596,11 @@ local function attemptLink(rawCode)
 		logActivity("Linked to Yield")
 	end
 	onWidgetEnabledChanged()
+	-- Immediately give Yield a full read of this game (map + code) so the AI can
+	-- start reasoning over what's actually here.
+	task.spawn(function()
+		pcall(pushSnapshot)
+	end)
 end
 
 local function disconnect()
@@ -1205,7 +1640,7 @@ pushButton.MouseButton1Click:Connect(function()
 		if not ok then
 			logActivity("Push error: " .. tostring(err))
 		end
-		pushButton.Text = "Push code"
+		pushButton.Text = "Push game"
 	end)
 end)
 

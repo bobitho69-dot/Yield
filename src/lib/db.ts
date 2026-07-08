@@ -600,6 +600,13 @@ export function getRobloxProjectByPlace(env: Env, userId: string, placeId: strin
   return env.DB.prepare('SELECT * FROM roblox_projects WHERE user_id=? AND place_id=?').bind(userId, placeId).first<RobloxProjectRow>();
 }
 
+// The most-recently-touched project this user has that is NOT yet bound to any place.
+// Used to "adopt" web-started work into the first Studio place they open (below).
+export function getAdoptableRobloxProject(env: Env, userId: string): Promise<RobloxProjectRow | null> {
+  return env.DB.prepare('SELECT * FROM roblox_projects WHERE user_id=? AND place_id IS NULL ORDER BY updated_at DESC LIMIT 1')
+    .bind(userId).first<RobloxProjectRow>();
+}
+
 // The heart of "just pick up": given the Roblox PlaceId the plugin reported, return
 // the matching project for this user, auto-creating it (named after the place) the
 // first time that place is seen. No manual naming, ever.
@@ -616,6 +623,30 @@ export async function findOrCreateRobloxProjectByPlace(
     }
     return existing;
   }
+
+  // No project is bound to this place yet. If the user already started a project on
+  // the web (before opening a place in Studio) — e.g. the one the /roblox page
+  // auto-creates so there's always a chat box — ADOPT it: bind this place to that
+  // project so the scripts/maps they queued there actually sync into the place they
+  // just opened, instead of stranding the work in a project no plugin ever pulls.
+  const adoptable = await getAdoptableRobloxProject(env, userId);
+  if (adoptable) {
+    try {
+      const at = now();
+      // Only rename to the place if they never named it themselves.
+      const keepTitle = !!adoptable.title && adoptable.title !== 'Untitled game';
+      const title = keepTitle ? adoptable.title : ((placeName && placeName.trim()) || `Place ${placeId}`);
+      await env.DB.prepare(
+        `UPDATE roblox_projects
+           SET place_id=?, place_name=?, title=?, auto_created=0, paired=1,
+               paired_at=COALESCE(paired_at,?), last_seen_at=?, updated_at=?
+         WHERE id=? AND place_id IS NULL`,
+      ).bind(placeId, placeName, title, at, at, at, adoptable.id).run();
+      const bound = await getRobloxProjectByPlace(env, userId, placeId);
+      if (bound) return bound;
+    } catch { /* lost a race / unique-index clash — fall through to create-or-read */ }
+  }
+
   const id = newId();
   const t = now();
   const title = (placeName && placeName.trim()) || `Place ${placeId}`;

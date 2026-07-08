@@ -53,6 +53,11 @@
   .lc-file { border-top:1px solid var(--line); }
   .lc-head { padding:.35rem .7rem; font-size:.74rem; color:var(--muted); font-family:var(--font-mono); background:var(--bg-2); }
   .lc-pre { margin:0; padding:.55rem .7rem; font-size:.76rem; white-space:pre-wrap; overflow:auto; max-height:280px; background:#0a0c11; font-family:var(--font-mono); }
+  .lc-pre.live::after { content:'▋'; color:var(--brand); animation:wkblink 1s steps(1) infinite; }
+  .working { display:flex; align-items:center; gap:.5rem; font-size:.75rem; color:var(--muted); margin-bottom:.15rem; }
+  .wk-spin { width:11px; height:11px; border-radius:50%; border:2px solid var(--line); border-top-color:var(--brand); animation:wkspin .7s linear infinite; flex:0 0 auto; }
+  @keyframes wkspin { to { transform:rotate(360deg); } }
+  @keyframes wkblink { 50% { opacity:0; } }
   .act-chips { display:flex; flex-direction:column; gap:.4rem; margin-top:.15rem; }
   .chip { display:flex; align-items:center; gap:.55rem; padding:.45rem .65rem; border-radius:9px; background:#10131c; border:1px solid var(--line); font-family:var(--font-mono); font-size:.75rem; color:#c9d2e3; }
   .chip .chip-t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -473,16 +478,20 @@ async function sendPrompt(overrideText) {
   m.appendChild(bubble('you', text, true));
   const aiDiv = bubble('yield', '', false);
   m.appendChild(aiDiv); m.scrollTop = m.scrollHeight;
+  const wk = document.createElement('div'); wk.className = 'working';
+  wk.innerHTML = '<span class="wk-spin"></span><span class="wk-text">Working…</span>';
+  aiDiv.insertBefore(wk, aiDiv.querySelector('.bubble'));
+  const wkSet = (t) => { const el = wk.querySelector('.wk-text'); if (el) el.textContent = t; };
   const chatSpan = document.createElement('span');
   aiDiv.querySelector('.bubble').appendChild(chatSpan);
   const bubbleEl = aiDiv.querySelector('.bubble');
   let thinkEl, thinkBody, thinkAcc = '';
   const ensureThink = () => { if (!thinkEl) { thinkEl = document.createElement('details'); thinkEl.className = 'think'; thinkEl.innerHTML = '<summary>💭 Thinking…</summary><div class="think-body"></div>'; aiDiv.appendChild(thinkEl); thinkBody = thinkEl.querySelector('.think-body'); } return thinkEl; };
   let lcEl, lcBody; const codeSecs = {};
-  const ensureLive = () => { if (!lcEl) { lcEl = document.createElement('details'); lcEl.className = 'livecode'; lcEl.open = true; lcEl.innerHTML = '<summary>👁 Writing scripts…</summary><div class="lc-body"></div>'; aiDiv.appendChild(lcEl); lcBody = lcEl.querySelector('.lc-body'); } return lcEl; };
+  const ensureLive = () => { if (!lcEl) { lcEl = document.createElement('details'); lcEl.className = 'livecode'; lcEl.open = true; lcEl.innerHTML = '<summary>⌨ Writing code — live</summary><div class="lc-body"></div>'; aiDiv.appendChild(lcEl); lcBody = lcEl.querySelector('.lc-body'); } return lcEl; };
   const appendCode = (p) => {
     ensureLive(); let sec = codeSecs[p.path];
-    if (!sec) { const wrap = document.createElement('div'); wrap.className = 'lc-file'; wrap.innerHTML = `<div class="lc-head">${esc(p.className || 'Script')} · ${esc(p.path)}</div><pre class="lc-pre"></pre>`; lcBody.appendChild(wrap); sec = codeSecs[p.path] = { pre: wrap.querySelector('.lc-pre'), text: '' }; }
+    if (!sec) { const wrap = document.createElement('div'); wrap.className = 'lc-file'; wrap.innerHTML = `<div class="lc-head">${esc(p.className || 'Script')} · ${esc(p.path)}</div><pre class="lc-pre live"></pre>`; lcBody.appendChild(wrap); sec = codeSecs[p.path] = { pre: wrap.querySelector('.lc-pre'), text: '' }; wkSet('Writing ' + p.path); }
     if (p.delta) { sec.text += p.delta; sec.pre.textContent = sec.text; sec.pre.scrollTop = sec.pre.scrollHeight; }
   };
 
@@ -506,8 +515,8 @@ async function sendPrompt(overrideText) {
         const data = /data: ([\s\S]*)/.exec(frame)?.[1];
         if (!ev || data == null) continue;
         let payload; try { payload = JSON.parse(data); } catch { continue; }
-        if (ev === 'status') aiDiv.querySelector('.meta').textContent = payload.stage || 'yield';
-        else if (ev === 'meta') aiDiv.querySelector('.meta').textContent = payload.label || 'yield';
+        if (ev === 'status') wkSet(payload.stage || 'Working…');
+        else if (ev === 'meta') { aiDiv.querySelector('.meta').textContent = payload.label ? ('yield · ' + payload.label) : 'yield'; wkSet('Generating…'); }
         else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; }
         else if (ev === 'chat') { chatAcc += payload; chatSpan.textContent = chatAcc; m.scrollTop = m.scrollHeight; }
         else if (ev === 'code') appendCode(payload);
@@ -519,7 +528,10 @@ async function sendPrompt(overrideText) {
           el.querySelectorAll('.ask-opt').forEach((b) => b.addEventListener('click', () => { el.querySelectorAll('.ask-opt').forEach((x) => x.disabled = true); b.classList.add('chosen'); sendPrompt(b.textContent); }));
           aiDiv.appendChild(el); m.scrollTop = m.scrollHeight;
         } else if (ev === 'done') {
-          if (lcEl) lcEl.open = false;
+          if (wk) wk.remove();
+          aiDiv.querySelectorAll('.lc-pre.live').forEach((p) => p.classList.remove('live'));
+          const nfiles = Object.keys(codeSecs).length;
+          if (lcEl) { const sm = lcEl.querySelector('summary'); if (sm) sm.textContent = `✓ Wrote ${nfiles} script${nfiles === 1 ? '' : 's'}`; }
           const n = (payload.scripts ? payload.scripts.length : 0) + (payload.edits || 0);
           if (n > 0) { const note = document.createElement('div'); note.className = 'sent-note'; note.textContent = `→ Sent ${n} action(s) to Roblox Studio`; aiDiv.appendChild(note); }
           (payload.notes || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.textContent = '⚠ ' + t; aiDiv.appendChild(nl); });
@@ -533,6 +545,8 @@ async function sendPrompt(overrideText) {
     else if (e) console.error(e);
   }
   finally {
+    if (wk) wk.remove();
+    aiDiv.querySelectorAll('.lc-pre.live').forEach((p) => p.classList.remove('live'));
     state.abort = null; setSending(false);
     try { const fresh = await api('/api/roblox/projects/' + state.currentId); state.current = fresh; renderScripts(); } catch { /* keep */ }
     loadOps(); loadLink();

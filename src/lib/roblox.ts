@@ -543,17 +543,18 @@ export async function marketplaceKeyStatus(env: Env, userId: string): Promise<{ 
   if (!v) return { connected: false };
   try { const o = JSON.parse(v); return { connected: true, creatorType: o.creatorType === 'Group' ? 'Group' : 'User', creatorId: o.creatorId ?? null, connectedAt: o.connectedAt }; } catch { return { connected: false }; }
 }
-// Best-effort validation so we never store a junk/expired key: an authenticated
-// probe that only REJECTS on a clear auth failure (401/403); any other outcome
-// (200/404/429/5xx/network) is accepted so Roblox flakiness never blocks the user.
+// Format-only validation. We deliberately do NOT make an authenticated probe:
+// there is no public Open Cloud scope that covers marketplace/toolbox search, so
+// probing that endpoint returns 401/403 even for a perfectly valid key (and there
+// is no universal Open Cloud "ping" a normal key can always hit). Rejecting on that
+// probe made valid keys impossible to connect. Instead we accept any well-formed
+// key and let the real operations (Assets upload / model search) surface a clear
+// error later if the key lacks the needed permission — never blocking connection.
 export async function validateMarketplaceKey(apiKey: string): Promise<{ ok: boolean; reason?: string }> {
-  if (!apiKey || apiKey.trim().length < 12) return { ok: false, reason: 'That key looks too short — paste the full Open Cloud API key.' };
-  if (/\s/.test(apiKey.trim())) return { ok: false, reason: 'The key contains spaces — copy it exactly, with no line breaks.' };
-  try {
-    const r = await fetch('https://apis.roblox.com/toolbox-service/v1/items?category=Model&keyword=tree&limit=1', { headers: { 'x-api-key': apiKey.trim(), accept: 'application/json' } });
-    if (r.status === 401 || r.status === 403) return { ok: false, reason: 'Roblox rejected the key — make sure it has Toolbox/Assets read permission and has not expired.' };
-    return { ok: true };
-  } catch { return { ok: true }; }
+  const k = (apiKey || '').trim();
+  if (k.length < 12) return { ok: false, reason: 'That key looks too short — paste the full Open Cloud API key.' };
+  if (/\s/.test(k)) return { ok: false, reason: 'The key has spaces or line breaks — copy it exactly, in one piece.' };
+  return { ok: true };
 }
 
 // --- Free-model marketplace search (best-effort; needs the user's own Roblox ----

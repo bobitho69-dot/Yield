@@ -267,7 +267,7 @@
         </div>
         <div class="panel">
           <h2>Marketplace Key <span class="dim" style="font-size:.8rem">(optional)</span></h2>
-          <p class="p-hint">A Roblox <b>Open Cloud</b> API key, added <b>once for your whole account</b>. It lets the chatbot <b>search the marketplace</b> for free models (auto virus-scanned on insert) and <b>upload 3D-generated models</b> to your account. Without it, the AI still builds detailed maps by modeling props out of parts. Stored <b>encrypted</b> — never shown again, never sent back to your browser.</p>
+          <p class="p-hint">A Roblox <b>Open Cloud</b> API key (Assets permission), added <b>once for your whole account</b>. It lets the chatbot <b>upload 3D-generated models</b> to your account, and attempt <b>free-model marketplace search</b> (best-effort; anything it inserts is auto virus-scanned). Without it, the AI still builds detailed maps by modeling props out of parts. Stored <b>encrypted</b> — never shown again, never sent back to your browser.</p>
           <div id="keyStatus" class="dim" style="font-size:.82rem;margin-bottom:.6rem"></div>
           <div class="field"><label>Open Cloud API key</label><input id="robloxKeyInput" type="password" placeholder="paste your key — kept encrypted" autocomplete="off"></div>
           <div class="row2">
@@ -276,7 +276,7 @@
           </div>
           <div style="display:flex;gap:.5rem;align-items:center"><button class="btn primary sm" id="connectKeyBtn">Connect</button><button class="btn ghost sm" id="disconnectKeyBtn">Disconnect</button></div>
           <div id="keyMsg" style="font-size:.78rem;margin-top:.5rem"></div>
-          <p class="dim" style="font-size:.76rem;margin-top:.6rem">Create one at create.roblox.com → Creator Dashboard → Open Cloud → API Keys (grant <b>Toolbox read</b> + <b>Assets read/write</b> for your creator). The creator id is the numeric id of your account or group.</p>
+          <p class="dim" style="font-size:.76rem;margin-top:.6rem">Create one at create.roblox.com → Creator Dashboard → Open Cloud → API Keys: add the <b>Assets</b> API system with <b>Read</b> and <b>Write</b> permissions for your creator (there is no "Toolbox" scope — Assets is the one that matters, and it's what enables 3D-model upload). The creator id is the numeric id of your account or group.</p>
         </div>
       </div>
     </div>

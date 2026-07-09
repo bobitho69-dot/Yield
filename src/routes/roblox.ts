@@ -35,7 +35,7 @@ import type { Ctx, Env } from '../types';
 import { json, error, sse } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
-import { resolveModel, endpointsFor } from '../config/models';
+import { resolveModel, endpointFor, endpointsFor } from '../config/models';
 import { chat, chatStream } from '../lib/nvidia';
 import { routeModel } from './generate';
 import { generateImage, generate3dModel } from './media';
@@ -96,6 +96,10 @@ export async function handleRoblox(req: Request, c: Ctx, rest: string): Promise<
   // the AI to search free models + upload 3D-generated models across every game.
   if (rest === 'marketplace-key' && req.method === 'GET') return json(await marketplaceKeyStatus(c.env, user.id));
   if (rest === 'marketplace-key' && req.method === 'POST') return connectMarketplaceKey(req, c, user.id);
+
+  // "What's happening" interpreter: gpt-oss-20b turns the raw live-activity feed
+  // into a plain-English one-liner for the dropdown's non-raw view.
+  if (rest === 'interpret' && req.method === 'POST') return interpretHappening(req, c);
 
   if (segs[0] !== 'projects') return error(404, 'Not found');
   const id = segs[1];
@@ -360,16 +364,27 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
         return false;
       };
 
-      let ok = false;
-      try { ok = await tryModel(model, effort); }
-      catch { streamer.reset(); try { ok = await tryModel(model, null); } catch { /* fall through to stable fallbacks */ } }
-      if (!ok && !streamer.produced) {
+      // Gate every retry on streamer.produced, NOT on tryModel's return value — a
+      // reasoning model can burn its ENTIRE token budget inside <think> and stream
+      // back a fully successful (non-throwing) response that contains zero usable
+      // chat/code/ops. That used to short-circuit the whole fallback chain (ok was
+      // true), so the request just died with "produced nothing usable" instead of
+      // ever trying a different model. content-emptiness, not transport success, is
+      // what decides whether we keep trying.
+      const attempt = async (m: ReturnType<typeof resolveModel>, eff: 'low' | 'medium' | 'high' | null): Promise<void> => {
+        streamer.reset();
+        try { await tryModel(m, eff); } catch { /* swallow — caller checks streamer.produced */ }
+      };
+
+      await attempt(model, effort);
+      if (!streamer.produced && effort) await attempt(model, null); // drop forced reasoning, try again
+      if (!streamer.produced) {
         for (const sid of STABLE_FALLBACKS) {
           if (sid === model.id) continue;
           const fb = resolveModel(sid);
-          await send('status', { stage: `${model.label} unavailable — retrying on ${fb.label}…` });
-          streamer.reset();
-          try { ok = await tryModel(fb, null); model = fb; if (ok) break; } catch { /* try the next anchor */ }
+          await send('status', { stage: `${model.label} produced nothing — retrying on ${fb.label}…` });
+          await attempt(fb, null);
+          if (streamer.produced) { model = fb; break; }
         }
       }
       await streamer.end();
@@ -424,20 +439,60 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
   return response;
 }
 
-// POST /api/roblox/marketplace-key — connect/validate/clear the account-level
+// POST /api/roblox/interpret — { lines: string[] } -> { text, interpreted }
+// Feeds the tail of the raw live-activity feed (statuses, files being written,
+// ops queued) to gpt-oss-20b and returns 1–2 plain-English sentences describing
+// what the AI is doing right now. Falls back to the last raw line when the
+// interpreter model is unavailable, so the dropdown always has something to show.
+async function interpretHappening(req: Request, c: Ctx): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { lines?: unknown };
+  const lines = (Array.isArray(body.lines) ? body.lines : [])
+    .map((l) => String(l).slice(0, 300))
+    .slice(-40);
+  const feed = lines.join('\n').slice(-3000);
+  if (!feed.trim()) return json({ text: 'Waiting for the AI to start…', interpreted: false });
+
+  try {
+    const router = resolveModel('auto'); // gpt-oss-20b — small + fast
+    const ep = endpointFor(c.env, router);
+    const { text } = await chat({
+      baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are narrating a live activity feed from an AI that is building a Roblox game (writing Luau scripts, building maps, inserting/generating 3D models). Given the raw feed, reply with 1-2 SHORT plain-English sentences, present tense, describing what the AI is doing RIGHT NOW for a non-technical user. Focus on the most recent lines. No preamble, no markdown, no quotes — just the sentence(s).',
+        },
+        { role: 'user', content: feed },
+      ],
+      temperature: 0.2, max_tokens: 1200, timeoutMs: 12000,
+      extra: { reasoning_effort: 'low' }, // gpt-oss reasons — keep it snappy
+    });
+    const out = text.trim().replace(/\s+/g, ' ').slice(0, 300);
+    if (out) return json({ text: out, interpreted: true });
+  } catch { /* fall through to the raw-tail fallback */ }
+  const tail = [...lines].reverse().find((l) => l.trim());
+  return json({ text: tail || 'Working…', interpreted: false });
+}
+
+// POST /api/roblox/marketplace-key — connect/rotate/clear the account-level
 // Marketplace Key. The plaintext key is validated, encrypted, and stored; it is
-// NEVER echoed back — only a boolean + the non-secret creator id are returned.
+// NEVER echoed back — pasting a new key always REPLACES the saved one (that's the
+// rotation flow — there's no separate endpoint). The response includes a `last4`
+// fingerprint (last 4 characters only) so the UI can confirm which key is saved
+// without ever exposing the secret itself.
 async function connectMarketplaceKey(req: Request, c: Ctx, userId: string): Promise<Response> {
   const body = (await req.json().catch(() => ({}))) as { apiKey?: string; creatorType?: string; creatorId?: string };
   const apiKey = String(body.apiKey || '').trim();
-  if (!apiKey) { await setMarketplaceKey(c.env, userId, null, 'User', null); return json({ connected: false }); }
+  if (!apiKey) { await setMarketplaceKey(c.env, userId, null, 'User', null, null); return json({ connected: false }); }
   const check = await validateMarketplaceKey(apiKey);
   if (!check.ok) return error(400, check.reason || 'That Marketplace Key was rejected.', { code: 'invalid_key' });
   const enc = await encryptToken(c.env, apiKey);
   const creatorType = body.creatorType === 'Group' ? 'Group' : 'User';
   const creatorId = body.creatorId ? (String(body.creatorId).replace(/[^0-9]/g, '').slice(0, 30) || null) : null;
-  await setMarketplaceKey(c.env, userId, enc, creatorType, creatorId);
-  return json({ connected: true, creatorType, creatorId });
+  const last4 = apiKey.slice(-4);
+  await setMarketplaceKey(c.env, userId, enc, creatorType, creatorId, last4);
+  return json({ connected: true, creatorType, creatorId, last4 });
 }
 
 // The Roblox Open Cloud key + creator to use for a project: the account-level

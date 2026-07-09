@@ -140,7 +140,13 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
     opsBuf = null;
     opsMaybeChat = false;
     const parsed = tryParseOps(text, wasMaybe);
-    if (parsed) { opsRaw.push(...parsed); return; }
+    if (parsed) {
+      opsRaw.push(...parsed);
+      // Let the client's live "What's happening" feed show which edits were just
+      // queued without waiting for the done event.
+      await send('ops', { types: parsed.map((o) => String((o as any)?.type || 'op')).slice(0, 60) });
+      return;
+    }
     // Never eat a block silently. A ```json block that isn't ops was just JSON the
     // model wanted to show; an unparseable ```yield-ops block means the build the
     // model described would otherwise vanish without a trace. Either way, replay it
@@ -263,7 +269,10 @@ export function makeScriptStreamer(send: (event: string, data: unknown) => Promi
       scripts.length = 0; chatLines.length = 0; imagePrompts.length = 0; opsRaw.length = 0;
     },
     get produced() {
-      return scripts.some((f) => f.lines.some((l) => l.trim())) || chatLines.some((l) => l.trim());
+      // A bare ops block with no surrounding chat text is legitimate output — don't
+      // let a caller's "nothing produced, try a different model" check throw away
+      // successfully parsed ops just because chatLines/scripts happen to be empty.
+      return scripts.some((f) => f.lines.some((l) => l.trim())) || chatLines.some((l) => l.trim()) || opsRaw.length > 0;
     },
     result() {
       const chat = chatLines.join('\n')
@@ -635,28 +644,31 @@ export function sanitizeGenericOp(op: any): Record<string, unknown> | null {
 
 // --- Marketplace Key: the user's Roblox Open Cloud key -----------------------------
 // Yield calls it the "Marketplace Key". It's ACCOUNT-LEVEL (added once, used for
-// every game the user builds) so the AI can search free marketplace models and
-// upload 3D-generated models. Stored AES-GCM ENCRYPTED (the caller encrypts via
-// encryptToken before calling here) in KV — never in D1, never returned to the
-// client, never logged. Only a boolean "connected" + the (non-secret) creator id
-// are ever surfaced.
-export interface MarketplaceKeyRecord { enc: string; creatorType: 'User' | 'Group'; creatorId: string | null }
+// every game the user builds) so the AI can upload 3D-generated models when they
+// can't be imported directly into Studio. Stored AES-GCM ENCRYPTED (the caller
+// encrypts via encryptToken before calling here) in KV — never in D1, never logged,
+// and the plaintext is never returned to the client after the initial paste. The
+// UI only ever sees "connected" + the (non-secret) creator id + the last 4
+// characters (a `last4` fingerprint, like a card ending in ****1234 — enough to
+// confirm which key is saved / rotated without exposing anything that could be
+// replayed).
+export interface MarketplaceKeyRecord { enc: string; creatorType: 'User' | 'Group'; creatorId: string | null; last4: string | null }
 
-export async function setMarketplaceKey(env: Env, userId: string, encKey: string | null, creatorType: 'User' | 'Group', creatorId: string | null): Promise<void> {
+export async function setMarketplaceKey(env: Env, userId: string, encKey: string | null, creatorType: 'User' | 'Group', creatorId: string | null, last4: string | null = null): Promise<void> {
   const k = `roblox_mkt_key:${userId}`;
   if (!encKey) { await env.KV.delete(k); return; }
-  await env.KV.put(k, JSON.stringify({ enc: encKey, creatorType, creatorId, connectedAt: now() }));
+  await env.KV.put(k, JSON.stringify({ enc: encKey, creatorType, creatorId, last4, connectedAt: now() }));
 }
 export async function getMarketplaceKey(env: Env, userId: string): Promise<MarketplaceKeyRecord | null> {
   const v = await env.KV.get(`roblox_mkt_key:${userId}`);
   if (!v) return null;
-  try { const o = JSON.parse(v); return { enc: o.enc, creatorType: o.creatorType === 'Group' ? 'Group' : 'User', creatorId: o.creatorId ?? null }; } catch { return null; }
+  try { const o = JSON.parse(v); return { enc: o.enc, creatorType: o.creatorType === 'Group' ? 'Group' : 'User', creatorId: o.creatorId ?? null, last4: o.last4 ?? null }; } catch { return null; }
 }
-// Non-secret status for the UI (never includes the key itself).
-export async function marketplaceKeyStatus(env: Env, userId: string): Promise<{ connected: boolean; creatorType?: 'User' | 'Group'; creatorId?: string | null; connectedAt?: number }> {
+// Non-secret status for the UI (never includes the key itself — only its last4).
+export async function marketplaceKeyStatus(env: Env, userId: string): Promise<{ connected: boolean; creatorType?: 'User' | 'Group'; creatorId?: string | null; last4?: string | null; connectedAt?: number }> {
   const v = await env.KV.get(`roblox_mkt_key:${userId}`);
   if (!v) return { connected: false };
-  try { const o = JSON.parse(v); return { connected: true, creatorType: o.creatorType === 'Group' ? 'Group' : 'User', creatorId: o.creatorId ?? null, connectedAt: o.connectedAt }; } catch { return { connected: false }; }
+  try { const o = JSON.parse(v); return { connected: true, creatorType: o.creatorType === 'Group' ? 'Group' : 'User', creatorId: o.creatorId ?? null, last4: o.last4 ?? null, connectedAt: o.connectedAt }; } catch { return { connected: false }; }
 }
 // Format-only validation. We deliberately do NOT make an authenticated probe:
 // there is no public Open Cloud scope that covers marketplace/toolbox search, so

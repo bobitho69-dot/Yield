@@ -46,9 +46,14 @@
   .msg.user .meta { color:var(--brand); text-align:right; padding-right:.15rem; }
   .msg .bubble { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:.7rem .9rem; font-size:.88rem; line-height:1.55; white-space:pre-wrap; word-break:break-word; color:#dbe1ee; }
   .msg.user .bubble { background:#171a2e; border-color:#2a2560; }
-  .think, .livecode { margin-top:.15rem; border:1px solid var(--line); border-radius:9px; background:var(--panel-2); overflow:hidden; }
-  .think summary, .livecode summary { cursor:pointer; padding:.45rem .7rem; font-size:.76rem; color:var(--muted); list-style:none; }
+  .think, .livecode, .happening { margin-top:.15rem; border:1px solid var(--line); border-radius:9px; background:var(--panel-2); overflow:hidden; }
+  .think summary, .livecode summary, .happening summary { cursor:pointer; padding:.45rem .7rem; font-size:.76rem; color:var(--muted); list-style:none; }
   .livecode summary { color:var(--brand); }
+  .hp-tabs { display:flex; gap:.35rem; padding:0 .7rem .4rem; }
+  .hp-tab { font-size:.68rem; padding:.15rem .55rem; border-radius:999px; border:1px solid var(--line); background:transparent; color:var(--muted); cursor:pointer; }
+  .hp-tab.on { color:var(--brand); border-color:var(--brand); }
+  .hp-body { padding:0 .8rem .6rem; font-size:.76rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
+  .hp-body.raw { font-family:var(--font-mono); font-size:.7rem; }
   .think .think-body { padding:0 .8rem .6rem; font-size:.76rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
   .lc-file { border-top:1px solid var(--line); }
   .lc-head { padding:.35rem .7rem; font-size:.74rem; color:var(--muted); font-family:var(--font-mono); background:var(--bg-2); }
@@ -269,7 +274,7 @@
           <h2>Marketplace Key <span class="dim" style="font-size:.8rem">(optional)</span></h2>
           <p class="p-hint">A Roblox <b>Open Cloud</b> API key (Assets Read+Write permission), added <b>once for your whole account</b>. Only used to <b>publish AI-generated 3D models to your Roblox account</b> when a mesh can't be imported straight into Studio — a rare fallback. <b>Marketplace search doesn't need it</b>: the Studio plugin searches, virus-scans, and inserts free models itself. Stored <b>encrypted</b> — never shown again, never sent back to your browser.</p>
           <div id="keyStatus" class="dim" style="font-size:.82rem;margin-bottom:.6rem"></div>
-          <div class="field"><label>Open Cloud API key</label><input id="robloxKeyInput" type="password" placeholder="paste your key — kept encrypted" autocomplete="off"></div>
+          <div class="field"><label id="robloxKeyLabel">Open Cloud API key</label><input id="robloxKeyInput" type="password" placeholder="paste your key — kept encrypted" autocomplete="off"></div>
           <div class="row2">
             <div class="field"><label>Creator type</label><select id="creatorTypeInput"><option value="User">User</option><option value="Group">Group</option></select></div>
             <div class="field"><label>Creator id <span class="dim">(for 3D upload)</span></label><input id="creatorIdInput" placeholder="your user or group id" autocomplete="off"></div>
@@ -489,6 +494,54 @@ async function sendPrompt(overrideText) {
   const ensureThink = () => { if (!thinkEl) { thinkEl = document.createElement('details'); thinkEl.className = 'think'; thinkEl.innerHTML = '<summary>💭 Thinking…</summary><div class="think-body"></div>'; aiDiv.appendChild(thinkEl); thinkBody = thinkEl.querySelector('.think-body'); } return thinkEl; };
   let lcEl, lcBody; const codeSecs = {};
   const ensureLive = () => { if (!lcEl) { lcEl = document.createElement('details'); lcEl.className = 'livecode'; lcEl.open = true; lcEl.innerHTML = '<summary>⌨ Writing code — live</summary><div class="lc-body"></div>'; aiDiv.appendChild(lcEl); lcBody = lcEl.querySelector('.lc-body'); } return lcEl; };
+
+  // "What's happening" — a live feed of what the AI is doing. Raw mode shows the
+  // event lines as they arrive; Plain English mode has gpt-oss-20b interpret the
+  // tail of the feed every few seconds (server: /api/roblox/interpret).
+  let hpEl, hpBody, hpMode = 'plain', hpTimer = null, hpBusy = false, hpThought = false;
+  const hpRaw = [], hpPlain = [];
+  const renderHappening = () => {
+    if (!hpBody) return;
+    hpBody.classList.toggle('raw', hpMode === 'raw');
+    hpBody.textContent = (hpMode === 'raw' ? hpRaw : (hpPlain.length ? hpPlain : ['Interpreting…'])).join('\n');
+    hpBody.scrollTop = hpBody.scrollHeight;
+  };
+  const interpretNow = async () => {
+    if (hpBusy || !hpRaw.length) return;
+    hpBusy = true;
+    try {
+      const r = await api('/api/roblox/interpret', { method: 'POST', body: JSON.stringify({ lines: hpRaw.slice(-40) }) });
+      if (r.text && r.text !== hpPlain[hpPlain.length - 1]) {
+        hpPlain.push(r.text);
+        if (hpPlain.length > 60) hpPlain.shift();
+        if (hpMode === 'plain') renderHappening();
+      }
+    } catch { /* the raw view still works */ }
+    hpBusy = false;
+  };
+  const ensureHappening = () => {
+    if (hpEl) return hpEl;
+    hpEl = document.createElement('details');
+    hpEl.className = 'happening';
+    hpEl.innerHTML = '<summary>👁 What’s happening…</summary><div class="hp-tabs"><button class="hp-tab on" data-m="plain">Plain English</button><button class="hp-tab" data-m="raw">Raw</button></div><div class="hp-body"></div>';
+    aiDiv.appendChild(hpEl);
+    hpBody = hpEl.querySelector('.hp-body');
+    hpEl.querySelectorAll('.hp-tab').forEach((b) => b.addEventListener('click', (e) => {
+      e.preventDefault();
+      hpMode = b.dataset.m;
+      hpEl.querySelectorAll('.hp-tab').forEach((x) => x.classList.toggle('on', x === b));
+      renderHappening();
+      if (hpMode === 'plain') interpretNow();
+    }));
+    hpEl.addEventListener('toggle', () => { if (hpEl.open && hpMode === 'plain') interpretNow(); });
+    return hpEl;
+  };
+  const hpLine = (s) => {
+    hpRaw.push(s);
+    if (hpRaw.length > 200) hpRaw.shift();
+    ensureHappening();
+    if (hpMode === 'raw') renderHappening();
+  };
   const appendCode = (p) => {
     ensureLive(); let sec = codeSecs[p.path];
     if (!sec) { const wrap = document.createElement('div'); wrap.className = 'lc-file'; wrap.innerHTML = `<div class="lc-head">${esc(p.className || 'Script')} · ${esc(p.path)}</div><pre class="lc-pre live"></pre>`; lcBody.appendChild(wrap); sec = codeSecs[p.path] = { pre: wrap.querySelector('.lc-pre'), text: '' }; wkSet('Writing ' + p.path); }
@@ -502,6 +555,9 @@ async function sendPrompt(overrideText) {
       signal: ctrl.signal,
     });
     if (!res.ok || !res.body) { bubbleEl.textContent = ((await res.json().catch(() => ({}))).error) || 'Request failed.'; throw 0; }
+    // Interpret the live feed every few seconds — but only while the dropdown is
+    // actually open in Plain English mode, so idle chats cost nothing.
+    hpTimer = setInterval(() => { if (hpEl && hpEl.open && hpMode === 'plain') interpretNow(); }, 4000);
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buf = '', chatAcc = '';
     for (;;) {
@@ -515,13 +571,14 @@ async function sendPrompt(overrideText) {
         const data = /data: ([\s\S]*)/.exec(frame)?.[1];
         if (!ev || data == null) continue;
         let payload; try { payload = JSON.parse(data); } catch { continue; }
-        if (ev === 'status') wkSet(payload.stage || 'Working…');
-        else if (ev === 'meta') { aiDiv.querySelector('.meta').textContent = payload.label ? ('yield · ' + payload.label) : 'yield'; wkSet('Generating…'); }
-        else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; }
+        if (ev === 'status') { wkSet(payload.stage || 'Working…'); hpLine('▸ ' + (payload.stage || 'Working…')); }
+        else if (ev === 'meta') { aiDiv.querySelector('.meta').textContent = payload.label ? ('yield · ' + payload.label) : 'yield'; wkSet('Generating…'); hpLine('⚡ model: ' + (payload.label || payload.model || 'auto')); }
+        else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; if (!hpThought) { hpThought = true; hpLine('💭 reasoning about the request…'); } }
         else if (ev === 'chat') { chatAcc += payload; chatSpan.textContent = chatAcc; m.scrollTop = m.scrollHeight; }
-        else if (ev === 'code') appendCode(payload);
+        else if (ev === 'code') { appendCode(payload); if (payload.start) hpLine('✎ writing ' + payload.path + ' (' + (payload.className || 'Script') + ')'); }
+        else if (ev === 'ops') { hpLine('⚙ queued edits: ' + ((payload.types || []).join(', ') || 'ops')); }
         else if (ev === 'image') {
-          if (payload.url) { const fig = document.createElement('figure'); fig.style.margin = '.5rem 0 0'; fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" loading="lazy">` + (payload.prompt ? `<figcaption class="dim" style="font-size:.72rem;margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : ''); aiDiv.appendChild(fig); m.scrollTop = m.scrollHeight; }
+          if (payload.url) { const fig = document.createElement('figure'); fig.style.margin = '.5rem 0 0'; fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" loading="lazy">` + (payload.prompt ? `<figcaption class="dim" style="font-size:.72rem;margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : ''); aiDiv.appendChild(fig); m.scrollTop = m.scrollHeight; hpLine('🖼 concept art: ' + (payload.prompt || 'image')); }
         } else if (ev === 'ask') {
           const el = document.createElement('div'); el.className = 'ask-card';
           el.innerHTML = `<div class="ask-q">🤔 ${esc(payload.question)}</div>` + (payload.options && payload.options.length ? `<div class="ask-opts">${payload.options.map((o) => `<button class="ask-opt">${esc(o)}</button>`).join('')}</div>` : '');
@@ -535,8 +592,10 @@ async function sendPrompt(overrideText) {
           const n = (payload.scripts ? payload.scripts.length : 0) + (payload.edits || 0);
           if (n > 0) { const note = document.createElement('div'); note.className = 'sent-note'; note.textContent = `→ Sent ${n} action(s) to Roblox Studio`; aiDiv.appendChild(note); }
           (payload.notes || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.textContent = '⚠ ' + t; aiDiv.appendChild(nl); });
+          if (hpEl) { hpLine(n > 0 ? `✓ done — sent ${n} action(s) to Studio` : '✓ done'); const sm = hpEl.querySelector('summary'); if (sm) sm.textContent = '👁 What happened'; }
         } else if (ev === 'blocked' || ev === 'gate' || ev === 'error') {
           const e = document.createElement('div'); e.style.cssText = 'color:#f58ea0;margin-top:.4rem;font-size:.85rem'; e.textContent = payload.message || 'Something went wrong.'; aiDiv.appendChild(e);
+          if (hpEl) hpLine('⚠ ' + (payload.message || 'error'));
         }
       }
     }
@@ -545,6 +604,8 @@ async function sendPrompt(overrideText) {
     else if (e) console.error(e);
   }
   finally {
+    if (hpTimer) { clearInterval(hpTimer); hpTimer = null; }
+    if (hpEl && hpEl.open && hpMode === 'plain') interpretNow(); // one last summary of the finished turn
     if (wk) wk.remove();
     aiDiv.querySelectorAll('.lc-pre.live').forEach((p) => p.classList.remove('live'));
     state.abort = null; setSending(false);
@@ -589,25 +650,33 @@ async function loadMarketplaceStatus() {
   try {
     const r = await api('/api/roblox/marketplace-key');
     const conn = !!r.connected;
+    const masked = r.last4 ? `key ····${esc(r.last4)}` : 'key saved';
     $('#keyStatus').textContent = conn
-      ? (r.creatorId ? `● Connected · creator #${r.creatorId} (${r.creatorType || 'User'})` : '● Connected — add a creator id below to enable 3D-model upload')
+      ? (r.creatorId ? `● Connected · ${masked} · creator #${r.creatorId} (${r.creatorType || 'User'})` : `● Connected · ${masked} — add a creator id below to enable 3D-model upload`)
       : 'Not connected — the AI models detailed props from parts instead.';
     if (conn && r.creatorType) $('#creatorTypeInput').value = r.creatorType;
     if (conn && r.creatorId) $('#creatorIdInput').value = r.creatorId;
+    // A key is saved server-side and used by the AI (resolveRobloxKey) whether or
+    // not this panel is ever reopened — connecting once persists it for good.
+    $('#robloxKeyLabel').textContent = conn ? 'Replace with a new key (rotates immediately)' : 'Open Cloud API key';
+    $('#connectKeyBtn').textContent = conn ? 'Rotate key' : 'Connect';
+    $('#robloxKeyInput').placeholder = conn ? `paste a new key to rotate — currently ····${r.last4 || '····'}` : 'paste your key — kept encrypted';
     if (state.current && state.current.project) state.current.project.robloxKeyConnected = conn;
   } catch { /* ignore */ }
 }
 $('#connectKeyBtn').onclick = async () => {
   const apiKey = $('#robloxKeyInput').value.trim();
   const msg = $('#keyMsg');
+  const rotating = $('#connectKeyBtn').textContent === 'Rotate key';
   if (!apiKey) { msg.style.color = '#f58ea0'; msg.textContent = 'Paste your Open Cloud key first.'; return; }
-  msg.style.color = 'var(--muted)'; msg.textContent = 'Validating with Roblox…';
+  msg.style.color = 'var(--muted)'; msg.textContent = rotating ? 'Rotating…' : 'Validating with Roblox…';
   try {
     const r = await api('/api/roblox/marketplace-key', { method: 'POST', body: JSON.stringify({ apiKey, creatorType: $('#creatorTypeInput').value, creatorId: $('#creatorIdInput').value.trim() }) });
     $('#robloxKeyInput').value = '';
     msg.style.color = '#5fe0a6';
-    msg.textContent = r.creatorId ? '✓ Connected — the chatbot can now search free models and upload 3D models.' : '✓ Connected — free-model search is on (add a creator id for 3D upload).';
-    loadMarketplaceStatus(); toast('Marketplace Key connected.');
+    const savedNote = r.last4 ? ` Saved as ····${r.last4} — the old key stops working immediately.` : '';
+    msg.textContent = (rotating ? '✓ Key rotated.' : '✓ Connected.') + (r.creatorId ? ' The chatbot can now upload 3D models.' : ' Add a creator id for 3D upload.') + savedNote;
+    loadMarketplaceStatus(); toast(rotating ? 'Marketplace Key rotated.' : 'Marketplace Key connected.');
   } catch (e) { msg.style.color = '#f58ea0'; msg.textContent = e.message; }
 };
 $('#disconnectKeyBtn').onclick = async () => {

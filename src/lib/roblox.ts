@@ -51,6 +51,7 @@ const KNOWN_OP_TYPES = new Set([
   'build_map', 'find_model', 'search_model', 'gen_model', 'generate_model', 'model3d',
   'insert_model', 'create_mesh', 'set_properties', 'create_instance', 'delete_instance',
   'rename_instance', 'move_instance', 'upsert_script', 'delete_script',
+  'lookup_docs', 'apply_texture', 'gen_texture', 'texture',
 ]);
 
 // Lenient ops-JSON parse. Models routinely emit trailing commas, // comments, or
@@ -613,7 +614,7 @@ export function formatGameTreeForPrompt(payload: GameTreePayload | null, maxLine
 // (find_model / gen_model are resolved separately in the route, since they need the
 // user's Roblox key + the marketplace/3D APIs.) Never throws — a bad op returns null.
 const OP_PATH_RE = /^[A-Za-z0-9_ .\-]+(?:\/[A-Za-z0-9_ .\-]+)*$/;
-function cleanOpPath(p: unknown): string | null {
+export function cleanOpPath(p: unknown): string | null {
   const s = String(p ?? '').trim().replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
   return s.length >= 1 && s.length <= 400 && OP_PATH_RE.test(s) ? s : null;
 }

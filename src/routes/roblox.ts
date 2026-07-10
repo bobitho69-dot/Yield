@@ -41,13 +41,14 @@ import { routeModel } from './generate';
 import { generateImage, generate3dModel } from './media';
 import { ROBLOX_CONVO_SYSTEM, ROBLOX_EDIT_NOTE, ROBLOX_MAP_SYSTEM } from '../lib/robloxPrompts';
 import {
-  makeScriptStreamer, sanitizeScriptPath, sanitizeClassName, sanitizeMapSpec,
+  makeScriptStreamer, sanitizeScriptPath, sanitizeClassName, sanitizeMapSpec, cleanOpPath,
   createLinkCode, redeemLinkCode, mintUserToken, authenticatePlugin, revokeUserToken, revokeAllUserTokens,
   searchFreeModels, uploadRobloxModelAsset, type PinnedAsset, type RobloxCreator, type UnresolvedRole,
   setGameTree, getGameTree, formatGameTreeForPrompt, sanitizeGenericOp, type GameTreeNode,
   setMarketplaceKey, getMarketplaceKey, marketplaceKeyStatus, validateMarketplaceKey,
   parseGlbMesh, glbBytesFromResult, extractOpsFromChat, isStudioLinked,
 } from '../lib/roblox';
+import { lookupRobloxDocs, autoPrefetchDocs } from '../lib/robloxDocs';
 import {
   ensureGuestUser,
   createRobloxProject, getRobloxProject, findOrCreateRobloxProjectByPlace, listRobloxProjects,
@@ -309,17 +310,26 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       const hasKey = keyStatus.connected || !!project.roblox_api_key_enc;
       const hasLibrary = (assetCount.results?.length || 0) > 0;
       const has3d = !!(c.env.TRELLIS_API_URL && c.env.NVIDIA_API_KEY);
+      const hasTexture = !!(c.env.IMAGE_API_URL && (c.env.IMAGE_API_KEY || c.env.NVIDIA_API_KEY));
       messages.push({
         role: 'system',
         content:
           `find_model (free-model marketplace search) IS available — the Studio plugin itself searches, virus-scans, and inserts the top match, no key needed. ` +
           (has3d
-            ? 'gen_model (custom 3D mesh generation) IS available — it builds the mesh directly in Studio with no publishing; it is slow (~a minute each), so reserve it for special hero props. '
+            ? 'gen_model (custom 3D mesh generation) IS available — it builds the mesh directly in Studio with no publishing; it is slow (~a minute each), so reserve it for special hero props. Give it an optional "texture" field (e.g. "weathered gray stone") to have it come out textured, not flat-colored. '
             : 'gen_model (custom 3D mesh generation) is NOT configured on this server — do not use it. ') +
+          (hasTexture
+            ? 'apply_texture IS available — generates a real image texture and applies it to an existing Part/MeshPart/Model as a PBR SurfaceAppearance (mode "surface", the default — best for walls, ground, props, character skins) or a flat Decal on one face (mode "decal" — best for signs, screens, posters). Use it whenever a surface should look like something specific (brick, wood grain, rusted metal, a poster, grass) instead of a flat Material color. '
+            : 'apply_texture (AI texture generation) is NOT configured on this server — do not use it; fall back to Material + Color. ') +
+          'lookup_docs IS available — pass a Roblox class name, member, or topic ("TweenService", "Humanoid:GetState", "remote events") to fetch the LIVE official API reference/guide and have it appear in chat for your next reply; use it when you are not fully certain of an exact property/method/event shape instead of guessing. ' +
           (hasLibrary ? 'The pinned model library has assets, so matched "models" roles work too. ' : '') +
           (hasKey ? 'A Marketplace Key is connected (used only to publish generated meshes to the user\'s account when needed). ' : '') +
           'Still sculpt the BULK of scenery (trees, rocks, houses, fences) yourself as "props" built from parts — use find_model for hero marketplace assets and gen_model for the occasional bespoke mesh. NEVER tell the user you "need a model" or lack access — you have the tools.',
       });
+      try {
+        const docsHit = await autoPrefetchDocs(c.env, prompt);
+        if (docsHit) messages.push({ role: 'system', content: `Live Roblox API reference for terms in this request — verify shapes against this before using them (it is authoritative, current, and overrides your own memory of the API):\n\n${docsHit}` });
+      } catch { /* best-effort — a docs lookup failure must never block generation */ }
       const existing = await listRobloxFiles(c.env, project.id);
       if (existing.length) {
         messages.push({ role: 'system', content: ROBLOX_EDIT_NOTE });
@@ -525,6 +535,7 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
   const queued: Record<string, unknown>[] = [];
   const notes: string[] = [];
   let pending = 0;
+  let textureCalls = 0;
   if (!Array.isArray(ops) || !ops.length) return { queued, notes, pending };
 
   const { results: assetRows } = await listRobloxAssets(c.env, project.id);
@@ -584,6 +595,50 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
       // Open Cloud upload only if the geometry can't be imported and a key exists.
       pending++;
       c.ctx.waitUntil(generateAndPlaceMesh(c.env, project, prompt, op, apiKey, creator));
+    } else if (type === 'lookup_docs') {
+      // The AI wants to verify an exact Roblox API shape before relying on it. This
+      // is resolved SERVER-SIDE (a live docs fetch), not by the plugin, and the result
+      // is posted into chat history so it's available on the AI's NEXT reply — the
+      // model that emitted this op already finished streaming, so it can't see the
+      // result mid-turn, only going forward.
+      const query = String(op.query || op.class || op.topic || '').trim().slice(0, 200);
+      if (!query) continue;
+      try {
+        const { text, hit } = await lookupRobloxDocs(c.env, query);
+        if (hit) {
+          await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `📚 Checked the Roblox docs for "${query}":\n\n${text}` });
+          notes.push(`Looked up the Roblox docs for "${query}" — I'll use that on my next reply.`);
+        } else {
+          notes.push(`Checked the Roblox docs for "${query}" but found nothing specific there — going with my best knowledge.`);
+        }
+      } catch {
+        notes.push(`Doc lookup for "${query}" failed — continuing with my best knowledge.`);
+      }
+    } else if (type === 'apply_texture' || type === 'gen_texture' || type === 'texture') {
+      const path = cleanOpPath(op.path);
+      const prompt = String(op.prompt || op.texture || op.description || '').trim().slice(0, 200);
+      if (!path || !prompt) continue;
+      if (!c.env.IMAGE_API_URL || !(c.env.IMAGE_API_KEY || c.env.NVIDIA_API_KEY)) {
+        notes.push(`Texture generation isn't configured on this server, so I couldn't texture "${path}" — using Material/Color instead.`);
+        continue;
+      }
+      if (textureCalls >= 4) {
+        notes.push(`Skipped texturing "${path}" — up to 4 textures per reply; ask again for more.`);
+        continue;
+      }
+      textureCalls++;
+      try {
+        const url = await generateImage(c.env, `seamless tileable material texture, flat lighting, no shadows, straight-on: ${prompt}`);
+        if (url && /^https?:\/\//i.test(url)) {
+          const mode = op.mode === 'decal' ? 'decal' : 'surface';
+          const face = typeof op.face === 'string' ? op.face.slice(0, 20) : undefined;
+          queued.push({ type: 'apply_texture', path, mode, face, colorMapUrl: url });
+        } else {
+          notes.push(`Couldn't generate a texture for "${prompt}" this time.`);
+        }
+      } catch {
+        notes.push(`Texture generation for "${prompt}" hit an error.`);
+      }
     } else {
       const clean = sanitizeGenericOp(op);
       if (clean) queued.push(clean);
@@ -626,7 +681,16 @@ async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt:
     try { await addRobloxMessage(env, { project_id: project.id, role: 'assistant', content: msg }); } catch { /* best-effort */ }
   };
   try {
-    const res = await generate3dModel(env, prompt);
+    // An optional "texture" description generates a real colorMap image alongside the
+    // geometry (in parallel — no extra latency) so the mesh comes out textured, not
+    // flat-colored. Best-effort: a failed/unconfigured texture never blocks the mesh.
+    const textureDesc = typeof op.texture === 'string' ? op.texture.trim().slice(0, 200) : '';
+    const [res, colorMapUrl] = await Promise.all([
+      generate3dModel(env, prompt),
+      textureDesc && env.IMAGE_API_URL
+        ? generateImage(env, `seamless tileable material texture, flat lighting, no shadows, straight-on: ${textureDesc}`).catch(() => null)
+        : Promise.resolve(null),
+    ]);
     if (!res) {
       await tellUser(`⚠ 3D generation for "${prompt}" failed this time — ask me to try again, or I can sculpt it from parts instead.`);
       return;
@@ -634,11 +698,16 @@ async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt:
     const position = Array.isArray(op.position) && op.position.length === 3 ? op.position.map((n: any) => Number(n) || 0) : [0, 5, 0];
     const scale = Number(op.scale) || 1;
     const name = prompt.slice(0, 60);
+    const safeColorMapUrl = typeof colorMapUrl === 'string' && /^https?:\/\//i.test(colorMapUrl) ? colorMapUrl : undefined;
 
     const bytes = await glbBytesFromResult(res);
     const mesh = bytes ? parseGlbMesh(bytes) : null;
     if (mesh) {
-      await queueRobloxOps(env, project.id, [{ type: 'create_mesh', name, verts: mesh.verts, tris: mesh.tris, position, scale, color: typeof op.color === 'string' ? op.color : '#b7b0a4' }]);
+      await queueRobloxOps(env, project.id, [{
+        type: 'create_mesh', name, verts: mesh.verts, tris: mesh.tris, position, scale,
+        color: typeof op.color === 'string' ? op.color : '#b7b0a4',
+        ...(safeColorMapUrl ? { colorMapUrl: safeColorMapUrl } : {}),
+      }]);
       await logUsage(env, { user_id: project.user_id, kind: 'roblox_mesh_local' });
       return;
     }

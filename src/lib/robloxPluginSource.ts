@@ -1040,10 +1040,107 @@ local function applyCreateMesh(op)
 	pcall(function()
 		meshPart:SetAttribute("YieldMap", true)
 	end)
+	-- Optional AI-generated texture (a live https image URL) — the engine fetches +
+	-- decodes it itself via Content.fromUri, no local image decoding needed. Best
+	-- effort: a failed/unsupported texture never fails the mesh build itself.
+	if type(op.colorMapUrl) == "string" and op.colorMapUrl ~= "" and Content and Content.fromUri then
+		pcall(function()
+			local appearance = AssetService:CreateSurfaceAppearanceAsync({ ColorMap = Content.fromUri(op.colorMapUrl) })
+			if appearance then
+				appearance.Parent = meshPart
+			end
+		end)
+	end
 	meshPart.Parent = Workspace
 
 	ChangeHistoryService:SetWaypoint("Yield build mesh")
 	local detail = ("Built mesh '%s' locally — %d verts, %d tris (no upload)"):format(meshPart.Name, n, added)
+	logActivity(detail)
+	return detail
+end
+
+-- Applies an AI-generated texture (a live https image URL) to an EXISTING Part /
+-- MeshPart / Model as either a full PBR SurfaceAppearance (mode "surface", the
+-- default -- walls, ground, props, character skins) or a single flat Decal on one
+-- face (mode "decal" -- signs, screens, posters). Content.fromUri hands the URL to
+-- the engine, which fetches + decodes it -- no local image decoding, no asset
+-- upload, no publishing needed, exactly like create_mesh needs no publishing.
+local function applyTextureToPart(part, url, mode, face)
+	if mode == "decal" then
+		local decal = part:FindFirstChildOfClass("Decal") or Instance.new("Decal")
+		if type(face) == "string" and face ~= "" then
+			pcall(function()
+				decal.Face = Enum.NormalId[face]
+			end)
+		end
+		local okC = pcall(function()
+			decal.ColorMapContent = Content.fromUri(url)
+		end)
+		if not okC then
+			-- Older Studio without the Content-typed property -- the deprecated
+			-- string ContentId property still accepts a plain http(s) URL.
+			pcall(function()
+				decal.Texture = url
+			end)
+		end
+		decal.Parent = part
+		return true
+	end
+	local okSA, appearance = pcall(function()
+		return AssetService:CreateSurfaceAppearanceAsync({ ColorMap = Content.fromUri(url) })
+	end)
+	if not okSA or not appearance then
+		return false
+	end
+	local existing = part:FindFirstChildOfClass("SurfaceAppearance")
+	if existing then
+		existing:Destroy()
+	end
+	appearance.Parent = part
+	return true
+end
+
+local function applyApplyTexture(op)
+	local inst = findExistingAtPath(op.path)
+	if not inst then
+		error("No instance at " .. tostring(op.path))
+	end
+	local url = op.colorMapUrl or op.url
+	if type(url) ~= "string" or url == "" then
+		error("apply_texture: missing colorMapUrl")
+	end
+	if not Content or not Content.fromUri then
+		error("Texturing needs a newer Roblox Studio version (Content.fromUri unavailable)")
+	end
+
+	ChangeHistoryService:SetWaypoint("Yield texture: " .. tostring(op.path))
+
+	local parts = {}
+	if inst:IsA("BasePart") then
+		table.insert(parts, inst)
+	else
+		for _, d in ipairs(inst:GetDescendants()) do
+			if d:IsA("BasePart") and #parts < 40 then
+				table.insert(parts, d)
+			end
+		end
+	end
+	if #parts == 0 then
+		error("No parts found at " .. tostring(op.path) .. " to texture")
+	end
+
+	local applied = 0
+	for _, p in ipairs(parts) do
+		if applyTextureToPart(p, url, op.mode, op.face) then
+			applied = applied + 1
+		end
+	end
+
+	ChangeHistoryService:SetWaypoint("Yield texture: " .. tostring(op.path))
+	if applied == 0 then
+		error("Texturing failed on every part at " .. tostring(op.path))
+	end
+	local detail = ("Textured %d part%s at %s"):format(applied, applied == 1 and "" or "s", op.path)
 	logActivity(detail)
 	return detail
 end
@@ -1140,6 +1237,8 @@ local function performSync()
 				detail = applyFindModel(op)
 			elseif op.type == "create_mesh" then
 				detail = applyCreateMesh(op)
+			elseif op.type == "apply_texture" then
+				detail = applyApplyTexture(op)
 			elseif op.type == "set_properties" then
 				detail = applySetProperties(op)
 			elseif op.type == "create_instance" then

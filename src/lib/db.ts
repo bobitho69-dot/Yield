@@ -758,10 +758,15 @@ export async function addRobloxMessage(env: Env, m: { project_id: string; role: 
     .run();
 }
 
-export function listRobloxMessages(env: Env, projectId: string): Promise<{ results: any[] }> {
-  return env.DB.prepare('SELECT role,content,model,created_at FROM roblox_messages WHERE project_id=? ORDER BY created_at LIMIT 200')
+export async function listRobloxMessages(env: Env, projectId: string): Promise<{ results: any[] }> {
+  // NEWEST 200, then reversed back to chronological — a plain ascending LIMIT
+  // returns the OLDEST 200, so once a chatty project crossed that line the AI's
+  // history slice (and the docs-lookup results posted into chat) froze in the past.
+  const { results } = await env.DB
+    .prepare('SELECT role,content,model,created_at FROM roblox_messages WHERE project_id=? ORDER BY created_at DESC, rowid DESC LIMIT 200')
     .bind(projectId)
     .all();
+  return { results: (results as any[]).reverse() };
 }
 
 // --- Roblox sync ops (outbox the plugin polls) ---------------------------------

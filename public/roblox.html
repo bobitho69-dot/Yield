@@ -576,7 +576,10 @@ async function sendPrompt(overrideText) {
         else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; if (!hpThought) { hpThought = true; hpLine('💭 reasoning about the request…'); } }
         else if (ev === 'chat') { chatAcc += payload; chatSpan.textContent = chatAcc; m.scrollTop = m.scrollHeight; }
         else if (ev === 'code') { appendCode(payload); if (payload.start) hpLine('✎ writing ' + payload.path + ' (' + (payload.className || 'Script') + ')'); }
-        else if (ev === 'ops') { hpLine('⚙ queued edits: ' + ((payload.types || []).join(', ') || 'ops')); }
+        else if (ev === 'ops') {
+          const opNames = { apply_texture: 'AI texture', gen_texture: 'AI texture', texture: 'AI texture', build_map: 'map build', find_model: 'marketplace model', gen_model: '3D model', generate_model: '3D model', model3d: '3D model', create_mesh: '3D mesh', insert_model: 'model insert', set_properties: 'property edit', create_instance: 'create', delete_instance: 'delete', rename_instance: 'rename', move_instance: 'move', upsert_script: 'script', delete_script: 'script removal', lookup_docs: 'Roblox docs lookup' };
+          hpLine('⚙ queued: ' + ((payload.types || []).map((t) => opNames[t] || t).join(', ') || 'edits'));
+        }
         else if (ev === 'image') {
           if (payload.url) { const fig = document.createElement('figure'); fig.style.margin = '.5rem 0 0'; fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" loading="lazy">` + (payload.prompt ? `<figcaption class="dim" style="font-size:.72rem;margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : ''); aiDiv.appendChild(fig); m.scrollTop = m.scrollHeight; hpLine('🖼 concept art: ' + (payload.prompt || 'image')); }
         } else if (ev === 'ask') {
@@ -592,6 +595,7 @@ async function sendPrompt(overrideText) {
           const n = (payload.scripts ? payload.scripts.length : 0) + (payload.edits || 0);
           if (n > 0) { const note = document.createElement('div'); note.className = 'sent-note'; note.textContent = `→ Sent ${n} action(s) to Roblox Studio`; aiDiv.appendChild(note); }
           (payload.notes || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.textContent = '⚠ ' + t; aiDiv.appendChild(nl); });
+          (payload.info || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.style.color = 'var(--dim, #9aa0ae)'; nl.textContent = 'ℹ ' + t; aiDiv.appendChild(nl); });
           if (hpEl) { hpLine(n > 0 ? `✓ done — sent ${n} action(s) to Studio` : '✓ done'); const sm = hpEl.querySelector('summary'); if (sm) sm.textContent = '👁 What happened'; }
         } else if (ev === 'blocked' || ev === 'gate' || ev === 'error') {
           const e = document.createElement('div'); e.style.cssText = 'color:#f58ea0;margin-top:.4rem;font-size:.85rem'; e.textContent = payload.message || 'Something went wrong.'; aiDiv.appendChild(e);

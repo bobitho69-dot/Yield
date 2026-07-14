@@ -613,10 +613,13 @@ export function formatGameTreeForPrompt(payload: GameTreePayload | null, maxLine
 // --- Agentic edit ops: validate the direct ops the AI emits in a yield-ops block --
 // (find_model / gen_model are resolved separately in the route, since they need the
 // user's Roblox key + the marketplace/3D APIs.) Never throws — a bad op returns null.
-const OP_PATH_RE = /^[A-Za-z0-9_ .\-]+(?:\/[A-Za-z0-9_ .\-]+)*$/;
+// Paths are DATA, not code (the plugin only ever FindFirstChild()s each segment), so
+// the only characters barred are control chars — real places have instance names
+// like "O'Brien's Shop (WIP)" and rejecting those silently dropped the AI's edits.
+const OP_PATH_RE = /^[^\u0000-\u001f]{1,400}$/;
 export function cleanOpPath(p: unknown): string | null {
-  const s = String(p ?? '').trim().replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
-  return s.length >= 1 && s.length <= 400 && OP_PATH_RE.test(s) ? s : null;
+  const s = String(p ?? '').slice(0, 1200).trim().replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+  return s.length >= 1 && OP_PATH_RE.test(s) ? s : null;
 }
 function cleanOpProps(pr: unknown): Record<string, unknown> {
   if (!pr || typeof pr !== 'object' || Array.isArray(pr)) return {};
@@ -805,6 +808,33 @@ export function parseGlbMesh(bytes: Uint8Array): LocalMesh | null {
     }
     return verts.length >= 9 && tris.length >= 3 ? { verts, tris } : null;
   } catch { return null; }
+}
+
+// --- AI-generated textures (raw pixels via KV) ---------------------------------------
+// Roblox never fetches external image URLs, so a generated texture travels as RAW RGBA
+// pixels: the Worker decodes the provider's PNG (src/lib/png.ts), parks the pixels in
+// KV under a short-lived id, and the plugin downloads them from an authenticated
+// endpoint and builds an EditableImage locally — the same no-publish machinery
+// create_mesh already uses for geometry. Width/height ride in the op itself. Keys are
+// scoped by user id so one linked Studio can never fetch another account's texture,
+// even with a leaked id.
+export interface TexturePixels { width: number; height: number; rgba: Uint8Array }
+
+export function hasTextureGen(env: Env): boolean {
+  return !!(env.IMAGE_API_URL && (env.IMAGE_API_KEY || env.NVIDIA_API_KEY));
+}
+
+export async function storeTexturePixels(env: Env, userId: string, tex: TexturePixels): Promise<string> {
+  const id = newId();
+  // 7 days is far beyond any real pull cadence (the plugin polls in seconds) but keeps
+  // KV tidy if a place is never opened again.
+  await env.KV.put(`roblox_tex:${userId}:${id}`, tex.rgba, { expirationTtl: 7 * 24 * 60 * 60 });
+  return id;
+}
+
+export async function loadTexturePixels(env: Env, userId: string, id: string): Promise<ArrayBuffer | null> {
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(id) || !userId) return null;
+  try { return await env.KV.get(`roblox_tex:${userId}:${id}`, 'arrayBuffer'); } catch { return null; }
 }
 
 // The AI 3D-model endpoint returns either a data: URL (inline base64) or a plain

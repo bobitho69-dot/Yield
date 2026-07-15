@@ -246,13 +246,19 @@ async function handlePluginApi(req: Request, c: Ctx, segs: string[]): Promise<Re
       : [];
     // A playtest op's result is a transcript, not just pass/fail — post it into chat
     // history so it's visible to the AI on its NEXT reply (same next-turn timing as
-    // lookup_docs; the model that queued it already finished streaming).
-    const types = await getRobloxOpTypes(c.env, project.id, results.map((r: any) => r.id));
-    for (const r of results) {
-      if (types.get(r.id) === 'playtest' && r.detail) {
-        await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `🧪 ${String(r.detail).slice(0, 4000)}` });
+    // lookup_docs; the model that queued it already finished streaming). Best-effort:
+    // acking below is the important part — if the type lookup fails, still ack.
+    try {
+      const types = await getRobloxOpTypes(c.env, project.id, results.map((r: any) => r.id));
+      for (const r of results) {
+        if (types.get(r.id) === 'playtest' && r.detail) {
+          // Always shown, not conditional: a script can write to a DataStore or call
+          // HttpService without that ever showing up as an Error/Warning line, so the
+          // absence of one in the transcript is not proof nothing irreversible happened.
+          await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `🧪 ${String(r.detail).slice(0, 3800)}\n\n(Any real DataStore writes or HTTP calls made during this run are permanent and were NOT undone — only tracked instance/property changes were reverted, best-effort.)` });
+        }
       }
-    }
+    } catch (e) { console.error('playtest result relay failed:', e); }
     await ackRobloxOps(c.env, project.id, results.map((r: any) => ({ id: r.id, ok: !!r.ok, detail: r.detail ? String(r.detail) : undefined })));
     await touchRobloxSeen(c.env, project.id);
     return json({ ok: true, acked: results.length });
@@ -672,6 +678,7 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
       // simulation and reports errors/warnings back through the normal ack flow
       // (see handlePluginApi's `ack` handler), which posts the results into chat.
       if (playtestQueued) { info.push('Skipped an extra playtest — only 1 per reply.'); continue; }
+      if (await hasPendingPlaytest(c.env, project.id)) { info.push('Skipped playtest — one is already queued or running; I\'ll wait for it.'); continue; }
       playtestQueued = true;
       const duration = Math.max(3, Math.min(20, Number(op.duration) || 8));
       slots.push({ type: 'playtest', duration });
@@ -896,6 +903,10 @@ function computeQualitySignals(tree: GameTreeNode[] | null, files: { path: strin
   return lines.join('\n');
 }
 
+// Enforced in CODE, not just prompted — a model under its own word-count budget can
+// (and sometimes will) drop a merely-instructed disclaimer to fit more score content.
+const QUALITY_REVIEW_DISCLAIMER = 'Heads up: this is a structural/technical read of your instance tree and scripts, not a real visual comparison to actual top-charting games — Roblox has no API for that and Studio plugins can\'t capture the viewport.\n\n';
+
 async function runQualityReview(env: Env, project: RobloxProjectRow): Promise<string> {
   const [treePayload, files] = await Promise.all([getGameTree(env, project.id), listRobloxFiles(env, project.id)]);
   const signals = computeQualitySignals(treePayload?.tree ?? null, files);
@@ -914,26 +925,47 @@ async function runQualityReview(env: Env, project: RobloxProjectRow): Promise<st
         ],
         temperature: 0.4, max_tokens: 1200, timeoutMs: 30000,
       });
-      if (text.trim()) return text.trim();
+      if (text.trim()) return QUALITY_REVIEW_DISCLAIMER + text.trim();
     } catch (e) { lastErr = e; }
   }
   throw lastErr instanceof Error ? lastErr : new Error('Quality review failed');
 }
 
 async function qualityReview(req: Request, c: Ctx, project: RobloxProjectRow): Promise<Response> {
+  let text: string;
   try {
-    const text = await runQualityReview(c.env, project);
-    await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `📊 Quality Report:\n\n${text}` });
-    await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'roblox_quality_review' });
-    return json({ ok: true, text });
+    text = await runQualityReview(c.env, project);
   } catch (e: any) {
     return error(502, String(e?.message || e).slice(0, 300));
   }
+  // The critique itself succeeded — a failure persisting/logging it is a lesser,
+  // separate problem and must not discard a result the caller already has in hand.
+  try {
+    await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `📊 Quality Report:\n\n${text}` });
+    await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'roblox_quality_review' });
+  } catch (e) { console.error('quality review persistence failed:', e); }
+  return json({ ok: true, text });
 }
 
 // Manual "Playtest Now" button — queues the same op the AI can emit itself. Results
 // land via the plugin's ack (see handlePluginApi) as a chat message + activity entry.
+// A pending playtest already queued means the plugin either hasn't synced yet (so a
+// second one would just double up once it does) or is mid-Run right now (a second
+// one would collide with RunService:IsRunning()'s guard and error immediately) —
+// either way, queuing another is never useful. Small pending-list scan, not a new
+// query shape: playtest is a rare, deliberate action, not a hot path.
+async function hasPendingPlaytest(env: Env, projectId: string): Promise<boolean> {
+  const { results } = await listPendingRobloxOps(env, projectId, 100);
+  return results.some((r) => { try { return JSON.parse(r.op)?.type === 'playtest'; } catch { return false; } });
+}
+
 async function webPlaytest(c: Ctx, project: RobloxProjectRow): Promise<Response> {
+  if (!project.place_id || !project.last_seen_at) {
+    return error(409, 'Studio hasn\'t synced this project yet — open the place in Studio and sync at least once, then try Playtest again.', { code: 'not_synced' });
+  }
+  if (await hasPendingPlaytest(c.env, project.id)) {
+    return error(409, 'A playtest is already queued or running — wait for it to finish before starting another.', { code: 'playtest_pending' });
+  }
   await queueRobloxOps(c.env, project.id, [{ type: 'playtest', duration: 8 }]);
   return json({ ok: true });
 }

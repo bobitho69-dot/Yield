@@ -1157,12 +1157,29 @@ local function applyPlaytest(op)
 	pcall(function()
 		RunService:Stop()
 	end)
-	-- Best-effort only: reverts what ChangeHistoryService tracked (instance/property
-	-- changes). It CANNOT undo external effects a script made during the run (a real
-	-- DataStore write, an HTTP call, etc.) -- those are permanent regardless.
-	pcall(function()
-		ChangeHistoryService:Undo()
-	end)
+	-- Best-effort only, NOT a guaranteed clean revert: Undo() pops ONE history entry
+	-- at a time (SetWaypoint just marks a position in that linear stack, it doesn't
+	-- group everything after it into one atomic entry) and a live Run session can
+	-- produce several tracked entries -- so this loops, bounded, while there's
+	-- something left to undo. The bound exists so a playtest that (for whatever
+	-- reason) tracked nothing of its own can't eat into real prior work; if that
+	-- happens anyway, Roblox's own Redo (Ctrl+Y) restores it. This CANNOT undo
+	-- external effects a script made during the run (a real DataStore write, an
+	-- HTTP call, etc.) -- those are permanent regardless.
+	for _ = 1, 25 do
+		local okCanUndo, canUndo = pcall(function()
+			return ChangeHistoryService:GetCanUndo()
+		end)
+		if not okCanUndo or not canUndo then
+			break
+		end
+		local okUndo = pcall(function()
+			ChangeHistoryService:Undo()
+		end)
+		if not okUndo then
+			break
+		end
+	end
 
 	local lines = {}
 	local okHist, history = pcall(function()
@@ -1194,6 +1211,20 @@ local function applyPlaytest(op)
 	logActivity(("Playtested %ds -- %s"):format(duration, #lines == 0 and "clean" or (#lines .. " issue(s)")))
 	return detail:sub(1, 3800)
 end
+
+-- Safety net for applyPlaytest: pcall only catches RAISED Lua errors, not this
+-- coroutine being forcibly torn down mid-task.wait (plugin disabled/reloaded --
+-- routine during local development via file-sync, or a Studio-triggered plugin
+-- update landing mid-playtest). Without this, RunService:Run() could be left
+-- active forever with no code path left to stop it. Runs on ANY plugin teardown,
+-- not just ones applyPlaytest caused, since it's a strictly-safe no-op otherwise.
+plugin.Unloading:Connect(function()
+	if RunService:IsRunning() then
+		pcall(function()
+			RunService:Stop()
+		end)
+	end
+end)
 
 -- Builds a MeshPart LOCALLY from raw geometry via EditableMesh — NO asset upload, NO
 -- publishing, NO Open Cloud key. This is how Yield inserts AI-3D-generated meshes

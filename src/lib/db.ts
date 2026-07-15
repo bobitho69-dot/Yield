@@ -809,16 +809,22 @@ export async function ackRobloxOps(env: Env, projectId: string, results: { id: s
 
 // Looks up the `type` each queued op was created with, keyed by id — used when acking
 // to special-case op types that need their result fed back to the AI (e.g. playtest).
+// D1 caps bound parameters at 100 per query — a full 100-op ack batch (the plugin's
+// own pull limit) plus the project_id param would blow that, so this chunks to stay
+// safely under it rather than risk the query throwing and wedging the whole ack.
 export async function getRobloxOpTypes(env: Env, projectId: string, ids: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const clean = ids.filter((id) => typeof id === 'string' && id).slice(0, 300);
-  if (!clean.length) return map;
-  const placeholders = clean.map(() => '?').join(',');
-  const { results } = await env.DB.prepare(`SELECT id, op FROM roblox_ops WHERE project_id=? AND id IN (${placeholders})`)
-    .bind(projectId, ...clean)
-    .all<{ id: string; op: string }>();
-  for (const r of results) {
-    try { map.set(r.id, String(JSON.parse(r.op)?.type || '')); } catch { /* ignore malformed row */ }
+  const CHUNK = 90; // + 1 for project_id, comfortably under D1's 100-param limit
+  for (let i = 0; i < clean.length; i += CHUNK) {
+    const batch = clean.slice(i, i + CHUNK);
+    const placeholders = batch.map(() => '?').join(',');
+    const { results } = await env.DB.prepare(`SELECT id, op FROM roblox_ops WHERE project_id=? AND id IN (${placeholders})`)
+      .bind(projectId, ...batch)
+      .all<{ id: string; op: string }>();
+    for (const r of results) {
+      try { map.set(r.id, String(JSON.parse(r.op)?.type || '')); } catch { /* ignore malformed row */ }
+    }
   }
   return map;
 }

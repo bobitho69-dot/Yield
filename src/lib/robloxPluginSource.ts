@@ -35,6 +35,8 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local AssetService = game:GetService("AssetService")
+local RunService = game:GetService("RunService")
+local LogService = game:GetService("LogService")
 
 local API_BASE = "{{APP_URL}}" .. "/api/roblox/plugin"
 
@@ -1123,6 +1125,76 @@ local function applyApplyTexture(op)
 	return detail
 end
 
+-- ============================================================
+-- PLAYTEST (error/warning feedback loop)
+-- ============================================================
+-- Runs the place's server simulation for a few seconds, captures any Errors/Warnings
+-- printed during that window (LogService:GetLogHistory), and best-effort reverts
+-- anything the simulation changed (RunService:Stop() explicitly does NOT do this --
+-- see the RunService.Stop docs -- so a ChangeHistoryService waypoint + Undo is the
+-- only way to leave the place as it was). Runs SERVER scripts + physics; it does NOT
+-- spawn a player Character, so client LocalScripts that need one may not fully run.
+local function applyPlaytest(op)
+	if RunService:IsRunning() then
+		error("A Run/Play session is already active in this place -- stop it first")
+	end
+	local duration = math.max(3, math.min(20, tonumber(op.duration) or 8))
+
+	pcall(function()
+		LogService:ClearOutput()
+	end)
+	ChangeHistoryService:SetWaypoint("Yield playtest")
+
+	local okRun = pcall(function()
+		RunService:Run()
+	end)
+	if not okRun then
+		error("Couldn't start a Run session -- Studio may already be in a state that blocks it")
+	end
+
+	task.wait(duration)
+
+	pcall(function()
+		RunService:Stop()
+	end)
+	-- Best-effort only: reverts what ChangeHistoryService tracked (instance/property
+	-- changes). It CANNOT undo external effects a script made during the run (a real
+	-- DataStore write, an HTTP call, etc.) -- those are permanent regardless.
+	pcall(function()
+		ChangeHistoryService:Undo()
+	end)
+
+	local lines = {}
+	local okHist, history = pcall(function()
+		return LogService:GetLogHistory()
+	end)
+	if okHist and type(history) == "table" then
+		for _, entry in ipairs(history) do
+			-- Field names for GetLogHistory's entries aren't spelled out in the public
+			-- reference -- fall back to positional indices if the dict keys aren't there.
+			local msgType = entry.messageType or entry[2]
+			local isError = msgType == Enum.MessageType.MessageError
+			local isWarning = msgType == Enum.MessageType.MessageWarning
+			if isError or isWarning then
+				local text = tostring(entry.message or entry[1] or "")
+				table.insert(lines, (isError and "ERROR: " or "WARN: ") .. text)
+				if #lines >= 40 then
+					break
+				end
+			end
+		end
+	end
+
+	local detail
+	if #lines == 0 then
+		detail = ("Playtested %ds (server simulation) -- no errors or warnings"):format(duration)
+	else
+		detail = ("Playtested %ds -- %d issue(s):\n"):format(duration, #lines) .. table.concat(lines, "\n")
+	end
+	logActivity(("Playtested %ds -- %s"):format(duration, #lines == 0 and "clean" or (#lines .. " issue(s)")))
+	return detail:sub(1, 3800)
+end
+
 -- Builds a MeshPart LOCALLY from raw geometry via EditableMesh — NO asset upload, NO
 -- publishing, NO Open Cloud key. This is how Yield inserts AI-3D-generated meshes
 -- without needing the user to publish anything: the server parses the generated .glb
@@ -1310,6 +1382,8 @@ local function performSync()
 				detail = applyCreateMesh(op)
 			elseif op.type == "apply_texture" then
 				detail = applyApplyTexture(op)
+			elseif op.type == "playtest" then
+				detail = applyPlaytest(op)
 			elseif op.type == "set_properties" then
 				detail = applySetProperties(op)
 			elseif op.type == "create_instance" then

@@ -51,7 +51,7 @@ const KNOWN_OP_TYPES = new Set([
   'build_map', 'find_model', 'search_model', 'gen_model', 'generate_model', 'model3d',
   'insert_model', 'create_mesh', 'set_properties', 'create_instance', 'delete_instance',
   'rename_instance', 'move_instance', 'upsert_script', 'delete_script',
-  'lookup_docs', 'apply_texture', 'gen_texture', 'texture',
+  'lookup_docs', 'apply_texture', 'gen_texture', 'texture', 'playtest', 'quality_review',
 ]);
 
 // Lenient ops-JSON parse. Models routinely emit trailing commas, // comments, or

@@ -39,7 +39,7 @@ import { resolveModel, endpointFor, endpointsFor } from '../config/models';
 import { chat, chatStream } from '../lib/nvidia';
 import { routeModel } from './generate';
 import { generateImage, generate3dModel } from './media';
-import { ROBLOX_CONVO_SYSTEM, ROBLOX_EDIT_NOTE, ROBLOX_MAP_SYSTEM } from '../lib/robloxPrompts';
+import { ROBLOX_CONVO_SYSTEM, ROBLOX_EDIT_NOTE, ROBLOX_MAP_SYSTEM, ROBLOX_QUALITY_SYSTEM } from '../lib/robloxPrompts';
 import {
   makeScriptStreamer, sanitizeScriptPath, sanitizeClassName, sanitizeMapSpec, cleanOpPath,
   createLinkCode, redeemLinkCode, mintUserToken, authenticatePlugin, revokeUserToken, revokeAllUserTokens,
@@ -58,7 +58,7 @@ import {
   touchRobloxProject, touchRobloxSeen, setRobloxApiKey, setRobloxMapPrefs, getRobloxAuth,
   listRobloxFiles, upsertRobloxFile, upsertRobloxFiles, deleteRobloxFile,
   addRobloxMessage, listRobloxMessages,
-  queueRobloxOps, listPendingRobloxOps, ackRobloxOps, listRecentRobloxOps,
+  queueRobloxOps, listPendingRobloxOps, ackRobloxOps, getRobloxOpTypes, listRecentRobloxOps,
   listRobloxAssets, addRobloxAsset, deleteRobloxAsset,
   saveRobloxMap, listRobloxMaps, logUsage, type RobloxProjectRow,
 } from '../lib/db';
@@ -152,6 +152,8 @@ export async function handleRoblox(req: Request, c: Ctx, rest: string): Promise<
   if (sub === 'tree' && req.method === 'GET') return json({ tree: await getGameTree(c.env, project.id) });
   if (sub === 'insert-asset' && req.method === 'POST') return insertAsset(req, c, project);
   if (sub === 'generate-model' && req.method === 'POST') return generateModelAsset(req, c, project);
+  if (sub === 'playtest' && req.method === 'POST') return webPlaytest(c, project);
+  if (sub === 'quality-review' && req.method === 'POST') return qualityReview(req, c, project);
 
   return error(404, 'Not found');
 }
@@ -242,6 +244,15 @@ async function handlePluginApi(req: Request, c: Ctx, segs: string[]): Promise<Re
     const results = Array.isArray(bodyForPlace.results)
       ? (bodyForPlace.results as any[]).filter((r) => r && typeof r.id === 'string').slice(0, 300)
       : [];
+    // A playtest op's result is a transcript, not just pass/fail — post it into chat
+    // history so it's visible to the AI on its NEXT reply (same next-turn timing as
+    // lookup_docs; the model that queued it already finished streaming).
+    const types = await getRobloxOpTypes(c.env, project.id, results.map((r: any) => r.id));
+    for (const r of results) {
+      if (types.get(r.id) === 'playtest' && r.detail) {
+        await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `🧪 ${String(r.detail).slice(0, 4000)}` });
+      }
+    }
     await ackRobloxOps(c.env, project.id, results.map((r: any) => ({ id: r.id, ok: !!r.ok, detail: r.detail ? String(r.detail) : undefined })));
     await touchRobloxSeen(c.env, project.id);
     return json({ ok: true, acked: results.length });
@@ -333,6 +344,8 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
             ? 'apply_texture IS available — generates a real image texture and applies it to an existing Part/MeshPart/Model as a PBR SurfaceAppearance (mode "surface", the default — best for walls, ground, props, character skins) or a flat Decal on one face (mode "decal" — best for signs, screens, posters). Use it whenever a surface should look like something specific (brick, wood grain, rusted metal, a poster, grass) instead of a flat Material color. '
             : 'apply_texture (AI texture generation) is NOT configured on this server — do not use it; fall back to Material + Color. ') +
           'lookup_docs IS available — pass a Roblox class name, member, or topic ("TweenService", "Humanoid:GetState", "remote events") to fetch the LIVE official API reference/guide and have it appear in chat for your next reply; use it when you are not fully certain of an exact property/method/event shape instead of guessing. ' +
+          'playtest IS available — actually runs the place in Studio and reports real Errors/Warnings back to you next reply; use it after risky script changes to self-verify. ' +
+          'quality_review IS available — a structural polish critique benchmarked against researched top-Roblox-game patterns (not a screenshot comparison); use it when asked how the game compares to top games or for a polish check. ' +
           (hasLibrary ? 'The pinned model library has assets, so matched "models" roles work too. ' : '') +
           (hasKey ? 'A Marketplace Key is connected (used only to publish generated meshes to the user\'s account when needed). ' : '') +
           'Still sculpt the BULK of scenery (trees, rocks, houses, fences) yourself as "props" built from parts — use find_model for hero marketplace assets and gen_model for the occasional bespoke mesh. NEVER tell the user you "need a model" or lack access — you have the tools.',
@@ -562,6 +575,8 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
   let pending = 0;
   const textureJobs: TextureJob[] = [];
   const docsQueries: string[] = [];
+  let playtestQueued = false;
+  let qualityReviewRequested = false;
   if (!Array.isArray(ops) || !ops.length) return { queued: [], notes, info, pending };
 
   const { results: assetRows } = await listRobloxAssets(c.env, project.id);
@@ -652,6 +667,20 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
       };
       textureJobs.push(job);
       slots.push(job); // placeholder — resolved below, in this exact position
+    } else if (type === 'playtest') {
+      // Queued straight to the plugin like any other op — it runs Studio's Run
+      // simulation and reports errors/warnings back through the normal ack flow
+      // (see handlePluginApi's `ack` handler), which posts the results into chat.
+      if (playtestQueued) { info.push('Skipped an extra playtest — only 1 per reply.'); continue; }
+      playtestQueued = true;
+      const duration = Math.max(3, Math.min(20, Number(op.duration) || 8));
+      slots.push({ type: 'playtest', duration });
+      info.push(`Playtesting for ${duration}s in Studio — I'll report what I find on my next reply.`);
+    } else if (type === 'quality_review') {
+      // Resolved SERVER-SIDE (no plugin round-trip needed — it reads the already-
+      // synced game tree + scripts) after the loop, alongside docs lookups.
+      if (qualityReviewRequested) { info.push('Skipped an extra quality review — only 1 per reply.'); continue; }
+      qualityReviewRequested = true;
     } else {
       const clean = sanitizeGenericOp(op);
       if (clean) slots.push(clean);
@@ -684,6 +713,15 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
         notes.push(`Doc lookup for "${query}" failed — continuing with my best knowledge.`);
       }
     }),
+    ...(qualityReviewRequested ? [(async () => {
+      try {
+        const text = await runQualityReview(c.env, project);
+        await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `📊 Quality Report:\n\n${text}` });
+        info.push('Ran a quality review — I\'ll factor it into my next reply.');
+      } catch {
+        notes.push('Quality review failed — continuing without it.');
+      }
+    })()] : []),
   ]);
 
   const queued = slots
@@ -798,6 +836,106 @@ async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt:
     console.error('generateAndPlaceMesh failed:', e);
     await tellUser(`⚠ 3D generation for "${prompt}" hit an error — ask me to try again.`);
   }
+}
+
+// --- Quality Review: structural critique vs. researched top-game patterns -----------
+// NOT a visual/screenshot comparison — Roblox has no API for that and Studio plugins
+// can't capture the viewport. Every signal below is deterministic (counted from the
+// pushed instance tree + script source), and the rubric it's judged against
+// (ROBLOX_QUALITY_SYSTEM) is grounded in cited Roblox docs / DevForum / developer-
+// community sources, not invented. See docs/DEPLOY.md-adjacent research notes in the
+// prompt file for citations.
+const DEFAULT_NAME_RE = /^(Part|Union|Model|MeshPart|Folder|Script|LocalScript|ModuleScript|SpawnLocation)\d*$/;
+const POLISH_LIGHTING_CLASSES = new Set(['Atmosphere', 'ColorCorrectionEffect', 'BloomEffect', 'SunRaysEffect', 'DepthOfFieldEffect']);
+const POLISH_UI_CLASSES = new Set(['UICorner', 'UIStroke', 'UIGradient', 'UIListLayout', 'UIGridLayout', 'UIPadding']);
+const SCENERY_CLASSES = new Set(['Part', 'MeshPart', 'Model', 'UnionOperation', 'WedgePart', 'CornerWedgePart']);
+
+function computeQualitySignals(tree: GameTreeNode[] | null, files: { path: string; class_name: string; source: string }[]): string {
+  const lines: string[] = [];
+  const t = tree || [];
+  lines.push(`Total instances seen: ${t.length}${t.length === 0 ? ' (no snapshot yet — plugin hasn\'t synced; ask the user to Sync Now in Studio first)' : ''}`);
+
+  const sceneryCount = t.filter((n) => SCENERY_CLASSES.has(n.className)).length;
+  lines.push(`Scenery instances (Part/MeshPart/Model/Union/Wedge) under the place: ${sceneryCount}`);
+
+  const defaultNamed = t.filter((n) => DEFAULT_NAME_RE.test(n.path.split('/').pop() || ''));
+  lines.push(`Instances still using a default/generic name (Part1, Union, unrenamed Script, ...): ${defaultNamed.length}${defaultNamed.length ? ' — e.g. ' + defaultNamed.slice(0, 5).map((n) => n.path).join(', ') : ''}`);
+
+  const lightingPolish = t.filter((n) => POLISH_LIGHTING_CLASSES.has(n.className)).map((n) => n.className);
+  lines.push(lightingPolish.length ? `Lighting/post-processing instances present: ${[...new Set(lightingPolish)].join(', ')}` : 'Lighting/post-processing instances present: NONE (Atmosphere/ColorCorrectionEffect/BloomEffect/SunRaysEffect — a fresh place has none of these by default; their absence is normal but their presence signals deliberate atmosphere work)');
+
+  const uiPolish = t.filter((n) => POLISH_UI_CLASSES.has(n.className)).map((n) => n.className);
+  const uiCounts: Record<string, number> = {};
+  for (const c of uiPolish) uiCounts[c] = (uiCounts[c] || 0) + 1;
+  lines.push(Object.keys(uiCounts).length ? `UI polish instances: ${Object.entries(uiCounts).map(([k, v]) => `${k}×${v}`).join(', ')}` : 'UI polish instances (UICorner/UIStroke/UIGradient/UIListLayout/UIGridLayout): NONE found');
+
+  const surfaceAppearanceCount = t.filter((n) => n.className === 'SurfaceAppearance').length;
+  if (surfaceAppearanceCount) lines.push(`AI-generated PBR textures (SurfaceAppearance) applied: ${surfaceAppearanceCount}`);
+
+  // Reported raw, not pre-judged here — a fresh Studio baseplate template is Grass/
+  // dark-green OR Plastic/gray depending which template was used, so "is this still
+  // default" is a judgment call better left to the model (which knows both looks)
+  // than to a brittle regex on hex codes.
+  const baseplate = t.find((n) => (n.path.split('/').pop() || '').toLowerCase() === 'baseplate');
+  if (baseplate?.props) {
+    const p = baseplate.props as any;
+    lines.push(`Baseplate: material=${p.material || 'unknown'} color=${p.color || 'unknown'} (judge yourself whether this still looks like an untouched Studio default)`);
+  }
+
+  const src = files.map((f) => f.source).join('\n');
+  const has = (re: RegExp) => re.test(src);
+  const scriptSignals: string[] = [];
+  scriptSignals.push(has(/leaderstats/i) ? 'leaderstats folder referenced (progression/currency display)' : 'no "leaderstats" reference found (no visible progression/currency display)');
+  scriptSignals.push(has(/DataStoreService/) ? 'DataStoreService used (persistent progression)' : 'no DataStoreService usage found (progress likely does not persist between sessions)');
+  scriptSignals.push(has(/RemoteEvent|RemoteFunction/) ? 'RemoteEvents/RemoteFunctions present (client-server interaction)' : 'no RemoteEvents/RemoteFunctions found (little or no client-server interaction)');
+  scriptSignals.push(has(/SourceSans/) ? 'legacy SourceSans font referenced (consider Builder Sans / a custom FontFace)' : '');
+  scriptSignals.push(has(/--\s*(TODO|rest of|implement this)/i) ? 'placeholder/TODO markers found in script source (incomplete work)' : '');
+  lines.push(...scriptSignals.filter(Boolean).map((s) => `Script signal: ${s}`));
+  lines.push(`Scripts: ${files.length} total, ${Math.round(src.length / Math.max(1, files.length))} avg chars`);
+
+  return lines.join('\n');
+}
+
+async function runQualityReview(env: Env, project: RobloxProjectRow): Promise<string> {
+  const [treePayload, files] = await Promise.all([getGameTree(env, project.id), listRobloxFiles(env, project.id)]);
+  const signals = computeQualitySignals(treePayload?.tree ?? null, files);
+  const treeText = formatGameTreeForPrompt(treePayload, 150);
+
+  const model = resolveModel('glm-5.1');
+  const chain = endpointsFor(env, model);
+  let lastErr: unknown = null;
+  for (const ep of chain) {
+    try {
+      const { text } = await chat({
+        baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId,
+        messages: [
+          { role: 'system', content: ROBLOX_QUALITY_SYSTEM },
+          { role: 'user', content: `STRUCTURAL SIGNALS:\n${signals}\n\n${treeText || 'No game tree available yet.'}` },
+        ],
+        temperature: 0.4, max_tokens: 1200, timeoutMs: 30000,
+      });
+      if (text.trim()) return text.trim();
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Quality review failed');
+}
+
+async function qualityReview(req: Request, c: Ctx, project: RobloxProjectRow): Promise<Response> {
+  try {
+    const text = await runQualityReview(c.env, project);
+    await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `📊 Quality Report:\n\n${text}` });
+    await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'roblox_quality_review' });
+    return json({ ok: true, text });
+  } catch (e: any) {
+    return error(502, String(e?.message || e).slice(0, 300));
+  }
+}
+
+// Manual "Playtest Now" button — queues the same op the AI can emit itself. Results
+// land via the plugin's ack (see handlePluginApi) as a chat message + activity entry.
+async function webPlaytest(c: Ctx, project: RobloxProjectRow): Promise<Response> {
+  await queueRobloxOps(c.env, project.id, [{ type: 'playtest', duration: 8 }]);
+  return json({ ok: true });
 }
 
 // --- AI map generation (plain JSON — usually a single fast completion) --------------
@@ -1075,6 +1213,7 @@ function opLabel(op: any): string {
     case 'build_map': return `${op.spec?.parts?.length || 0} part(s) · ${(op.spec?.props?.length || 0)} prop(s) · ${op.spec?.models?.length || 0} model(s)`;
     case 'find_model': return `marketplace: ${op.query || 'model'}`;
     case 'apply_texture': return `texture ${op.mode === 'decal' ? '(decal) ' : ''}on ${op.path || '?'}`;
+    case 'playtest': return `${op.duration || 8}s playtest`;
     default: return '';
   }
 }

@@ -78,9 +78,9 @@ async function probeModels(c: Ctx): Promise<ModelHealth[]> {
     const t0 = Date.now();
     try {
       await workersAiChat(c.env, [{ role: 'user', content: 'ping' }], { max_tokens: 1, temperature: 0 });
-      return { id: 'yield-ai', label: 'Yield AI 1.0', status: 'operational', latencyMs: Date.now() - t0, group: 'coder' };
+      return { id: 'yield-ai', label: 'Yield AI 1.1', status: 'operational', latencyMs: Date.now() - t0, group: 'coder' };
     } catch (e: any) {
-      return { id: 'yield-ai', label: 'Yield AI 1.0', status: classifyProbe(e), latencyMs: Date.now() - t0, group: 'coder' };
+      return { id: 'yield-ai', label: 'Yield AI 1.1', status: classifyProbe(e), latencyMs: Date.now() - t0, group: 'coder' };
     }
   };
   const coders = activeCoderModels(c.env).map((m) =>

@@ -87,7 +87,7 @@ const zenmux = (): ProviderConfig => ({ apiKeyEnv: 'ZEMUZAPI', baseUrl: ZENMUX_B
 // so it never shows as a broken option before the server exists.
 export const YIELD_AI_MODEL: ModelDef = {
   id: 'yield-ai',
-  label: 'Yield AI 1.0',
+  label: 'Yield AI 1.1',
   modelId: 'yield-ai',
   modelIdEnv: 'YIELD_AI_MODEL_ID',
   role: 'coder',

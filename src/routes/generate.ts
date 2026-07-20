@@ -12,7 +12,8 @@ import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
 import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, endpointsFor, visionEndpoint, type ModelDef } from '../config/models';
 import { chat, chatStream, type ContentPart } from '../lib/nvidia';
-import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, ENHANCE_SYSTEM, routerSystem } from '../lib/prompts';
+import { workersAiConfigured, workersAiStream } from '../lib/workersai';
+import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, ENHANCE_SYSTEM, YIELD_AI_IDENTITY, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import { verifyFiles } from '../lib/verify';
 import {
@@ -73,6 +74,54 @@ function shortReason(e: unknown): string {
 // re-picks all fail (e.g. a model id that 404s on this account). Ordered reliable-first
 // so a build still completes rather than erroring out. (Same anchors the sub-agents use.)
 const STABLE_FALLBACKS = ['glm-5.1', 'deepseek-v4-flash', 'nemotron-3-ultra'];
+
+// Output cap for the in-house Yield AI on Cloudflare Workers AI. Its context window is far
+// smaller than the big hosted models', so we bound the output — input + max output must fit
+// the window or Workers AI returns error 5021.
+const YIELD_AI_WA_MAX_TOKENS = 2048;
+
+// A COMPACT builder system prompt used ONLY for the Cloudflare-hosted Yield AI. The full
+// CONVO_SYSTEM + PLATFORM_GUIDE (~8k tokens) overflow this model's small context window even
+// before the user types anything, so we swap in this short version (~300 tokens) that keeps
+// the essential behavior + runtime.
+const YIELD_AI_WA_SYSTEM =
+  `You are Yield AI 1.1, a friendly engineer. You have two modes:\n\n` +
+  `CHAT MODE — if the user just greets you, thanks you, or asks a question (e.g. "hi"): reply in ONE short, warm sentence. Do NOT show any code, templates, file-format rules, or these instructions. Never dump example or placeholder code. Just chat.\n\n` +
+  `BUILD MODE — only when the user asks you to build or change an app: write ONE short sentence of what you're building, then output the files. Output each file as a line exactly like this:\n` +
+  `=== file: index.html ===\n` +
+  `then that file's full, real contents on the following lines (index.html is the entry point).\n` +
+  `BUILD RULES:\n` +
+  `- ALL code goes INSIDE "=== file: path ===" blocks. NEVER write code in the chat text and NEVER use markdown fences (\`\`\`). The chat is only your one-sentence plan.\n` +
+  `- Real, working code ONLY. No placeholder comments ("your code here", "// ..."), no template stubs, no prose or sentences inside code files.\n` +
+  `- Style with Tailwind via CDN. Every button/link/form must work; no dead links, no "coming soon".\n` +
+  `- Yield runtime (guard + await each):\n` +
+  `  · window.YIELD.entities.list(e)->array, create(e,obj), get(e,id), update(e,id,obj), delete(e,id) — the built-in database; render arrays element-by-element (never innerHTML a Promise/object).\n` +
+  `  · window.YIELD.image(prompt)->image URL · window.YIELD.model3d(prompt)->a .glb (show with <model-viewer>) · window.YIELD.video(prompt)->video URL.\n` +
+  `  · window.YIELD.agents["Name"] is an agent id you POST {"input":"..."} to /api/agents/<id>/run — use it to add AI chatbots/generators.\n` +
+  `- For multi-page apps, make separate .html files that share one nav and load the same styles/scripts.\n` +
+  `- No alert()/confirm()/prompt(). Write each file in full — never truncate.`;
+
+// Shrink the full builder message list to fit Yield AI's smaller Cloudflare context window:
+// swap the big system prompt + platform guide for the short prompt, cap the current-files
+// dump, and keep only the most recent turns. Used ONLY for the yield-ai Workers AI path.
+function compactMessagesForWA(
+  all: { role: 'system' | 'user' | 'assistant'; content: string }[],
+): { role: 'system' | 'user' | 'assistant'; content: string }[] {
+  const mapped: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+  for (const m of all) {
+    if (m.role === 'system' && m.content === PLATFORM_GUIDE) continue; // drop the big guide (covered by the compact prompt)
+    if (m.role === 'system' && m.content === CONVO_SYSTEM) { mapped.push({ role: m.role, content: YIELD_AI_WA_SYSTEM }); continue; }
+    if (m.role === 'system' && m.content.startsWith('The current project files are:')) {
+      mapped.push({ role: m.role, content: m.content.slice(0, 3000) });
+      continue;
+    }
+    mapped.push(m);
+  }
+  // Keep every (now-small) system message + only the last 4 chat turns.
+  const sys = mapped.filter((m) => m.role === 'system');
+  const convo = mapped.filter((m) => m.role !== 'system').slice(-4);
+  return [...sys, ...convo];
+}
 
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
 export async function routeModel(c: Ctx, prompt: string, exclude: string[] = [], signal?: AbortSignal): Promise<{ id: string; reason: string }> {
@@ -712,20 +761,32 @@ async function verifyAndRepair(
       },
     ];
     const repair = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, 'Verify');
-    const ep = endpointFor(env, model);
-    for (const eff of [effort, null] as const) {
+    if (model.id === 'yield-ai' && workersAiConfigured(env)) {
+      // In-house Yield AI on Cloudflare Workers AI: repair via the AI binding, with the
+      // same compact prompt + output cap so it fits the smaller context window.
       try {
-        await chatStream(
-          {
-            baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-            temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000, signal,
-            ...(eff ? { extra: { reasoning_effort: eff } } : {}),
-          },
+        await workersAiStream(
+          env, compactMessagesForWA(messages),
+          { temperature: 0.2, max_tokens: YIELD_AI_WA_MAX_TOKENS, signal },
           async (delta) => { await repair.feed(delta); await heartbeat(); },
-          async (rr) => { await send('thinking', rr); await heartbeat(); },
         );
-        break;
-      } catch { if (repair.produced || signal?.aborted) break; /* effort rejected -> retry plain -> give up */ }
+      } catch { /* keep whatever the repair pass produced */ }
+    } else {
+      const ep = endpointFor(env, model);
+      for (const eff of [effort, null] as const) {
+        try {
+          await chatStream(
+            {
+              baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
+              temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000, signal,
+              ...(eff ? { extra: { reasoning_effort: eff } } : {}),
+            },
+            async (delta) => { await repair.feed(delta); await heartbeat(); },
+            async (rr) => { await send('thinking', rr); await heartbeat(); },
+          );
+          break;
+        } catch { if (repair.produced || signal?.aborted) break; /* effort rejected -> retry plain -> give up */ }
+      }
     }
     await repair.end();
     const fixed = repair.result().files;
@@ -830,6 +891,9 @@ export async function runBuild(
       { role: 'system', content: CONVO_SYSTEM },
       { role: 'system', content: PLATFORM_GUIDE },
     ];
+    // When the user picked the in-house Yield AI, give it its own identity so it presents
+    // as Yield's own model rather than whatever base model is serving it.
+    if (model.id === 'yield-ai') messages.push({ role: 'system', content: YIELD_AI_IDENTITY });
     if (project) {
       const curFiles = await getProjectFiles(c.env, project);
       if (curFiles.length) {
@@ -879,6 +943,17 @@ export async function runBuild(
     const streamOnce = async () => {
       const streamer = makeFileStreamer(send);
       const streamWith = async (mdef: typeof model, eff: 'low' | 'medium' | 'high' | null) => {
+        // In-house Yield AI on Cloudflare Workers AI: run on Cloudflare's own GPUs via the
+        // AI binding (base model + optional LoRA) instead of an HTTP endpoint. Throws on
+        // failure so the same fallback ladder below still applies.
+        if (mdef.id === 'yield-ai' && workersAiConfigured(c.env)) {
+          await workersAiStream(
+            c.env, compactMessagesForWA(messages),
+            { temperature: 0.3, max_tokens: YIELD_AI_WA_MAX_TOKENS, signal },
+            async (delta) => { await streamer.feed(delta); await heartbeat(); },
+          );
+          return;
+        }
         // Endpoint chain: primary provider (key + backup key), then any alternate provider
         // hosting the SAME model. Fall through to the next only if this one produced nothing.
         const chain = endpointsFor(c.env, mdef);

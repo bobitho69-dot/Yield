@@ -56,7 +56,7 @@ export default {
 
       if (path === '/api/health') res = await handleHealth(c);
       else if (path === '/api/docs') res = new Response(PLATFORM_GUIDE, { headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-store' } });
-      else if (path === '/api/models') res = handleModels();
+      else if (path === '/api/models') res = handleModels(c);
       else if (path === '/api/status') res = await handleStatus(c);
       else if (path === '/api/generate' && request.method === 'POST') res = await handleGenerate(request, c);
       else if (path === '/api/route' && request.method === 'POST') res = await handleRoute(request, c);

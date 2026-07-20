@@ -18,7 +18,8 @@ import { sse, json, error } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
 import { resolveModel, endpointsFor, pickerModels } from '../config/models';
 import { chatStream } from '../lib/nvidia';
-import { CODE_SYSTEM } from '../lib/prompts';
+import { workersAiConfigured, workersAiStream, compactWAMessages } from '../lib/workersai';
+import { CODE_SYSTEM, YIELD_AI_IDENTITY } from '../lib/prompts';
 import {
   makeFileStreamer, runSubAgent, runResearchAgent, routeModel, shortReason,
   STABLE_FALLBACKS, runBuild, type SendFn, type TaskReq, type ResearchReq,
@@ -182,6 +183,7 @@ async function runCode(c: Ctx, body: CodeBody, send: SendFn, signal?: AbortSigna
   const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
     { role: 'system', content: CODE_SYSTEM },
   ];
+  if (model.id === 'yield-ai') messages.push({ role: 'system', content: YIELD_AI_IDENTITY });
   if (repoFiles.length) {
     const dump = repoFiles.map((f) => `=== file: ${f.path} ===\n${f.content}`).join('\n\n');
     messages.push({ role: 'system', content: `The project's current files (edit these; keep everything else intact):\n\n${dump}` });
@@ -197,6 +199,15 @@ async function runCode(c: Ctx, body: CodeBody, send: SendFn, signal?: AbortSigna
   const streamOnce = async () => {
     const streamer = makeFileStreamer(send, 'Yield Code');
     const streamWith = async (mdef: typeof model, eff: 'low' | 'medium' | 'high' | null) => {
+      // In-house Yield AI on Cloudflare Workers AI: run via the AI binding (base model +
+      // optional LoRA), not an HTTP endpoint. Throws on failure so the ladder below applies.
+      if (mdef.id === 'yield-ai' && workersAiConfigured(c.env)) {
+        await workersAiStream(
+          c.env, compactWAMessages(messages, { maxSystemChars: 4000, maxTurns: 4 }), { temperature: 0.3, max_tokens: 2048, signal },
+          async (delta) => { await streamer.feed(delta); },
+        );
+        return;
+      }
       const chain = endpointsFor(c.env, mdef);
       for (let i = 0; i < chain.length; i++) {
         const ep = chain[i];

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Yield Code — the agentic coder. Free.</title>
+  <meta name="description" content="Yield Code is Yield's answer to Claude Code — an autonomous coding agent that connects to your GitHub repo (or a Yield project), makes real multi-file changes, launches agents, uses MCP servers, and commits for you. On the web, and as a Mac & Windows app." />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    /* ---------- Yield Code ---------- */
+    .codeapp { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .yc-top { display: flex; align-items: center; gap: 1rem; padding: .55rem 1rem; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+    .yc-brand { display: flex; align-items: center; gap: .5rem; font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
+    .yc-brand .logo { color: var(--brand); }
+    .yc-brand .tag { font-family: var(--font-mono); font-size: .6rem; letter-spacing: .06em; text-transform: uppercase; color: var(--brand-2); border: 1px solid var(--line); border-radius: 6px; padding: .1rem .35rem; }
+    .yc-toplinks { display: flex; align-items: center; gap: 1.1rem; margin-left: 1rem; }
+    .yc-toplinks a { color: var(--muted); font-size: .86rem; }
+    .yc-toplinks a:hover, .yc-toplinks a.on { color: var(--text); }
+    .yc-top .spacer { margin-left: auto; }
+    .yc-conn { display: flex; align-items: center; gap: .5rem; font-size: .82rem; color: var(--muted); }
+    .yc-conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+    .yc-conn.ok .dot { background: var(--brand-2); }
+
+    .yc-work { flex: 1; display: grid; grid-template-columns: minmax(340px, 440px) 1fr; min-height: 0; }
+    .yc-left { display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--bg-2); min-height: 0; }
+
+    /* Source setup */
+    .yc-source { border-bottom: 1px solid var(--line); padding: .8rem; display: flex; flex-direction: column; gap: .6rem; }
+    .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: .2rem; gap: .2rem; }
+    .seg button { flex: 1; background: transparent; border: none; color: var(--muted); font-size: .8rem; font-weight: 600; padding: .4rem .5rem; border-radius: 7px; cursor: pointer; }
+    .seg button.on { background: var(--brand); color: #fff; }
+    .src-body { display: flex; flex-direction: column; gap: .5rem; }
+    .yc-field { display: flex; gap: .5rem; }
+    .yc-field select, .yc-field input { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: .5rem .6rem; font-size: .84rem; font-family: var(--font-body); min-width: 0; }
+    .yc-field input.branch { flex: 0 0 120px; font-family: var(--font-mono); }
+    .yc-note { font-size: .78rem; color: var(--muted); line-height: 1.45; }
+    .yc-note a { color: var(--brand-2); }
+    .yc-loaded { font-family: var(--font-mono); font-size: .76rem; color: var(--brand-2); }
+
+    /* MCP panel */
+    .yc-mcp { border-bottom: 1px solid var(--line); }
+    .yc-mcp > summary { cursor: pointer; padding: .6rem .8rem; font-size: .82rem; color: var(--muted); font-weight: 600; list-style: none; display: flex; align-items: center; gap: .5rem; }
+    .yc-mcp > summary::-webkit-details-marker { display: none; }
+    .yc-mcp > summary .chev { margin-left: auto; color: var(--faint); transition: transform .15s; }
+    .yc-mcp[open] > summary .chev { transform: rotate(90deg); }
+    .yc-mcp-body { padding: 0 .8rem .8rem; display: flex; flex-direction: column; gap: .5rem; }
+    .mcp-list { display: flex; flex-direction: column; gap: .35rem; }
+    .mcp-item { display: flex; align-items: center; gap: .5rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .4rem .55rem; font-size: .8rem; }
+    .mcp-item .mn { font-weight: 600; } .mcp-item .mw { font-family: var(--font-mono); font-size: .72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mcp-item .rm { margin-left: auto; color: var(--faint); cursor: pointer; } .mcp-item .rm:hover { color: var(--danger); }
+    .mcp-add { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; }
+    .mcp-add input { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 7px; padding: .4rem .5rem; font-size: .78rem; }
+    .mcp-add button { grid-column: 1 / -1; }
+
+    /* Messages */
+    .yc-msgs { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .9rem; }
+    .yc-hello { margin: auto; text-align: center; color: var(--muted); padding: 1rem; }
+    .yc-hello h2 { color: var(--text); font-family: var(--font-display); margin: 0 0 .5rem; }
+    .yc-hello p { font-size: .88rem; line-height: 1.5; max-width: 320px; margin: 0 auto; }
+    .ymsg { display: flex; gap: .7rem; }
+    .ymsg .av { width: 26px; height: 26px; border-radius: 7px; flex: 0 0 auto; display: grid; place-items: center; font-size: .72rem; font-weight: 700; font-family: var(--font-display); }
+    .ymsg.user .av { background: var(--panel-3); color: var(--muted); } .ymsg.ai .av { background: var(--brand); color: #fff; }
+    .ymsg .body { min-width: 0; flex: 1; }
+    .prose { font-size: .9rem; line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
+    .prose p { margin: 0 0 .6rem; } .prose > *:last-child { margin-bottom: 0; }
+    .prose ul, .prose ol { margin: 0 0 .6rem; padding-left: 1.2rem; }
+    .prose code { font-family: var(--font-mono); font-size: .84em; background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: .05em .3em; }
+    .prose pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .7rem .8rem; overflow-x: auto; }
+    .prose a { color: var(--brand-2); }
+    .think { margin: 0 0 .5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+    .think summary { cursor: pointer; padding: .4rem .7rem; font-size: .76rem; color: var(--muted); list-style: none; }
+    .think summary::-webkit-details-marker { display: none; }
+    .think .tc { padding: .2rem .8rem .6rem; font-family: var(--font-mono); font-size: .74rem; color: var(--faint); white-space: pre-wrap; max-height: 220px; overflow-y: auto; }
+    .status-line { font-family: var(--font-mono); font-size: .76rem; color: var(--muted); display: flex; align-items: center; gap: .5rem; }
+    .status-line .spin { width: 10px; height: 10px; border: 2px solid var(--line-strong); border-top-color: var(--brand); border-radius: 50%; animation: ycspin .7s linear infinite; }
+    @keyframes ycspin { to { transform: rotate(360deg); } }
+
+    /* Composer */
+    .yc-composer { border-top: 1px solid var(--line); padding: .7rem .8rem; background: var(--bg-2); }
+    .yc-crow { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; flex-wrap: wrap; }
+    .yc-model { position: relative; }
+    .model-btn { display: inline-flex; align-items: center; gap: .4rem; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: .35rem .6rem; font-size: .8rem; cursor: pointer; }
+    .model-btn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand-2); }
+    .model-btn .caret { color: var(--faint); font-size: .7rem; }
+    .model-panel { position: absolute; bottom: 118%; left: 0; width: 320px; max-height: 340px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow); z-index: 40; padding: .4rem; }
+    .model-opt { padding: .5rem .55rem; border-radius: 8px; cursor: pointer; } .model-opt:hover { background: var(--panel-2); } .model-opt.on { background: var(--panel-3); }
+    .model-opt .mo-top { display: flex; align-items: center; gap: .5rem; } .model-opt .mo-name { font-weight: 600; font-size: .84rem; }
+    .model-opt .mo-tier { margin-left: auto; font-family: var(--font-mono); font-size: .62rem; text-transform: uppercase; color: var(--faint); border: 1px solid var(--line); border-radius: 5px; padding: .05rem .3rem; }
+    .model-opt .mo-blurb { color: var(--muted); font-size: .76rem; margin-top: .15rem; line-height: 1.4; }
+    .think-sel { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: .35rem .45rem; font-size: .8rem; cursor: pointer; }
+    .agent-toggle { display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--muted); cursor: pointer; user-select: none; margin-left: auto; }
+    .agent-toggle input { display: none; }
+    .agent-toggle .sw { width: 30px; height: 17px; border-radius: 999px; background: var(--panel-3); position: relative; transition: .15s; }
+    .agent-toggle .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--faint); transition: .15s; }
+    .agent-toggle input:checked + .sw { background: var(--brand); } .agent-toggle input:checked + .sw::after { transform: translateX(13px); background: #fff; }
+    .yc-inputwrap { display: flex; align-items: flex-end; gap: .5rem; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: .45rem .45rem .45rem .8rem; }
+    #ycInput { flex: 1; background: transparent; border: none; color: var(--text); font-family: var(--font-body); font-size: .92rem; line-height: 1.5; resize: none; max-height: 180px; padding: .35rem 0; outline: none; }
+    .yc-run { background: var(--brand); border: none; color: #fff; padding: .55rem .9rem; border-radius: 9px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .yc-run:hover { background: #8f70ff; } .yc-run:disabled { opacity: .4; cursor: default; }
+    .yc-stopbtn { background: #2a1416; color: #ff8a8a; border: 1px solid #6b2b2b; padding: .55rem .8rem; border-radius: 9px; font-weight: 700; cursor: pointer; }
+    .yc-guard { font-size: .72rem; color: var(--faint); margin-top: .45rem; text-align: center; }
+
+    /* Right pane */
+    .yc-right { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .yc-tabs { display: flex; align-items: center; gap: .3rem; padding: .45rem .7rem; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+    .yc-tab { background: transparent; border: 1px solid transparent; color: var(--muted); font-size: .84rem; font-weight: 600; padding: .35rem .7rem; border-radius: 8px; cursor: pointer; }
+    .yc-tab.active { background: var(--panel); border-color: var(--line); color: var(--text); }
+    .yc-tab .badge { font-family: var(--font-mono); font-size: .66rem; background: var(--brand); color: #fff; border-radius: 6px; padding: .02rem .3rem; margin-left: .3rem; }
+    .yc-tab-spacer { margin-left: auto; }
+    .yc-open { color: var(--muted); font-size: .82rem; } .yc-open:hover { color: var(--text); }
+    .yc-panel { flex: 1; min-height: 0; overflow: hidden; }
+    .yc-panel.hidden { display: none; }
+
+    .filewrap { display: grid; grid-template-columns: 240px 1fr; height: 100%; min-height: 0; }
+    .filetree { border-right: 1px solid var(--line); overflow-y: auto; padding: .4rem; }
+    .filetree .ft { display: flex; align-items: center; gap: .45rem; padding: .32rem .5rem; border-radius: 7px; cursor: pointer; font-size: .8rem; color: var(--muted); font-family: var(--font-mono); }
+    .filetree .ft:hover { background: var(--panel); color: var(--text); }
+    .filetree .ft.active { background: var(--panel); color: var(--text); }
+    .filetree .ft.changed { color: var(--brand-2); }
+    .filetree .ft .tick { margin-left: auto; color: var(--brand-2); }
+    .filetree .empty { color: var(--faint); font-size: .8rem; padding: .6rem; }
+    .fileview { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .fileview-head { display: flex; align-items: center; gap: .5rem; padding: .5rem .8rem; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: .78rem; color: var(--muted); }
+    .fileview-head .chg { color: var(--brand-2); font-size: .7rem; border: 1px solid var(--line); border-radius: 5px; padding: .05rem .3rem; }
+    .fileview pre { flex: 1; margin: 0; overflow: auto; padding: .9rem 1rem; font-family: var(--font-mono); font-size: .82rem; line-height: 1.55; color: var(--text); white-space: pre; tab-size: 2; }
+    .fileview .placeholder { margin: auto; color: var(--faint); font-size: .85rem; text-align: center; }
+
+    .activity { height: 100%; overflow-y: auto; padding: 1rem 1.2rem; }
+    .act-sec { margin-bottom: 1.3rem; }
+    .act-sec h3 { font-family: var(--font-display); font-size: .82rem; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); margin: 0 0 .6rem; }
+    .act-log { display: flex; flex-direction: column; gap: .35rem; font-family: var(--font-mono); font-size: .78rem; color: var(--muted); }
+    .worker-row { display: flex; align-items: center; gap: .55rem; padding: .45rem .6rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font-size: .82rem; margin-bottom: .4rem; }
+    .worker-row .wdot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+    .worker-row.start .wdot { background: var(--warn); } .worker-row.done .wdot { background: var(--brand-2); } .worker-row.fail .wdot { background: var(--danger); }
+    .worker-row .wname { font-weight: 600; } .worker-row .wmodel { font-family: var(--font-mono); font-size: .72rem; color: var(--faint); margin-left: auto; }
+    .worker-row .wdetail { color: var(--muted); font-size: .76rem; }
+    .commit-row { display: flex; align-items: center; gap: .5rem; font-family: var(--font-mono); font-size: .78rem; color: var(--brand-2); padding: .2rem 0; }
+    .act-empty { color: var(--faint); font-size: .82rem; }
+
+    @media (max-width: 900px) { .yc-work { grid-template-columns: 1fr; } .yc-right { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="codeapp">
+    <header class="yc-top">
+      <a class="yc-brand" href="/"><span class="logo">◆</span> Yield <span class="tag">Code</span></a>
+      <nav class="yc-toplinks">
+        <a href="/app">Build</a>
+        <a href="/code" class="on">Code</a>
+        <a href="/chat">Chat</a>
+        <a href="/download">Get the app</a>
+      </nav>
+      <span class="spacer"></span>
+      <div class="yc-conn" id="ycConn"><span class="dot"></span><span id="ycConnText">Checking…</span></div>
+    </header>
+
+    <div class="yc-work">
+      <!-- Left: source + agent chat -->
+      <section class="yc-left">
+        <div class="yc-source">
+          <div class="seg" id="ycSeg">
+            <button data-mode="repo" class="on">GitHub repo</button>
+            <button data-mode="project">Yield project</button>
+            <button data-mode="local">Local</button>
+          </div>
+          <div class="src-body" id="srcRepo">
+            <div class="yc-field">
+              <select id="repoSel"><option value="">Connect GitHub to pick a repo…</option></select>
+              <input id="branchInput" class="branch" value="main" spellcheck="false" title="Branch" />
+            </div>
+            <div class="yc-note" id="repoNote">Yield Code reads the repo, makes changes, and <b>commits them back</b> for you.</div>
+            <div class="yc-loaded hidden" id="repoLoaded"></div>
+          </div>
+          <div class="src-body hidden" id="srcProject">
+            <div class="yc-field"><select id="projectSel"><option value="">Pick a Yield project…</option></select></div>
+            <div class="yc-note">Edits your Yield app with the full builder — agents, verification, and GitHub sync.</div>
+          </div>
+          <div class="src-body hidden" id="srcLocal">
+            <div class="yc-note">A scratch workspace. Files the agent writes stream to the Files tab — download them, or use the <a href="/download">desktop app</a> to write straight to a local folder.</div>
+          </div>
+        </div>
+
+        <details class="yc-mcp" id="ycMcp">
+          <summary>MCP servers <span id="mcpCount" style="color:var(--faint);font-weight:500"></span> <span class="chev">›</span></summary>
+          <div class="yc-mcp-body">
+            <div class="yc-note">Connect Model Context Protocol servers so the agent knows which tools are available. Stored in your browser and sent with each run.</div>
+            <div class="mcp-list" id="mcpList"></div>
+            <div class="mcp-add">
+              <input id="mcpName" placeholder="Name (e.g. filesystem)" />
+              <input id="mcpWhere" placeholder="URL or command" />
+              <button class="btn ghost sm" id="mcpAdd" type="button">＋ Add server</button>
+            </div>
+          </div>
+        </details>
+
+        <div class="yc-msgs" id="ycMsgs">
+          <div class="yc-hello" id="ycHello">
+            <h2>Point it at your code.</h2>
+            <p>Pick a repo, a Yield project, or a local workspace — then tell Yield Code what to build, fix, or refactor. It works across files and commits the result.</p>
+          </div>
+        </div>
+
+        <div class="yc-composer">
+          <div class="yc-crow">
+            <div class="yc-model">
+              <button class="model-btn" id="ycModelBtn" type="button"><span class="model-btn-dot"></span><span id="ycModelLabel">Auto</span><span class="caret">▾</span></button>
+              <div class="model-panel hidden" id="ycModelPanel"></div>
+            </div>
+            <select class="think-sel" id="ycThink" title="Reasoning effort"><option value="low">Fast</option><option value="medium" selected>Balanced</option><option value="high">Max</option></select>
+            <label class="agent-toggle" title="Auto agent mode — let it plan, delegate to parallel agents, and verify"><input type="checkbox" id="ycAgent" checked /><span class="sw"></span> Auto agents</label>
+          </div>
+          <form class="yc-inputwrap" id="ycForm">
+            <textarea id="ycInput" rows="1" placeholder="Describe the change — e.g. “add dark mode toggle to the settings page”…"></textarea>
+            <button class="yc-stopbtn hidden" id="ycStop" type="button">■</button>
+            <button class="yc-run" id="ycRun" type="submit" disabled>Run ▸</button>
+          </form>
+          <div class="yc-guard">Yield Code edits real code. Review changes before shipping. Prompts are screened by a safety guard.</div>
+        </div>
+      </section>
+
+      <!-- Right: files + activity -->
+      <section class="yc-right">
+        <div class="yc-tabs">
+          <button class="yc-tab active" data-tab="files">Files <span class="badge hidden" id="filesBadge"></span></button>
+          <button class="yc-tab" data-tab="activity">Activity</button>
+          <span class="yc-tab-spacer"></span>
+          <a class="yc-open hidden" id="ycRepoLink" target="_blank" rel="noopener">↗ Open on GitHub</a>
+        </div>
+        <div class="yc-panel" id="filesPanel">
+          <div class="filewrap">
+            <div class="filetree" id="fileTree"><div class="empty">No files loaded yet. Pick a source or run a task.</div></div>
+            <div class="fileview">
+              <div class="fileview-head" id="fileHead"><span id="filePath">No file selected</span></div>
+              <pre id="fileBody"><div class="placeholder">Select a file to view it.</div></pre>
+            </div>
+          </div>
+        </div>
+        <div class="yc-panel hidden" id="activityPanel">
+          <div class="activity">
+            <div class="act-sec"><h3>Agents</h3><div id="workers"><div class="act-empty">No agents running.</div></div></div>
+            <div class="act-sec"><h3>Committed</h3><div id="commits"><div class="act-empty">Nothing committed yet.</div></div></div>
+            <div class="act-sec"><h3>Log</h3><div class="act-log" id="actLog"><div class="act-empty">Activity will stream here.</div></div></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="/code.js"></script>
+</body>
+</html>

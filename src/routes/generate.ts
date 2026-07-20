@@ -52,7 +52,7 @@ function effortOf(v: string | undefined): 'low' | 'medium' | 'high' {
 }
 
 // Turn an upstream error into a short, user-facing reason for the fallback notice.
-function shortReason(e: unknown): string {
+export function shortReason(e: unknown): string {
   const msg = String((e as any)?.message || e || '');
   const code = msg.match(/\b(4\d\d|5\d\d)\b/)?.[1] || '';
   if (code === '401' || code === '403') return `${code} auth — check the API key`;
@@ -72,7 +72,7 @@ function shortReason(e: unknown): string {
 // Reliable anchor models tried as the FINAL fallback when the routed model and Auto's
 // re-picks all fail (e.g. a model id that 404s on this account). Ordered reliable-first
 // so a build still completes rather than erroring out. (Same anchors the sub-agents use.)
-const STABLE_FALLBACKS = ['glm-5.1', 'deepseek-v4-flash', 'nemotron-3-ultra'];
+export const STABLE_FALLBACKS = ['glm-5.1', 'deepseek-v4-flash', 'nemotron-3-ultra'];
 
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
 export async function routeModel(c: Ctx, prompt: string, exclude: string[] = [], signal?: AbortSignal): Promise<{ id: string; reason: string }> {
@@ -315,7 +315,7 @@ export interface ResearchReq { name: string; model: string | null; instructions:
 // "=== agent: Name | model ===" declares a runtime agent, "=== secret: NAME — why ==="
 // requests a secret, "=== task: Name | model ===" delegates a build sub-task to a
 // parallel agent (run after the orchestrator stream ends).
-function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>, agentLabel = 'Yield') {
+export function makeFileStreamer(send: (event: string, data: unknown) => Promise<void>, agentLabel = 'Yield') {
   const FILE = /^={2,}\s*file:\s*(.+?)\s*={2,}\s*$/i;
   const SECRET = /^={2,}\s*secret:\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:[—:-]\s*(.*?))?\s*={2,}\s*$/i;
   const AGENT = /^={2,}\s*agent:\s*([^|=]+?)\s*(?:\|\s*([^=]+?)\s*)?={2,}\s*$/i;
@@ -589,7 +589,7 @@ export type SendFn = (event: string, data: unknown) => Promise<void>;
 
 // Run one helper/research AI (from a "=== research: ===" block). It does NOT write
 // code — it returns findings/analysis (text) that the coder then builds with.
-async function runResearchAgent(env: Env, req: ResearchReq, context: string, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}, signal?: AbortSignal): Promise<{ name: string; findings: string }> {
+export async function runResearchAgent(env: Env, req: ResearchReq, context: string, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}, signal?: AbortSignal): Promise<{ name: string; findings: string }> {
   const messages = [
     { role: 'system' as const, content: RESEARCH_SYSTEM },
     { role: 'user' as const, content: `Context: ${context}\n\nResearch task ("${req.name}"):\n${req.instructions}` },
@@ -620,7 +620,7 @@ async function runResearchAgent(env: Env, req: ResearchReq, context: string, eff
 // Run one parallel build agent (from a "=== task: ===" block). It streams its code
 // live (tagged with the agent's name via `send`) and returns the file(s) it built.
 // Falls back through stable models so one bad model id doesn't waste the agent.
-async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}, signal?: AbortSignal): Promise<{ name: string; files: FileRow[]; error?: string; model?: string }> {
+export async function runSubAgent(env: Env, task: TaskReq, sharedContext: string, send: SendFn, effort: 'low' | 'medium' | 'high', heartbeat: () => Promise<void> = async () => {}, signal?: AbortSignal): Promise<{ name: string; files: FileRow[]; error?: string; model?: string }> {
   const messages = [
     { role: 'system' as const, content: SUBAGENT_SYSTEM },
     { role: 'system' as const, content: sharedContext },

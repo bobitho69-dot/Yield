@@ -78,7 +78,7 @@ const STABLE_FALLBACKS = ['glm-5.1', 'deepseek-v4-flash', 'nemotron-3-ultra'];
 // Output cap for the in-house Yield AI on Cloudflare Workers AI. Its context window is far
 // smaller than the big hosted models', so we bound the output — input + max output must fit
 // the window or Workers AI returns error 5021.
-const YIELD_AI_WA_MAX_TOKENS = 2048;
+const YIELD_AI_WA_MAX_TOKENS = 1024;
 
 // A COMPACT builder system prompt used ONLY for the Cloudflare-hosted Yield AI. The full
 // CONVO_SYSTEM + PLATFORM_GUIDE (~8k tokens) overflow this model's small context window even

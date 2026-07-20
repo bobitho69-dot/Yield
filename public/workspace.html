@@ -12,38 +12,125 @@
   <link rel="stylesheet" href="/styles.css" />
   <style>
     html, body { height: 100%; overflow: hidden; }
-    .ws { display: flex; height: 100vh; height: 100dvh; }
+    .ws { display: flex; height: 100vh; height: 100dvh; background: var(--bg); }
+    .ws :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
 
-    /* Far-left app rail (Claude-style): switch between the two sections */
-    .ws-rail { width: 76px; flex: 0 0 76px; background: var(--bg-2); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: .7rem 0; gap: .3rem; }
-    .ws-logo { width: 40px; height: 40px; display: grid; place-items: center; margin-bottom: .5rem; }
-    .ws-logo svg { width: 30px; height: 30px; }
-    .ws-item { width: 60px; padding: .55rem 0; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: .25rem; font-family: var(--font-body); font-size: .68rem; font-weight: 600; transition: background .15s, color .15s, border-color .15s; text-decoration: none; }
-    .ws-item svg { width: 22px; height: 22px; }
-    .ws-item:hover { background: var(--panel); color: var(--text); }
-    .ws-item.active { background: var(--panel); color: var(--text); border-color: var(--brand); }
+    /* ------------------------------------------------------------------ *
+     *  Left rail — native L-shape. Chat + Code fused into one segment    *
+     *  (the spine); Build / Security demoted to a quiet utility cluster. *
+     * ------------------------------------------------------------------ */
+    .ws-rail { width: 72px; flex: 0 0 72px; background: var(--bg-2); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 12px 0; }
+    .ws-logo { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; transition: background .15s; }
+    .ws-logo svg { width: 26px; height: 26px; }
+    .ws-logo:hover { background: var(--panel); }
+    .rail-hair { width: 28px; height: 1px; background: var(--line); margin: 12px 0; }
+    .rail-hair.two { margin: 24px 0 12px; }
+
+    /* Primary segment container = the spine, one surface-layer proud */
+    .ws-seg { position: relative; width: 56px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 4px; display: flex; flex-direction: column; gap: 4px; }
+    /* the single signature motion: a purple bar sliding on the rail's inner-left edge */
+    .ws-seg::after { content: ""; position: absolute; left: -8px; top: 22px; width: 3px; height: 20px; border-radius: 2px; background: var(--brand); opacity: 0; transform: translateY(0); transition: transform .18s cubic-bezier(.2,.8,.2,1), opacity .18s; }
+    .ws-rail:has([data-view="chat"].active) .ws-seg::after { opacity: 1; transform: translateY(0); }
+    .ws-rail:has([data-view="code"].active) .ws-seg::after { opacity: 1; transform: translateY(60px); }
+
+    .ws-item { position: relative; width: 48px; height: 56px; padding: 0; border: 0; border-radius: 11px; background: transparent; color: var(--muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; transition: background .15s; }
+    .ws-item svg { width: 22px; height: 22px; color: var(--muted); transition: color .15s; }
+    .ws-item .lbl { color: var(--faint); transition: color .15s; }
+    .ws-item .kbd { position: absolute; top: 3px; right: 4px; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0; color: var(--faint); opacity: 0; transition: opacity .15s; }
+    .ws-item:hover { background: var(--panel-2); }
+    .ws-item:hover svg { color: var(--text); }
+    .ws-item:hover .kbd { opacity: 1; }
+    .ws-item.active { background: var(--panel-2); }
     .ws-item.active svg { color: var(--brand); }
+    .ws-item.active .lbl { color: var(--text); }
+
+    /* Secondary cluster — bare, quiet, no active state */
+    .ws-nav { width: 56px; height: 48px; border: 0; border-radius: 11px; background: transparent; color: var(--faint); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; transition: background .15s, color .15s; }
+    .ws-nav svg { width: 20px; height: 20px; color: var(--faint); transition: color .15s; }
+    .ws-nav:hover { background: var(--panel); color: var(--muted); }
+    .ws-nav:hover svg { color: var(--text); }
+
     .ws-spacer { flex: 1; }
-    .ws-sep { width: 34px; height: 1px; background: var(--line); margin: .35rem 0; }
+    .ws-foot { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .ws-acct { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); display: grid; place-items: center; color: var(--muted); transition: background .15s, color .15s; }
+    .ws-acct:hover { background: var(--panel-2); color: var(--text); }
+    .ws-acct svg { width: 15px; height: 15px; }
 
-    /* Main area: both sections mounted, toggled — so switching preserves each side's state */
+    /* ------------------------------------------------------------------ *
+     *  Main area + top context strip                                     *
+     * ------------------------------------------------------------------ */
     .ws-main { flex: 1; position: relative; min-width: 0; background: var(--bg); }
-    .ws-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-    .ws-frame.hidden { display: none; }
-    .ws-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-family: var(--font-mono); font-size: .85rem; }
-    .ws-loading .spin { width: 26px; height: 26px; border: 3px solid var(--line-strong); border-top-color: var(--brand); border-radius: 50%; animation: wsspin .8s linear infinite; margin: 0 auto .7rem; }
-    @keyframes wsspin { to { transform: rotate(360deg); } }
 
-    /* Install toast (PWA) */
-    .ws-install { position: fixed; right: 16px; bottom: 16px; z-index: 60; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; padding: .8rem 1rem; box-shadow: var(--shadow); display: none; align-items: center; gap: .8rem; max-width: 340px; }
-    .ws-install.show { display: flex; }
-    .ws-install .txt { font-size: .84rem; color: var(--muted); line-height: 1.4; }
-    .ws-install .txt b { color: var(--text); }
-    .ws-install .x { color: var(--faint); cursor: pointer; font-size: 1.1rem; line-height: 1; }
+    .ws-strip { position: absolute; top: 0; left: 0; right: 0; height: 40px; z-index: 5; background: var(--bg-2); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; padding: 0 12px; font-family: var(--font-mono); font-size: 12px; }
+    .ws-crumb { display: flex; align-items: center; gap: 6px; color: var(--faint); }
+    .ws-crumb .sfc { color: var(--text); font-weight: 500; }
+    .ws-ctx { align-items: center; gap: 8px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); }
+    .ws-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand-2); }
+    .ws-strip .sp { flex: 1; }
+    .ws-k { display: flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: var(--panel); }
+    .ws-of { width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--faint); display: grid; place-items: center; cursor: pointer; transition: background .15s, color .15s; }
+    .ws-of:hover { color: var(--text); background: var(--panel); }
+    .ws-of svg { width: 16px; height: 16px; }
+
+    /* surface-specific bits toggled purely by the active rail tile */
+    .only-chat, .only-code { display: none; }
+    .ws:has([data-view="chat"].active) .ws-crumb .only-chat { display: inline; }
+    .ws:has([data-view="code"].active) .ws-crumb .only-code { display: inline; }
+    .ws:has([data-view="chat"].active) .ws-ctx.only-chat { display: flex; }
+    .ws:has([data-view="code"].active) .ws-ctx.only-code { display: flex; }
+
+    /* Both surfaces stay mounted, toggled — switching preserves each side's state */
+    .ws-frame { position: absolute; top: 41px; left: 0; right: 0; bottom: 0; width: 100%; height: calc(100% - 41px); border: 0; }
+    .ws-frame.hidden { display: none; }
+
+    /* ------------------------------------------------------------------ *
+     *  Frame loading (skeleton) + error states — left-aligned, textured  *
+     * ------------------------------------------------------------------ */
+    .ws-loading { position: absolute; top: 41px; left: 0; right: 0; bottom: 0; z-index: 4; background: var(--bg); display: none; justify-items: start; align-content: start; padding: 32px; }
+
+    .wl-route { position: absolute; top: 0; left: 0; right: 0; height: 2px; overflow: hidden; }
+    .wl-route::before { content: ""; position: absolute; top: 0; left: -40%; height: 2px; width: 40%; border-radius: 2px; background: var(--brand); animation: wlroute 1.1s cubic-bezier(.4,0,.2,1) infinite; }
+    @keyframes wlroute { to { left: 100%; } }
+
+    .wl-inner { max-width: 420px; width: 100%; }
+    .wl-head { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+    .wl-head svg { width: 22px; height: 22px; }
+    .wl-path { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+    .wl-path .dim { color: var(--faint); }
+    .wl-path .pc-chat, .wl-path .pc-code { display: none; }
+    .ws:has([data-view="chat"].active) .wl-path .pc-chat { display: inline; }
+    .ws:has([data-view="code"].active) .wl-path .pc-code { display: inline; }
+
+    .wl-skel { display: flex; flex-direction: column; gap: 16px; }
+    .wl-row { height: 14px; border-radius: 6px; background: var(--panel-2); animation: wlsh 1.2s ease-in-out infinite; }
+    .wl-row.r1 { width: 64%; }
+    .wl-row.r2 { width: 82%; animation-delay: .15s; }
+    .wl-row.user { width: 46%; align-self: flex-end; background: var(--panel); animation-delay: .3s; }
+    .wl-row.r3 { width: 72%; animation-delay: .45s; }
+    @keyframes wlsh { 0%, 100% { opacity: .45; } 50% { opacity: .9; } }
+
+    .wl-error { max-width: 420px; }
+    .wl-kicker { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--danger); opacity: .85; margin: 0 0 12px; }
+    .wl-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.15; letter-spacing: -.02em; color: var(--text); margin: 0 0 8px; }
+    .wl-body { font-family: var(--font-body); font-size: 14px; line-height: 1.55; color: var(--muted); margin: 0 0 20px; }
+    .wl-actions { display: flex; gap: 10px; }
+
+    /* ------------------------------------------------------------------ *
+     *  Install card (PWA) — flat hairline card, not a floating toast     *
+     * ------------------------------------------------------------------ */
+    .ws-install { position: fixed; right: 16px; bottom: 16px; z-index: 60; width: 320px; max-width: calc(100vw - 32px); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); display: none; flex-direction: column; }
+    .ws-install.show { display: flex; animation: wsrise .15s ease-out; }
+    @keyframes wsrise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .wi-kicker { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--brand-2); margin: 0 0 8px; }
+    .wi-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--text); margin: 0 0 4px; }
+    .wi-body { font-family: var(--font-body); font-size: 13px; line-height: 1.5; color: var(--muted); margin: 0 0 14px; }
+    .wi-actions { display: flex; align-items: center; gap: 12px; }
+    .ws-install .x { font-family: var(--font-body); font-size: 13px; color: var(--faint); background: none; border: 0; padding: 0; cursor: pointer; transition: color .15s; }
+    .ws-install .x:hover { color: var(--text); }
 
     @media (max-width: 640px) {
-      .ws-rail { width: 60px; flex-basis: 60px; }
-      .ws-item { width: 52px; font-size: .62rem; }
+      .ws-rail { width: 64px; flex-basis: 64px; }
+      .ws-ctx.only-chat, .ws-ctx.only-code { display: none !important; }
     }
   </style>
 </head>
@@ -53,41 +140,84 @@
       <a class="ws-logo" href="/" title="Yield home" aria-label="Yield home">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.5" transform="rotate(45 12 12)" fill="#7c5cff"/><rect x="10" y="10" width="4" height="4" rx="1" transform="rotate(45 12 12)" fill="#00d4b4"/></svg>
       </a>
-      <button class="ws-item" data-view="chat" title="Chat with the AI">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        Chat
-      </button>
-      <button class="ws-item" data-view="code" title="Code on your repos">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m8 9-3 3 3 3"/><path d="m16 9 3 3-3 3"/><path d="M13 5 11 19"/></svg>
-        Code
-      </button>
-      <div class="ws-sep"></div>
-      <a class="ws-item" href="/app" title="Build a web app from a prompt">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        Build
+      <div class="rail-hair"></div>
+
+      <div class="ws-seg" role="group" aria-label="Chat and Code">
+        <button class="ws-item" data-view="chat" title="Chat with the AI">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="lbl">Chat</span>
+          <span class="kbd" aria-hidden="true">⌘1</span>
+        </button>
+        <button class="ws-item" data-view="code" title="Code on your repos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 9-3 3 3 3"/><path d="m16 9 3 3-3 3"/><path d="M13 5 11 19"/></svg>
+          <span class="lbl">Code</span>
+          <span class="kbd" aria-hidden="true">⌘2</span>
+        </button>
+      </div>
+
+      <div class="rail-hair two"></div>
+      <a class="ws-nav" href="/app" title="Build a web app from a prompt">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        <span>Build</span>
       </a>
-      <a class="ws-item" href="/security" title="Yield Security">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8.3-7 10-4-1.7-7-5.6-7-10V6z"/></svg>
-        Security
+      <a class="ws-nav" href="/security" title="Yield Security">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 8.3-7 10-4-1.7-7-5.6-7-10V6z"/></svg>
+        <span>Security</span>
       </a>
+
       <div class="ws-spacer"></div>
-      <a class="ws-item" href="/download" title="Install / get the app" id="railGet">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-        Get app
-      </a>
+
+      <div class="ws-foot">
+        <a class="ws-nav" href="/download" title="Install / get the app" id="railGet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          <span>Get app</span>
+        </a>
+        <div class="ws-acct" title="Account" aria-label="Account">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+        </div>
+      </div>
     </nav>
 
     <main class="ws-main">
-      <div class="ws-loading" id="wsLoading"><div><div class="spin"></div>Loading…</div></div>
+      <div class="ws-strip">
+        <div class="ws-crumb"><span>yield</span><span>/</span><span class="sfc only-chat">chat</span><span class="sfc only-code">code</span></div>
+        <div class="ws-ctx only-chat"><span>new thread</span></div>
+        <div class="ws-ctx only-code"><span>owner/repo</span><span class="ws-dot"></span></div>
+        <span class="sp"></span>
+        <span class="ws-k" aria-hidden="true">⌘K</span>
+        <button class="ws-of" type="button" aria-label="More" title="More">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+        </button>
+      </div>
+
+      <div class="ws-loading" id="wsLoading">
+        <div class="wl-route"></div>
+        <div class="wl-inner">
+          <div class="wl-head">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.5" transform="rotate(45 12 12)" fill="#7c5cff"/><rect x="10" y="10" width="4" height="4" rx="1" transform="rotate(45 12 12)" fill="#00d4b4"/></svg>
+            <span class="wl-path"><span class="pc-chat">~/chat</span><span class="pc-code">~/code</span> <span class="dim">· connecting</span></span>
+          </div>
+          <div class="wl-skel">
+            <div class="wl-row r1"></div>
+            <div class="wl-row r2"></div>
+            <div class="wl-row user"></div>
+            <div class="wl-row r3"></div>
+          </div>
+        </div>
+      </div>
       <iframe class="ws-frame hidden" id="frameChat" title="Yield Chat" allow="clipboard-write"></iframe>
       <iframe class="ws-frame hidden" id="frameCode" title="Yield Code" allow="clipboard-write"></iframe>
     </main>
   </div>
 
-  <div class="ws-install" id="installToast">
-    <div class="txt"><b>Install Yield</b> as an app — it opens in its own window with a dock icon.</div>
-    <button class="btn primary sm" id="installBtn">Install</button>
-    <span class="x" id="installX" title="Dismiss">×</span>
+  <div class="ws-install" id="installToast" role="dialog" aria-label="Install Yield">
+    <div class="wi-kicker">Install</div>
+    <div class="wi-title">Run Yield in its own window</div>
+    <div class="wi-body">Own window, dock icon, offline shell. No browser tab.</div>
+    <div class="wi-actions">
+      <button class="btn primary sm" id="installBtn">Install</button>
+      <button class="x" id="installX" type="button" title="Dismiss">Not now</button>
+    </div>
   </div>
 
   <script>
@@ -101,17 +231,25 @@
 
       var activeView = null;
       var frameLoading = { chat: false, code: false }; // per-view "still loading" state
-      var SPIN = '<div><div class="spin"></div>Loading…</div>';
+      var LOGO = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.5" transform="rotate(45 12 12)" fill="#7c5cff"/><rect x="10" y="10" width="4" height="4" rx="1" transform="rotate(45 12 12)" fill="#00d4b4"/></svg>';
+      var SKELETON = '<div class="wl-route"></div><div class="wl-inner"><div class="wl-head">' + LOGO +
+        '<span class="wl-path"><span class="pc-chat">~/chat</span><span class="pc-code">~/code</span> <span class="dim">· connecting</span></span></div>' +
+        '<div class="wl-skel"><div class="wl-row r1"></div><div class="wl-row r2"></div><div class="wl-row user"></div><div class="wl-row r3"></div></div></div>';
       // The overlay is shared, so show it only when the CURRENTLY-active view is still loading.
       function refreshOverlay() {
-        if (activeView && frameLoading[activeView]) { loading.innerHTML = SPIN; loading.style.display = 'grid'; }
+        if (activeView && frameLoading[activeView]) { loading.innerHTML = SKELETON; loading.style.display = 'grid'; }
         else loading.style.display = 'none';
       }
       function frameError(view) {
         frameLoading[view] = false;
         if (activeView !== view) return;
-        loading.innerHTML = '<div style="text-align:center"><p style="color:var(--muted);margin:0 0 .8rem">Couldn’t load ' +
-          (view === 'code' ? 'Yield Code' : 'Yield Chat') + '.</p><button class="btn primary" id="frameRetry">Retry</button></div>';
+        var name = view === 'code' ? 'Yield Code' : 'Yield Chat';
+        var href = view === 'code' ? '/code' : '/chat';
+        loading.innerHTML = '<div class="wl-inner wl-error"><p class="wl-kicker">ERR_FRAME_LOAD · ' + view + '</p>' +
+          '<h2 class="wl-title">Couldn’t reach ' + name + '</h2>' +
+          '<p class="wl-body">You may be offline, or the request was blocked. Your thread is safe.</p>' +
+          '<div class="wl-actions"><button class="btn primary" id="frameRetry">Retry</button>' +
+          '<a class="btn" href="' + href + '" target="_blank" rel="noopener">Open in new tab</a></div></div>';
         loading.style.display = 'grid';
         var r = document.getElementById('frameRetry');
         if (r) r.onclick = function () { loaded[view] = false; show(view); };

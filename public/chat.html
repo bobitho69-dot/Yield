@@ -12,111 +12,166 @@
   <link rel="stylesheet" href="/styles.css" />
   <style>
     /* ---------- Yield Chat ---------- */
-    /* Embedded inside the Yield workspace shell: hide this page's own top nav links. */
-    html.embed .cc-toplinks { display: none; }
-    html.embed .cc-top { padding-top: .45rem; padding-bottom: .45rem; }
-    .chatapp { display: grid; grid-template-columns: 260px 1fr; height: 100vh; overflow: hidden; }
+    /* Embedded inside the Yield workspace shell: hide chrome the shell already provides
+       (its own brand, top nav links and footer nav) so the embed reads as a pure
+       conversation surface — the thread list stays. */
+    html.embed .cc-toplinks,
+    html.embed .cc-brand,
+    html.embed .cc-side-foot { display: none; }
+    html.embed .cc-side-top { border-bottom: 1px solid var(--line); }
+    html.embed .cc-top { padding-top: .55rem; padding-bottom: .55rem; }
+
+    .chatapp { display: grid; grid-template-columns: 264px 1fr; height: 100vh; overflow: hidden; }
+
+    /* ----- Sidebar ----- */
     .cc-side { display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--bg-2); min-height: 0; }
-    .cc-side-top { padding: .8rem; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: .6rem; }
-    .cc-brand { display: flex; align-items: center; gap: .5rem; font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; padding: .1rem .2rem; }
-    .cc-brand .logo { color: var(--brand); }
-    .cc-brand .tag { font-family: var(--font-mono); font-size: .62rem; letter-spacing: .06em; text-transform: uppercase; color: var(--brand-2); border: 1px solid var(--line); border-radius: 6px; padding: .1rem .35rem; }
-    .cc-new { justify-content: center; width: 100%; }
-    .cc-convos { flex: 1; overflow-y: auto; padding: .5rem; display: flex; flex-direction: column; gap: .2rem; }
-    .cc-convo { display: flex; align-items: center; gap: .5rem; padding: .55rem .6rem; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: .86rem; border: 1px solid transparent; }
+    .cc-side-top { padding: 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+    .cc-brand { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; letter-spacing: -.02em; color: var(--text); }
+    .cc-brand .logo { display: inline-grid; place-items: center; color: var(--brand); }
+    .cc-brand .logo svg { display: block; }
+    .cc-brand .tag { font-family: var(--font-mono); font-size: .6rem; letter-spacing: .12em; text-transform: uppercase; color: var(--brand-2); border: 1px solid var(--line); border-radius: 5px; padding: .12rem .38rem; margin-left: 2px; }
+
+    .cc-new { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: var(--panel); border: 1px solid var(--line); color: var(--text); font-family: var(--font-body); font-weight: 500; font-size: .86rem; border-radius: 8px; padding: .6rem .7rem; cursor: pointer; transition: border-color .15s, background .15s; }
+    .cc-new:hover { border-color: var(--line-strong); background: var(--panel-2); }
+    .cc-new svg { display: block; color: var(--muted); }
+    .cc-new:hover svg { color: var(--text); }
+
+    .cc-convos { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+    .cc-convo { position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; border-radius: 7px; cursor: pointer; color: var(--muted); font-size: .86rem; border-left: 2px solid transparent; }
     .cc-convo:hover { background: var(--panel); color: var(--text); }
-    .cc-convo.active { background: var(--panel); border-color: var(--line); color: var(--text); }
-    .cc-convo .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .cc-convo .x { opacity: 0; color: var(--faint); font-size: 1.1rem; line-height: 1; }
-    .cc-convo:hover .x { opacity: 1; }
-    .cc-convo .x:hover { color: var(--danger); }
-    .cc-side-foot { padding: .6rem .8rem; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
-    .cc-side-foot a { color: var(--muted); font-size: .82rem; }
+    .cc-convo.active { background: var(--panel); border-left-color: var(--brand); color: var(--text); }
+    .cc-convo .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+    .cc-convo .x { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 6px; font-size: 0; color: transparent; cursor: pointer; opacity: 0; background-color: var(--faint);
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18'/%3E%3Cpath d='M8 6V4h8v2'/%3E%3Cpath d='M6 6l1 14h10l1-14'/%3E%3C/svg%3E") center / 14px no-repeat;
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18'/%3E%3Cpath d='M8 6V4h8v2'/%3E%3Cpath d='M6 6l1 14h10l1-14'/%3E%3C/svg%3E") center / 14px no-repeat; }
+    .cc-convo:hover .x, .cc-convo.active .x { opacity: 1; }
+    .cc-convo .x:hover { background-color: var(--danger); }
+
+    .cc-side-foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 20px; }
+    .cc-side-foot a { color: var(--muted); font-family: var(--font-mono); font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
     .cc-side-foot a:hover { color: var(--text); }
 
+    /* ----- Main ----- */
     .cc-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-    .cc-top { display: flex; align-items: center; gap: 1rem; padding: .6rem 1.1rem; border-bottom: 1px solid var(--line); }
-    .cc-top h1 { font-family: var(--font-display); font-size: 1rem; font-weight: 700; margin: 0; }
-    .cc-top .sub { color: var(--faint); font-size: .82rem; }
+    .cc-top { display: flex; align-items: center; gap: 16px; padding: .7rem 1.5rem; border-bottom: 1px solid var(--line); }
+    .cc-top h1 { font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; letter-spacing: -.02em; margin: 0; color: var(--text); }
+    .cc-top .sub { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    .cc-top .sub::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--brand-2); flex: 0 0 auto; }
     .cc-top .spacer { margin-left: auto; }
-    .cc-toplinks { display: flex; align-items: center; gap: 1.1rem; }
-    .cc-toplinks a { color: var(--muted); font-size: .86rem; }
-    .cc-toplinks a:hover, .cc-toplinks a.on { color: var(--text); }
+    .cc-toplinks { display: flex; align-items: center; gap: 20px; }
+    .cc-toplinks a { position: relative; color: var(--muted); font-family: var(--font-mono); font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; padding-bottom: 3px; }
+    .cc-toplinks a:hover { color: var(--text); }
+    .cc-toplinks a.on { color: var(--text); }
+    .cc-toplinks a.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--brand-2); }
 
-    .cc-thread { flex: 1; overflow-y: auto; padding: 1.5rem 0; }
-    .cc-thread-inner { max-width: 780px; margin: 0 auto; padding: 0 1.5rem; display: flex; flex-direction: column; gap: 1.4rem; }
-    .cc-empty { max-width: 720px; margin: 8vh auto 0; padding: 0 1.5rem; text-align: center; }
-    .cc-empty h2 { font-family: var(--font-display); font-size: 2rem; letter-spacing: -.02em; margin: 0 0 .6rem; }
-    .cc-empty p { color: var(--muted); font-size: 1.02rem; margin: 0 auto 1.8rem; max-width: 520px; line-height: 1.55; }
-    .cc-suggest { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
-    .cc-chip { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: .7rem .9rem; font-size: .88rem; cursor: pointer; transition: .15s; text-align: left; max-width: 240px; }
-    .cc-chip:hover { border-color: var(--brand); transform: translateY(-1px); }
-    .cc-chip b { display: block; font-weight: 600; margin-bottom: .15rem; }
-    .cc-chip span { color: var(--muted); font-size: .8rem; }
+    .cc-thread { flex: 1; overflow-y: auto; padding: 2rem 0; }
+    .cc-thread-inner { max-width: 780px; margin: 0 auto; padding: 0 1.5rem; display: flex; flex-direction: column; gap: 32px; }
 
-    .msg { display: flex; gap: .9rem; }
-    .msg .av { width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto; display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: .8rem; }
-    .msg.user .av { background: var(--panel-3); color: var(--muted); }
-    .msg.ai .av { background: var(--brand); color: #fff; }
-    .msg .body { min-width: 0; flex: 1; padding-top: .2rem; }
-    .msg .who { font-size: .78rem; color: var(--faint); margin-bottom: .3rem; font-weight: 600; }
+    /* ----- Empty state ----- */
+    .cc-empty { max-width: 780px; margin: 7vh auto 0; padding: 0 1.5rem; text-align: left; }
+    .cc-empty .kick { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--brand-2); margin: 0 0 14px; }
+    .cc-empty h2 { font-family: var(--font-display); font-size: 2.4rem; font-weight: 700; letter-spacing: -.03em; line-height: 1.05; margin: 0 0 14px; color: var(--text); }
+    .cc-empty p { color: var(--muted); font-size: 1.02rem; margin: 0 0 32px; max-width: 560px; line-height: 1.6; }
+    .cc-suggest { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .cc-chip { display: block; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 16px; font-size: .9rem; cursor: pointer; transition: border-color .15s, transform .15s; text-align: left; }
+    .cc-chip:hover { border-color: var(--brand-2); transform: translateY(-1px); }
+    .cc-chip:focus-visible { outline: 2px solid var(--brand-2); outline-offset: 2px; }
+    .cc-chip b { display: block; font-family: var(--font-mono); font-weight: 500; font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
+    .cc-chip span { display: block; color: var(--text); font-size: .92rem; line-height: 1.45; }
+    @media (max-width: 640px) { .cc-suggest { grid-template-columns: 1fr; } .cc-empty h2 { font-size: 2rem; } }
+
+    /* ----- Message turn (role-rail transcript) ----- */
+    .msg { display: block; }
+    .msg .av { display: none; }
+    .msg .body { min-width: 0; }
+    .msg.ai .body { border-left: 2px solid var(--line); padding-left: 18px; }
+    .msg .who { font-family: var(--font-mono); font-size: .7rem; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
     .msg .who .mdl { font-family: var(--font-mono); color: var(--brand-2); font-weight: 500; }
-    .prose { font-size: .96rem; line-height: 1.65; color: var(--text); overflow-wrap: anywhere; }
+
+    .prose { font-size: 1rem; line-height: 1.7; color: var(--text); overflow-wrap: anywhere; }
     .prose > *:first-child { margin-top: 0; } .prose > *:last-child { margin-bottom: 0; }
-    .prose p { margin: 0 0 .8rem; }
-    .prose h1, .prose h2, .prose h3 { font-family: var(--font-display); margin: 1.2rem 0 .6rem; line-height: 1.25; }
-    .prose h1 { font-size: 1.3rem; } .prose h2 { font-size: 1.15rem; } .prose h3 { font-size: 1.02rem; }
-    .prose ul, .prose ol { margin: 0 0 .8rem; padding-left: 1.3rem; } .prose li { margin: .2rem 0; }
+    .prose p { margin: 0 0 .85rem; }
+    .prose h1, .prose h2, .prose h3 { font-family: var(--font-display); font-weight: 700; letter-spacing: -.01em; margin: 1.4rem 0 .7rem; line-height: 1.2; }
+    .prose h1 { font-size: 1.5rem; } .prose h2 { font-size: 1.2rem; } .prose h3 { font-size: 1rem; }
+    .prose ul, .prose ol { margin: 0 0 .85rem; padding-left: 1.3rem; } .prose li { margin: .25rem 0; }
     .prose a { color: var(--brand-2); text-decoration: underline; text-underline-offset: 2px; }
     .prose code { font-family: var(--font-mono); font-size: .85em; background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: .08em .35em; }
-    .prose pre { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .9rem 1rem; overflow-x: auto; margin: 0 0 .9rem; }
-    .prose pre code { background: none; border: none; padding: 0; font-size: .84rem; line-height: 1.5; }
-    .prose blockquote { border-left: 3px solid var(--line-strong); margin: 0 0 .8rem; padding: .1rem 0 .1rem 1rem; color: var(--muted); }
-    .prose table { border-collapse: collapse; margin: 0 0 .9rem; font-size: .88rem; }
-    .prose th, .prose td { border: 1px solid var(--line); padding: .4rem .6rem; text-align: left; }
-    .prose hr { border: none; border-top: 1px solid var(--line); margin: 1.1rem 0; }
-    .cursor-blink::after { content: '▍'; color: var(--brand); animation: ccblink 1s steps(2) infinite; margin-left: 1px; }
+    .prose pre { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.1rem; overflow-x: auto; margin: 0 0 .9rem; }
+    .prose pre code { background: none; border: none; padding: 0; font-size: .84rem; line-height: 1.55; }
+    .prose blockquote { border-left: 2px solid var(--line-strong); margin: 0 0 .85rem; padding: .1rem 0 .1rem 1rem; color: var(--muted); }
+    .prose table { border-collapse: collapse; margin: 0 0 .9rem; font-size: .9rem; }
+    .prose th, .prose td { border: 1px solid var(--line); padding: .45rem .65rem; text-align: left; }
+    .prose th { font-family: var(--font-mono); font-size: .74rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .prose hr { border: none; border-top: 1px solid var(--line); margin: 1.2rem 0; }
+    .cursor-blink::after { content: ""; display: inline-block; width: .5em; height: 1.05em; vertical-align: text-bottom; background: var(--brand-2); margin-left: 2px; animation: ccblink 1s steps(2) infinite; }
     @keyframes ccblink { 50% { opacity: 0; } }
 
-    .think { margin: 0 0 .7rem; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); overflow: hidden; }
-    .think summary { cursor: pointer; padding: .5rem .8rem; font-size: .8rem; color: var(--muted); list-style: none; display: flex; align-items: center; gap: .5rem; }
+    /* ----- Thinking disclosure (mono trace) ----- */
+    .think { margin: 0 0 .85rem; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); overflow: hidden; }
+    .think summary { cursor: pointer; padding: .55rem .8rem; font-family: var(--font-mono); font-size: .72rem; letter-spacing: .04em; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 8px; }
     .think summary::-webkit-details-marker { display: none; }
-    .think summary .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-2); }
-    .think .tc { padding: .3rem .9rem .8rem; font-family: var(--font-mono); font-size: .78rem; color: var(--faint); white-space: pre-wrap; line-height: 1.5; max-height: 260px; overflow-y: auto; }
+    .think summary::after { content: ""; width: 12px; height: 12px; margin-left: auto; background-color: var(--faint); transition: transform .15s;
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat; }
+    .think[open] summary::after { transform: rotate(90deg); }
+    .think summary .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-2); flex: 0 0 auto; }
+    .think .tc { padding: .3rem .9rem .8rem; font-family: var(--font-mono); font-size: .78rem; color: var(--faint); white-space: pre-wrap; line-height: 1.55; max-height: 260px; overflow-y: auto; }
 
-    .cc-composer { border-top: 1px solid var(--line); padding: .8rem 0 1rem; background: var(--bg-2); }
+    /* ----- Composer ----- */
+    .cc-composer { border-top: 1px solid var(--line); padding: .85rem 0 1rem; background: var(--bg-2); }
     .cc-composer-inner { max-width: 780px; margin: 0 auto; padding: 0 1.5rem; }
-    .cc-controls { display: flex; align-items: center; gap: .6rem; margin-bottom: .55rem; flex-wrap: wrap; }
+    .cc-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .cc-ctx { margin-left: auto; font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+
     .cc-model { position: relative; }
-    .model-btn { display: inline-flex; align-items: center; gap: .45rem; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: .38rem .7rem; font-size: .82rem; cursor: pointer; }
+    .model-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: .4rem .65rem; font-family: var(--font-mono); font-size: .74rem; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; transition: border-color .15s; }
     .model-btn:hover { border-color: var(--line-strong); }
-    .model-btn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand-2); }
-    .model-btn .caret { color: var(--faint); font-size: .7rem; }
-    .model-panel { position: absolute; bottom: 115%; left: 0; width: 320px; max-height: 360px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow); z-index: 40; padding: .4rem; }
-    .model-opt { padding: .55rem .6rem; border-radius: 8px; cursor: pointer; }
+    .model-btn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand-2); flex: 0 0 auto; }
+    .model-btn .caret { display: inline-grid; place-items: center; color: var(--faint); }
+    .model-btn .caret svg { display: block; }
+
+    .model-panel { position: absolute; bottom: 118%; left: 0; width: 320px; max-height: 360px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow); z-index: 40; padding: 6px; }
+    .model-opt { position: relative; padding: .55rem .6rem .55rem .7rem; border-radius: 8px; cursor: pointer; border-left: 2px solid transparent; }
     .model-opt:hover { background: var(--panel-2); }
-    .model-opt.on { background: var(--panel-3); }
-    .model-opt .mo-top { display: flex; align-items: center; gap: .5rem; }
-    .model-opt .mo-name { font-weight: 600; font-size: .86rem; }
-    .model-opt .mo-tier { margin-left: auto; font-family: var(--font-mono); font-size: .64rem; text-transform: uppercase; color: var(--faint); border: 1px solid var(--line); border-radius: 5px; padding: .05rem .3rem; }
-    .model-opt .mo-blurb { color: var(--muted); font-size: .78rem; margin-top: .2rem; line-height: 1.4; }
-    .think-sel { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: .38rem .5rem; font-size: .82rem; cursor: pointer; }
-    .cc-inputwrap { display: flex; align-items: flex-end; gap: .6rem; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: .5rem .5rem .5rem .9rem; }
-    .cc-inputwrap:focus-within { border-color: var(--line-strong); }
-    #ccInput { flex: 1; background: transparent; border: none; color: var(--text); font-family: var(--font-body); font-size: .98rem; line-height: 1.5; resize: none; max-height: 200px; padding: .4rem 0; outline: none; }
-    .cc-send { background: var(--brand); border: none; color: #fff; width: 38px; height: 38px; border-radius: 10px; cursor: pointer; display: grid; place-items: center; flex: 0 0 auto; }
+    .model-opt.on { background: var(--panel-3); border-left-color: var(--brand-2); }
+    .model-opt .mo-top { display: flex; align-items: center; gap: 8px; }
+    .model-opt .mo-name { font-weight: 600; font-size: .86rem; color: var(--text); }
+    .model-opt .mo-tier { margin-left: auto; font-family: var(--font-mono); font-size: .6rem; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); border: 1px solid var(--line); border-radius: 5px; padding: .1rem .32rem; }
+    .model-opt .mo-blurb { color: var(--muted); font-size: .78rem; margin-top: .25rem; line-height: 1.45; }
+
+    .think-sel { -webkit-appearance: none; appearance: none; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: .4rem 1.7rem .4rem .65rem; font-family: var(--font-mono); font-size: .74rem; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; transition: border-color .15s;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%235e6880' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right .5rem center; background-size: 13px; }
+    .think-sel:hover { border-color: var(--line-strong); }
+
+    .cc-inputwrap { display: flex; align-items: flex-end; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: .5rem .5rem .5rem .9rem; transition: border-color .15s, box-shadow .15s; }
+    .cc-inputwrap:focus-within { border-color: var(--line-strong); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-2) 40%, transparent); }
+    #ccInput { flex: 1; background: transparent; border: none; color: var(--text); font-family: var(--font-body); font-size: 1rem; line-height: 1.55; resize: none; max-height: 200px; padding: .4rem 0; outline: none; }
+    #ccInput::placeholder { color: var(--faint); }
+
+    .cc-send { background: var(--brand); border: none; color: #fff; width: 38px; height: 38px; border-radius: 10px; cursor: pointer; display: grid; place-items: center; flex: 0 0 auto; transition: background .15s; }
     .cc-send:hover { background: #8f70ff; }
     .cc-send:disabled { opacity: .4; cursor: default; }
-    .cc-stop { background: #2a1416; color: #ff8a8a; border: 1px solid #6b2b2b; width: 38px; height: 38px; border-radius: 10px; cursor: pointer; display: grid; place-items: center; flex: 0 0 auto; }
-    .cc-foot-note { text-align: center; color: var(--faint); font-size: .74rem; margin-top: .5rem; }
+    .cc-send svg { display: block; }
+    .cc-stop { background: color-mix(in srgb, var(--danger) 14%, var(--panel)); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); width: 38px; height: 38px; border-radius: 10px; cursor: pointer; display: grid; place-items: center; flex: 0 0 auto; }
+    .cc-stop svg { display: block; }
+
+    .cc-foot-note { text-align: left; color: var(--faint); font-family: var(--font-mono); font-size: .68rem; letter-spacing: .04em; margin-top: 10px; }
+
+    /* ----- Mobile ----- */
     .cc-menu { display: none; }
+    .cc-menu svg { display: block; color: var(--text); }
     @media (max-width: 820px) {
       .chatapp { grid-template-columns: 1fr; }
-      .cc-side { position: fixed; inset: 0 auto 0 0; width: 260px; z-index: 60; transform: translateX(-100%); transition: transform .2s; }
+      .cc-side { position: fixed; inset: 0 auto 0 0; width: 264px; z-index: 60; transform: translateX(-100%); transition: transform .2s; }
       .cc-side.open { transform: none; }
       .cc-menu { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
       .cc-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 55; }
     }
+
+    /* ----- Focus rings ----- */
+    .cc-new:focus-visible, .cc-convo:focus-visible, .model-btn:focus-visible, .think-sel:focus-visible,
+    .cc-send:focus-visible, .cc-stop:focus-visible, .cc-menu:focus-visible, .cc-toplinks a:focus-visible,
+    .cc-side-foot a:focus-visible, .cc-brand:focus-visible, .model-opt:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
   </style>
 </head>
 <body>
@@ -124,8 +179,14 @@
     <!-- Sidebar: conversation history -->
     <aside class="cc-side" id="ccSide">
       <div class="cc-side-top">
-        <a class="cc-brand" href="/"><span class="logo">◆</span> Yield <span class="tag">Chat</span></a>
-        <button class="btn primary cc-new" id="ccNew">＋ New chat</button>
+        <a class="cc-brand" href="/">
+          <span class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v7"/><path d="M5 4l7 9 7-9"/></svg></span>
+          Yield <span class="tag">Chat</span>
+        </a>
+        <button class="cc-new" id="ccNew" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          New chat
+        </button>
       </div>
       <div class="cc-convos" id="ccConvos"></div>
       <div class="cc-side-foot">
@@ -140,9 +201,11 @@
     <!-- Main: thread + composer -->
     <div class="cc-main">
       <header class="cc-top">
-        <button class="cc-menu" id="ccMenu" aria-label="Menu">☰</button>
+        <button class="cc-menu" id="ccMenu" aria-label="Menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>
+        </button>
         <h1>Yield Chat</h1>
-        <span class="sub" id="ccModelNote">Auto · picks the best model per message</span>
+        <span class="sub" id="ccModelNote">Auto Router · balanced</span>
         <span class="spacer"></span>
         <nav class="cc-toplinks">
           <a href="/app">Build</a>
@@ -154,8 +217,9 @@
 
       <div class="cc-thread" id="ccThread">
         <div class="cc-empty" id="ccEmpty">
-          <h2>What can I help you with?</h2>
-          <p>Ask anything — explanations, ideas, writing, math, debugging, or a quick snippet. Yield Chat runs on 15+ frontier models and picks the right one automatically.</p>
+          <p class="kick">Chat + Code · Your repos</p>
+          <h2>Ask Yield anything.</h2>
+          <p>15+ frontier models, one composer. Yield routes each message to the right one — reasoning, code, or quick answers.</p>
           <div class="cc-suggest" id="ccSuggest"></div>
         </div>
         <div class="cc-thread-inner hidden" id="ccInner"></div>
@@ -166,7 +230,7 @@
           <div class="cc-controls">
             <div class="cc-model">
               <button class="model-btn" id="ccModelBtn" type="button" title="Choose the AI model">
-                <span class="model-btn-dot"></span><span id="ccModelLabel">Auto</span><span class="caret">▾</span>
+                <span class="model-btn-dot"></span><span id="ccModelLabel">Auto</span><span class="caret" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
               </button>
               <div class="model-panel hidden" id="ccModelPanel"></div>
             </div>
@@ -175,15 +239,18 @@
               <option value="medium" selected>Balanced</option>
               <option value="high">Max</option>
             </select>
+            <span class="cc-ctx">15+ models · Auto</span>
           </div>
           <form class="cc-inputwrap" id="ccForm">
             <textarea id="ccInput" rows="1" placeholder="Message Yield Chat…"></textarea>
-            <button class="cc-stop hidden" id="ccStop" type="button" title="Stop">■</button>
-            <button class="cc-send" id="ccSend" type="submit" title="Send" disabled>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg>
+            <button class="cc-stop hidden" id="ccStop" type="button" title="Stop" aria-label="Stop">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            </button>
+            <button class="cc-send" id="ccSend" type="submit" title="Send" aria-label="Send" disabled>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg>
             </button>
           </form>
-          <div class="cc-foot-note">Yield Chat can make mistakes. Prompts are screened by an automatic safety guard.</div>
+          <div class="cc-foot-note">Yield can make mistakes. Prompts pass an automatic safety guard.</div>
         </div>
       </div>
     </div>

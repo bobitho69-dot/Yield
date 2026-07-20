@@ -348,6 +348,171 @@
   .mkt-feat h3 .ic-svg{color:var(--brand-2)}
   .icard h3 .ic-svg{color:var(--brand-2)}
   .fd-actions .btn .ic-svg,.top-actions .btn .ic-svg{opacity:.95}
+
+  /* ============================================================
+     REDESIGN OVERRIDES — flat, layered, mono-textured (matches landing).
+     Purple = active state + primary action only. Teal = status only.
+     Zero gradients, zero glow. JetBrains Mono is the signature texture.
+     Appended so every original selector/JS-hook stays intact; equal-
+     specificity rules here win by source order.
+     ============================================================ */
+
+  /* -- Monospace signature texture -- */
+  .mono,.src-name,.sc-name,.ff-name .nm,.sc-kind,.cov-n,.fix-pre,.grp-n,
+  .chev,.src-tag,.sec-by,.tier-chip,.lc-ax,.hstat .hl,.kpi .k-label,
+  .kpi .k-sub,.field label,.fchip,.search,.fgroup,.seg,.pill,.pill2,
+  .cat-badge,.ff-cnt,.delta,.cov-name .st,table.tbl th{ font-family:var(--font-mono); }
+  .mono{ font-size:.76rem; letter-spacing:-.01em; color:var(--muted); }
+  .src-name,.sc-name,.ff-name .nm{ font-size:.8rem; letter-spacing:-.01em; }
+
+  /* -- Display numbers (Space Grotesk, tabular, tight) -- */
+  .k-num,.fs-num,.don-num,.gauge-num,.tcard .amt,.hstat .hv,.fs-pill b{
+    font-family:var(--font-display); letter-spacing:-.02em; }
+
+  /* -- Type hierarchy -- */
+  .topbar h1{ font-family:var(--font-display); font-weight:700; font-size:1.5rem; letter-spacing:-.02em; }
+  .topbar .sub{ font-family:var(--font-mono); font-size:.72rem; color:var(--faint); letter-spacing:.01em; }
+  .panel h2,.icard h3,.cap h3,.gs b,.how b{ font-family:var(--font-display); }
+  .panel h2{ font-size:1rem; font-weight:650; letter-spacing:-.01em; }
+  .panel h2 .right{ font-family:var(--font-mono); font-size:.7rem; letter-spacing:.02em; color:var(--faint); font-weight:400; }
+  .welcome h2{ font-family:var(--font-display); font-weight:700; font-size:1.7rem; letter-spacing:-.02em; }
+  .k-num{ font-size:1.75rem; font-weight:700; }
+  .kpi .k-label{ font-size:.66rem; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); }
+  .kpi .k-sub{ font-size:.7rem; color:var(--faint); }
+  .empty h2{ font-family:var(--font-display); letter-spacing:-.01em; }
+  .empty .big{ color:var(--muted); }
+
+  /* -- Flat surfaces: no inset highlight, lift shadow only on hover -- */
+  .kpi,.hero-card,.src-card{ box-shadow:none!important; background:var(--panel); }
+  .kpi:hover,.src-card:hover{ transform:none; border-color:var(--line-2); box-shadow:0 6px 18px -10px rgba(0,0,0,.6)!important; }
+  .panel:hover,.cap:hover,.repo-row:hover,.icard:hover{ border-color:var(--line-2); }
+
+  /* -- Kill decorative KPI accent bars + glow ring -- */
+  .kpi::before{ display:none; }
+  .kpi.crit-glow{ box-shadow:none!important; }
+  .kpi.acc-crit .k-num{ color:var(--crit); }
+
+  /* -- Section bands: quiet mono labels, flat 1px rule -- */
+  .band .bl{ font-family:var(--font-mono); font-size:.66rem; text-transform:uppercase; letter-spacing:.14em; color:var(--faint); font-weight:500; }
+  .band .hr{ height:1px; background:var(--line); }
+  .band .bm{ font-family:var(--font-mono); font-size:.68rem; color:var(--faint); letter-spacing:.02em; }
+  .band .bm b{ color:var(--text); }
+
+  /* -- Sidebar: flat purple active rail (no wash), purple active icon -- */
+  .sb-brand .sec-word{ font-family:var(--font-display); }
+  .sb-item.active{ background:var(--panel-2); color:#fff; box-shadow:inset 2px 0 0 var(--brand); }
+  .sb-item.active .ic{ color:var(--brand); }
+  .sb-item:hover .ic{ color:var(--text); }
+  .sec-mark{ color:var(--brand-2); }
+
+  /* -- Tier chip: flat, no teal fill -- */
+  .tier-chip{ font-weight:600; font-size:.62rem; letter-spacing:.08em; border-radius:5px; text-transform:uppercase; }
+  .tier-chip.pro{ background:var(--panel-3); color:var(--brand-2); border:1px solid rgba(0,212,180,.3); }
+  .tier-chip.free{ background:var(--panel-2); color:var(--muted); border:1px solid var(--line); }
+
+  /* -- Decorative icons neutral grey (teal is status-only) -- */
+  .panel h2 .ic-svg,.cap-ic,.how-ic,.mkt-feat h3 .ic-svg,.icard h3 .ic-svg,.cov-ic{ color:var(--muted); }
+  .cap-ic{ background:var(--panel); border:1px solid var(--line); }
+
+  /* -- Flat pills (no frosted rgba) -- */
+  .pill2{ font-weight:600; border-radius:5px; background:var(--panel-2); border:1px solid var(--line); }
+  .pill2.CRITICAL{ color:var(--crit); border-color:rgba(240,86,109,.32); }
+  .pill2.HIGH{ color:var(--high); border-color:rgba(245,158,87,.32); }
+  .pill2.MEDIUM{ color:var(--med); border-color:rgba(232,194,74,.32); }
+  .pill2.LOW{ color:var(--low); border-color:rgba(111,155,209,.32); }
+  .cat-badge{ background:var(--panel-2)!important; border:1px solid var(--line)!important; }
+  .cat-SAST{ color:#9bc0ea; } .cat-SCA{ color:#5fe0a6; } .cat-IaC{ color:#bfa6ff; }
+  .cat-Secrets{ color:#f58ea0; } .cat-License{ color:#ecd47a; }
+  .ff-cnt{ border-radius:4px; background:var(--panel-2); }
+  .ff-cnt.c{ color:var(--crit); } .ff-cnt.h{ color:var(--high); }
+  .ff-row.sev-crit .ff-rank{ background:var(--panel-2); color:var(--crit); }
+  .ff-row.sev-high .ff-rank{ background:var(--panel-2); color:var(--high); }
+  .ff-rank{ font-family:var(--font-mono); }
+  .delta{ background:var(--panel-2); }
+  .delta.up{ color:var(--ok); } .delta.down{ color:var(--crit); } .delta.flat{ color:var(--muted); }
+  .fd-fix{ background:var(--panel-2); }
+
+  /* -- Category / issue magnitude bars: flat solids (no gradient) -- */
+  .cat-fill-SAST{ background:#6f9bd1; } .cat-fill-SCA{ background:#3ecf8e; }
+  .cat-fill-IaC{ background:#a882ff; } .cat-fill-Secrets{ background:#f0566d; }
+  .cat-fill-License{ background:#e8c24a; } .ti-fill{ background:#4a5473; }
+
+  /* -- Skeleton: flat opacity pulse, no gradient shimmer -- */
+  .skel{ background:var(--panel-2)!important; animation:skelpulse 1.5s ease-in-out infinite; }
+  @keyframes skelpulse{ 0%,100%{opacity:.45} 50%{opacity:.8} }
+
+  /* -- Status marks: teal only, no glow/halo -- */
+  .aifix{ filter:none; color:var(--brand-2); }
+  .live-dot{ box-shadow:none; animation:sblink 1.8s steps(1) infinite; }
+  @keyframes sblink{ 0%,60%{opacity:1} 61%,100%{opacity:.35} }
+  .lc-pulse{ display:none; }
+  .cov-name .st{ display:inline-flex; align-items:center; gap:.3rem; color:var(--brand-2); }
+  .src-tag.ai{ color:var(--brand-2); border-color:rgba(0,212,180,.3); }
+
+  /* -- Getting-started steps: neutral numbers, done = teal outline -- */
+  .gs-n{ background:var(--panel-3); color:var(--muted); font-family:var(--font-mono); }
+  .gs.done{ background:var(--panel-2); border-color:rgba(0,212,180,.28); }
+  .gs.done .gs-n{ background:transparent; color:var(--ok); border:1px solid var(--ok); }
+
+  /* -- Usage meter neutral -- */
+  .usage .ubar i{ background:var(--muted); }
+
+  /* -- Filters / search / segmented controls -- */
+  .fchip{ font-size:.72rem; letter-spacing:.02em; border-radius:6px; }
+  .search{ font-size:.78rem; border-radius:7px; }
+  .search::placeholder{ color:var(--faint); }
+  .seg{ font-size:.78rem; letter-spacing:.02em; }
+  .field label{ font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+
+  /* -- Rotating SVG chevron on finding rows -- */
+  .chev{ width:26px; }
+  .chev .cv{ display:inline-flex; color:var(--muted); transition:transform .15s; }
+  .chev .cv.open{ transform:rotate(180deg); }
+
+  /* -- Source score chip flat (JS renders solid color text) -- */
+  .sc-chip{ font-family:var(--font-mono); border-radius:6px; }
+  .sc-kind{ font-family:var(--font-mono); }
+
+  /* -- Donut hover: opacity dim only, no stroke-width jump -- */
+  .donut:hover .seg{ opacity:.4; } .donut .seg:hover{ opacity:1; stroke-width:14; }
+
+  /* -- Table header mono, faint -- */
+  table.tbl th{ letter-spacing:.06em; color:var(--faint); text-transform:uppercase; }
+
+  /* -- Marketing: left-aligned, asymmetric, product-forward, flat -- */
+  .mkt{ max-width:1140px; }
+  .mkt-hero{ text-align:left; padding:2.5rem 0 2.5rem; }
+  .mkt-hero.mkt-hero-2{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:3rem; align-items:start; }
+  .mkt-hero .eyebrow{ font-family:var(--font-mono); font-size:.72rem; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--brand-2); margin:0 0 1rem; }
+  .mkt-hero h1{ font-family:var(--font-display); font-weight:700; font-size:clamp(2.4rem,5vw,3.6rem); line-height:1.04; letter-spacing:-.03em; margin:0; }
+  .mkt-hero p{ margin:1.1rem 0 1.6rem; font-size:1.12rem; line-height:1.55; color:var(--text); max-width:560px; }
+  .mh-mock{ background:var(--panel); border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; }
+  .mh-mock-head{ display:flex; align-items:center; gap:.5rem; padding:.7rem .9rem; border-bottom:1px solid var(--line); font-family:var(--font-mono); font-size:.72rem; color:var(--muted); }
+  .mh-mock-head .live-dot{ width:7px; height:7px; }
+  .mh-row{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:.7rem; padding:.6rem .9rem; border-bottom:1px solid var(--line); border-left:3px solid var(--rail,transparent); }
+  .mh-row:last-child{ border-bottom:none; }
+  .mh-row .mh-name{ font-family:var(--font-mono); font-size:.76rem; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mh-row .mh-path{ font-family:var(--font-mono); font-size:.68rem; color:var(--faint); }
+  .mh-foot{ display:flex; align-items:center; gap:.5rem; padding:.65rem .9rem; font-family:var(--font-mono); font-size:.7rem; color:var(--muted); }
+  @media(max-width:820px){ .mkt-hero.mkt-hero-2{ grid-template-columns:1fr; gap:1.8rem; } }
+
+  /* -- Feature cards + pricing: flat, left-aligned, display headings -- */
+  .mkt-feat{ text-align:left; }
+  .mkt-feat h3{ font-family:var(--font-display); font-weight:700; }
+  .tcard{ text-align:left; }
+  .tcard h3{ font-family:var(--font-display); font-weight:700; font-size:1.05rem; }
+  .tcard .amt{ font-weight:700; letter-spacing:-.02em; }
+  .tcard.feat{ border-color:var(--brand); box-shadow:none; }
+  .tcard ul li{ display:flex; align-items:flex-start; gap:.5rem; line-height:1.4; }
+  .tcard ul li .ic-svg{ color:var(--brand-2); flex:0 0 auto; margin-top:1px; }
+  .tcard ul li[data-x] .ic-svg{ color:var(--faint); }
+  .pill{ font-size:.62rem; letter-spacing:.06em; }
+
+  /* -- Inline icon alignment for worklist + status dots -- */
+  .ff-go{ display:inline-flex; align-items:center; gap:.25rem; }
+  .ff-row:hover .ff-go .ic-svg{ color:var(--brand); }
+  .cov-name .st .live-dot{ width:6px; height:6px; }
+  .delta{ display:inline-flex; align-items:center; gap:.1rem; }
 </style>
 </head>
 <body class="sec-app">
@@ -373,9 +538,8 @@ let _uid=0;
 function ring(score, size=72){ const r=(size-9)/2, c=2*Math.PI*r, off=c*(1-(score||0)/100), id='rg'+(++_uid);
   const col=({ok:['#3ecf8e','#22a06b'],warn:['#e8c24a','#caa01f'],bad:['#f59e57','#d97a2f'],crit:['#f0566d','#c33147']})[sc(score||0)];
   return `<span class="ring" style="width:${size}px;height:${size}px;display:inline-block"><svg width="${size}" height="${size}">
-    <defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${col[0]}"/><stop offset="1" stop-color="${col[1]}"/></linearGradient></defs>
     <circle class="bg" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke-width="7"/>
-    <circle class="fg" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="url(#${id})" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c}" style="--circ:${c};--off:${off}"/>
+    <circle class="fg" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${col[0]}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c}" style="--circ:${c};--off:${off}"/>
     <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle">${score??'—'}</text></svg></span>`; }
 const BANDCOL={ok:'#3ecf8e',warn:'#e8c24a',bad:'#f59e57',crit:'#f0566d'};
 // Honest area+line trend (straight segments, draw-in, last-point pulse, hover crosshair).
@@ -389,9 +553,8 @@ function lineChart(series, w=600, h=164){
   const last=pts[n-1], col=BANDCOL[sc(last.s)];
   return `<div class="trend-wrap" data-pts='${esc(JSON.stringify(pts))}'>
     <svg viewBox="0 0 ${w} ${h}" class="lchart" preserveAspectRatio="xMidYMid meet">
-      <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
       ${[0,50,100].map(g=>`<line x1="${pad}" x2="${w-pad}" y1="${Y(g)}" y2="${Y(g)}" stroke="var(--line)" stroke-width="1" opacity=".55"/>`).join('')}
-      <polygon points="${pad},${pad+ih} ${line} ${pad+iw},${pad+ih}" fill="url(#${id})"/>
+      <polygon points="${pad},${pad+ih} ${line} ${pad+iw},${pad+ih}" fill="${col}" fill-opacity=".06"/>
       <polyline class="lc-line" points="${line}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" style="--plen:${plen.toFixed(0)}" stroke-dasharray="${plen.toFixed(0)}"/>
       <line class="lc-cross" x1="0" y1="${pad}" x2="0" y2="${pad+ih}"/>
       <circle cx="${last.x}" cy="${last.y}" r="3.5" fill="${col}"/>
@@ -407,7 +570,7 @@ function wireTrend(root){ const wrap=$('.trend-wrap',root); if(!wrap)return; let
 function sparkline(series, w=88, h=24){ if(!series||series.length<2) return ''; const vals=series.map(s=>s.score||0),n=vals.length,col=BANDCOL[sc(vals[n-1])],id='sp'+(++_uid);
   const mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1, Y=v=>(h-3-((v-mn)/rng)*(h-6)); // auto-scale to the series range so shape is visible
   const P=vals.map((v,i)=>`${(i/(n-1)*w).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
-  return `<svg width="${w}" height="${h}" style="vertical-align:middle;overflow:visible"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".24"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs><polygon points="0,${h} ${P} ${w},${h}" fill="url(#${id})"/><polyline points="${P}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${w}" cy="${Y(vals[n-1]).toFixed(1)}" r="2" fill="${col}"/></svg>`; }
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle;overflow:visible"><polygon points="0,${h} ${P} ${w},${h}" fill="${col}" fill-opacity=".08"/><polyline points="${P}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${w}" cy="${Y(vals[n-1]).toFixed(1)}" r="2" fill="${col}"/></svg>`; }
 function skel(n=3){ return `<div>${Array(n).fill('<div class="skel"></div>').join('')}</div>`; }
 
 // ---- count-up (hero only) ----
@@ -423,10 +586,9 @@ function gauge(score){ const cx=100,cy=92,r=76, id='ga'+(++_uid), v=Math.max(0,M
   const band=sc(v), col=({ok:['#3ecf8e','#22a06b'],warn:['#e8c24a','#caa01f'],bad:['#f59e57','#d97a2f'],crit:['#f0566d','#c33147']})[band];
   const grade=({ok:'Strong',warn:'Fair',bad:'At risk',crit:'Critical'})[band];
   return `<div class="gauge-wrap"><svg class="gauge" width="200" height="150" viewBox="0 0 200 150" role="img" aria-label="Security posture ${v} of 100, ${grade}">
-    <defs><linearGradient id="${id}" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="${col[1]}"/><stop offset="1" stop-color="${col[0]}"/></linearGradient></defs>
-    <path d="${arcD}" fill="none" stroke="var(--panel-3)" stroke-width="14" stroke-linecap="round"/>
-    <path class="arc-val" d="${arcD}" fill="none" stroke="url(#${id})" stroke-width="14" stroke-linecap="round" stroke-dasharray="${valLen.toFixed(1)} ${(C).toFixed(0)}" style="--len:${valLen.toFixed(1)};--goff:0"/>
-    <text class="gauge-num" x="100" y="90" text-anchor="middle" fill="var(--text)" style="font-size:38px;font-weight:800;letter-spacing:-.02em">${v}</text>
+    <path d="${arcD}" fill="none" stroke="var(--panel-3)" stroke-width="12" stroke-linecap="round"/>
+    <path class="arc-val" d="${arcD}" fill="none" stroke="${col[0]}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${valLen.toFixed(1)} ${(C).toFixed(0)}" style="--len:${valLen.toFixed(1)};--goff:0"/>
+    <text class="gauge-num" x="100" y="92" text-anchor="middle" fill="var(--text)" style="font-size:46px;font-weight:700;letter-spacing:-.02em">${v}</text>
     <text x="100" y="112" text-anchor="middle" class="gauge-grade" fill="${col[0]}">${grade}</text>
   </svg></div>`; }
 
@@ -444,7 +606,7 @@ function donut(c,h,m,l,size=132){ const r=46,cx=size/2,cy=size/2,C=2*Math.PI*r, 
 
 // ---- delta chip: only meaningful on a coherent (single-source) series ----
 function deltaChip(curr,prev,goodUp=true){ if(prev==null||curr==null) return ''; const d=curr-prev; if(d===0) return `<span class="delta flat">±0</span>`;
-  const better=goodUp?d>0:d<0; return `<span class="delta ${better?'up':'down'}">${d>0?'▲':'▼'}${Math.abs(d)}</span>`; }
+  const better=goodUp?d>0:d<0; return `<span class="delta ${better?'up':'down'}">${d>0?I('chevup',11):I('chevdown',11)}${Math.abs(d)}</span>`; }
 
 // ---- KPI tile ----
 function kpiTile(o){ // {label,num,sub,acc,spark,delta,glow,span}
@@ -462,7 +624,7 @@ function sourceCard(s, monitored){ const key=s.source, name=key.replace(/^(repo|
   const band=sc(s.score||0), col=BANDCOL[band], t=s.total||0, c=s.critical||0, h=s.high||0, m=s.medium||0, l=Math.max(0,t-c-h-m);
   const seg=(cls,val)=>val>0?`<i class="${cls}" style="width:${(val/(t||1)*100).toFixed(1)}%"></i>`:'';
   return `<div class="src-card" data-open="${esc(key)}" tabindex="0">
-    <div class="sc-top"><span class="sc-kind">${isRepo?'repo':'project'}</span><span class="sc-name" title="${esc(name)}">${esc(name)}</span><span class="sc-chip" style="background:${col}22;color:${col}">${s.score??'—'}</span></div>
+    <div class="sc-top"><span class="sc-kind">${isRepo?'repo':'project'}</span><span class="sc-name" title="${esc(name)}">${esc(name)}</span><span class="sc-chip" style="background:var(--panel-2);color:${col}">${s.score??'—'}</span></div>
     <div class="sc-mbar">${seg('c',c)}${seg('h',h)}${seg('m',m)}${seg('l',l)||'<i style="width:100%;background:var(--panel-3)"></i>'}</div>
     <div class="sc-spark" data-src="${esc(key)}"></div>
     <div class="sc-foot"><span class="meta">${t} findings · ${ago(s.last_at)||'—'}</span>${isRepo?(monitored?`<button class="btn ghost sm" data-unmon="${esc(name)}" onclick="event.stopPropagation()">${I('belloff',14)}</button>`:`<button class="btn ghost sm" data-mon="${esc(name)}" onclick="event.stopPropagation()">${I('bell',14)} Monitor</button>`):'<span class="src-tag">project</span>'}</div></div>`; }
@@ -474,12 +636,12 @@ function fixFirst(sources){ const ranked=sources.filter(s=>(s.total||0)>0).slice
     return `<div class="ff-row ${sev}" data-open="${esc(s.source)}" tabindex="0"><span class="ff-rank">${i+1}</span>
       <span class="ff-name"><span class="nm" title="${esc(name)}">${esc(name)}</span><span class="sub">${s.source.startsWith('repo:')?'repository':'project'} · health ${s.score??'—'}</span></span>
       <span class="ff-counts">${s.critical?`<span class="ff-cnt c">${s.critical} crit</span>`:''}${s.high?`<span class="ff-cnt h">${s.high} high</span>`:''}</span>
-      <span class="ff-go">Open →</span></div>`; }).join('')}</div>`; }
+      <span class="ff-go">Open ${I('arrowright',13)}</span></div>`; }).join('')}</div>`; }
 
 // ---- COVERAGE: capability wall (lit = scanner active; count = findings seen) ----
 function coverageStrip(topTypes, monitors, scanned){ const {agg}=catAgg(topTypes); const fresh=monitors&&monitors.length?Math.max(...monitors.map(m=>m.last_scan_at||0)):0;
   return `<div class="cov-grid">${CATS.map(cat=>`<div class="cov-row"><div class="cov-ic">${catIco(cat,18)}</div>
-    <div class="cov-name">${cat}${scanned?'<span class="st">● active</span>':''}</div>
+    <div class="cov-name">${cat}${scanned?'<span class="st"><span class="live-dot"></span>active</span>':''}</div>
     <div class="cov-n">${agg[cat]?agg[cat]+' found':(scanned?'clean':'—')}</div></div>`).join('')}</div>
     <div class="cov-foot">${scanned?'<span class="live-dot"></span>':''}${fresh?`Monitored · last scan ${ago(fresh)}`:'5 scanners run on every scan'}</div>`; }
 
@@ -520,6 +682,7 @@ const ICONS = {
   checkcircle:'<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4 12 14l-3-3"/>',
   x:'<path d="M18 6 6 18M6 6l12 12"/>',
   arrowleft:'<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  arrowright:'<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   inbox:'<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
   megaphone:'<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
@@ -529,6 +692,7 @@ const ICONS = {
   external:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
   link:'<path d="M10 13a5 5 0 0 0 7.5.5l3-3A5 5 0 0 0 13.5 3.5l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3A5 5 0 0 0 10.5 20.5l1.7-1.7"/>',
   chevdown:'<path d="m6 9 6 6 6-6"/>',
+  chevup:'<path d="m6 15 6-6 6 6"/>',
   diamond:'<path d="M12 2 22 12 12 22 2 12z"/>',
 };
 function I(name, size=18, extraCls=''){ return `<svg class="ic-svg ${extraCls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`; }
@@ -562,7 +726,7 @@ function renderApp(){
       <nav id="nav">${NAV.map(n=>`<a class="sb-item" data-view="${n.id}"><span class="ic">${I(n.ic,18)}</span>${n.label}${n.pro&&!pro?`<span class="lock">${I('lock',13)}</span>`:''}</a>`).join('')}</nav>
       <div class="sb-foot">
         <a class="sb-item" data-view="settings"><span class="ic">${I('settings',18)}</span> Settings</a>
-        <a class="sb-item" href="/app"><span class="ic" style="color:var(--brand)">◆</span> Yield</a>
+        <a class="sb-item" href="/app"><span class="ic">${I('diamond',18)}</span> Yield</a>
         <a class="sb-item" id="acct" data-view="settings"><span class="ic">${I('user',18)}</span> ${S.github.login?'@'+esc(S.github.login):'Account'}</a>
       </div>
     </aside>
@@ -608,7 +772,7 @@ function topIssues(topTypes, n=8){
     return `<div class="ti-row" data-type="${esc(t.type||'')}"><span class="ti-name" title="${esc((t.type||'').replace(/_/g,' '))}"><span class="cat-dot cat-${cat}"></span>${esc((t.type||'').replace(/_/g,' '))}</span><div class="ti-track"><i class="ti-fill" style="width:${Math.max(6,Math.round((t.cnt||0)/max*100))}%"></i></div><b class="ti-n">${t.cnt}</b></div>`; }).join('')}</div>`;
 }
 function monitoredPanel(monitors){
-  if(!monitors.length) return `<div class="panel"><h2>${I('refresh',16)} Monitored repositories <span class="right"><button class="btn ghost sm" onclick="go('monitoring')">Set up →</button></span></h2><p class="mono">No repositories are being watched yet. Enable monitoring to scan on every push & PR automatically.</p></div>`;
+  if(!monitors.length) return `<div class="panel"><h2>${I('refresh',16)} Monitored repositories <span class="right"><button class="btn ghost sm" onclick="go('monitoring')">Set up monitoring</button></span></h2><p class="mono">No repositories are being watched yet. Enable monitoring to scan on every push & PR automatically.</p></div>`;
   return `<div class="panel"><h2>${I('refresh',16)} Monitored repositories <span class="right">${monitors.length} watched · scan on push</span></h2>
     <table class="tbl"><thead><tr><th>Repository</th><th>Last score</th><th>Last scan</th><th></th></tr></thead><tbody>
     ${monitors.map(m=>`<tr><td class="src-name">${esc(m.repo)} <span class="mono">@${esc(m.branch||'main')}</span>${m.auto_fix?` <span class="aifix" title="Auto-fix on — commits fixes automatically">${I('sparkle',13)}</span>`:''}</td>
@@ -619,18 +783,19 @@ function monitoredPanel(monitors){
 }
 
 // ---------------- dashboard ----------------
-function gsStep(done,n,t,d,btn){ return `<div class="gs ${done?'done':''}"><div class="gs-n">${done?'✓':n}</div><div><b>${t}</b><p>${d}</p>${done?'':btn}</div></div>`; }
+function gsStep(done,n,t,d,btn){ return `<div class="gs ${done?'done':''}"><div class="gs-n">${done?I('check',15):n}</div><div><b>${t}</b><p>${d}</p>${done?'':btn}</div></div>`; }
 function renderDashEmpty(c, monitors){
   const gh=S.github.connected, done=gh?1:0, pct=Math.round(done/3*100);
   c.innerHTML=`<div class="welcome"><h2>Welcome${S.github.login?', @'+esc(S.github.login):''}</h2>
-      <p>Yield Security scans your GitHub repos and Yield projects for real, exploitable vulnerabilities — SAST · SCA · IaC · secrets · licenses — with a live advisory feed, an AI ensemble and one-click AI auto-fix that commits for you.</p></div>
+      <p>Scan your repos and projects for real, exploitable vulnerabilities.</p>
+      <p class="mono" style="margin:.4rem 0 0">SAST · SCA · IaC · secrets · licenses — with live advisories, an AI ensemble, and one-click auto-fix.</p></div>
     <div class="panel"><div class="gs-head">${ring(pct,52)}<div><h2 style="margin:0">Get started · ${done}/3</h2><p class="mono" style="margin:.25rem 0 0">Three steps to your first security posture.</p></div></div>
       <div class="gs-list">
         ${gsStep(gh,1,'Connect GitHub', gh?`Connected as @${esc(S.github.login||'')}`:'Link GitHub to scan and monitor your repositories.', `<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">${I('github',14)} Connect GitHub</a>`)}
         ${gsStep(false,2,'Run your first scan','Scan a repo or a Yield project — SAST, SCA, IaC and licenses in seconds.', `<button class="btn primary sm" onclick="go('scan')">${I('plus',14)} New scan</button>`)}
         ${gsStep(false,3,'Turn on monitoring','Watch a repo so every push & PR is scanned automatically, with a daily re-scan.', `<button class="btn ghost sm" onclick="go('monitoring')">${I('refresh',14)} Monitoring</button>`)}
       </div></div>
-    <div class="band"><span class="bl">Preview</span><span class="hr"></span><span class="bm">your command center, once you scan</span></div>
+    <div class="band"><span class="bl">Preview</span><span class="hr"></span><span class="bm">Run one scan to light this up.</span></div>
     <div class="cmd-grid ghosted"><div class="span-4"><div class="skel circle"></div></div><div class="span-8"><div class="skel tile" style="height:160px"></div></div>
       <div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div><div class="span-3"><div class="skel tile"></div></div></div>
     <div class="panel"><h2>${I('shield',16)} What we scan</h2>${capCards()}</div>
@@ -721,10 +886,10 @@ function wireDash(){
 async function openSource(key){
   S.view='source'; $$('.sb-item[data-view]').forEach(a=>a.classList.remove('active'));
   $('#vtitle').textContent = key.replace(/^(repo|project):/,''); $('#vsub').textContent = key.startsWith('repo:')?'repository':'project';
-  $('#tact').innerHTML=`<button class="btn ghost sm" onclick="go('dashboard')">← Dashboard</button>`;
+  $('#tact').innerHTML=`<button class="btn ghost sm" onclick="go('dashboard')">${I('arrowleft',14)} Dashboard</button>`;
   const c=$('#content'); c.innerHTML=skel(2);
   const h=await api('/api/security/history?source='+encodeURIComponent(key)); const runs=h.runs||[];
-  if(!runs.length){ c.innerHTML=`<div class="empty"><div class="big">${I('inbox',40)}</div><h2>No scans yet for this source</h2><button class="btn primary" onclick="go('scan')">Scan it →</button></div>`; return; }
+  if(!runs.length){ c.innerHTML=`<div class="empty"><div class="big">${I('inbox',40)}</div><h2>No scans yet for this source</h2><button class="btn primary" onclick="go('scan')">${I('bolt',14)} Scan it</button></div>`; return; }
   const latest=runs[0], series=runs.slice().reverse(), repo=key.startsWith('repo:')?key.slice(5):null, pid=key.startsWith('project:')?key.slice(8):null;
   c.innerHTML=`<div class="grid2">
     <div class="panel" style="display:flex;align-items:center;gap:1.5rem">${ring(latest.score,96)}
@@ -752,7 +917,7 @@ async function renderSettings(){
       <p style="margin:.2rem 0 .6rem"><b>${I('github',15)} GitHub</b> — ${S.github.connected?`connected as <b>@${esc(S.github.login||'')}</b>`:'<span class="mono">not connected</span>'}</p>
       ${S.github.connected?'':`<a class="btn ghost sm" href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security">${I('github',14)} Connect GitHub</a>`}
       <p style="margin:1rem 0 .5rem"><b>${I('plug',15)} Integrations</b> — Slack, Jira, PR comments</p>
-      <button class="btn ghost sm" onclick="go('integrations')">Configure →</button></div></div>
+      <button class="btn ghost sm" onclick="go('integrations')">Configure</button></div></div>
     <div class="panel"><h2>${I('lock',16)} Privacy</h2><p class="mono" style="line-height:1.5">Code is analyzed and discarded immediately. Yield Security stores only finding metadata — type, severity, CWE, file, line, score and timestamp — never your source code.</p></div>`;
   const mng=$('#mng'); if(mng) mng.onclick=async()=>{ const r=await api('/api/billing/portal',{method:'POST'}); if(r.url) location.href=r.url; else alert(r.error||'No billing account yet.'); };
 }
@@ -783,7 +948,7 @@ function renderScan(){
         </span>
         <div class="mono" style="margin-top:.5rem">Basic = SAST + SCA + IaC + license (instant). Deep / Compliance add the AI ensemble (every top model).</div>
       </div>
-      <button class="btn primary" id="scanBtn">Run scan ▸</button>
+      <button class="btn primary" id="scanBtn">${I('bolt',14)} Run scan</button>
     </div>
     <div class="scan-status" id="sstatus"></div>
     <div id="sresult"></div>
@@ -800,7 +965,7 @@ async function doScan(src){
   $('#sresult').innerHTML='';
   try{
     const res=await fetch('/api/security/scan',{method:'POST',headers:{'content-type':'application/json',accept:'text/event-stream'},body:JSON.stringify({...src,level:S.level,stream:true})});
-    if(!res.ok||!res.body||!res.headers.get('content-type')?.includes('text/event-stream')){ const e=await res.json().catch(()=>({})); st.innerHTML = e.code==='github_not_connected'?`Connect GitHub first. <a href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security" style="color:var(--brand-2)">Connect →</a>`:(e.code==='security_required'?`${I('lock',13)} ${esc(e.error)} <a href="#" onclick="subscribe();return false" style="color:var(--brand-2)">Upgrade →</a>`:esc(e.error||`Scan failed (${res.status})`)); return; }
+    if(!res.ok||!res.body||!res.headers.get('content-type')?.includes('text/event-stream')){ const e=await res.json().catch(()=>({})); st.innerHTML = e.code==='github_not_connected'?`Connect GitHub first. <a href="/api/auth/github/login?scope=repo&store_token=1&redirect=/security" style="color:var(--brand-2)">Connect</a>`:(e.code==='security_required'?`${I('lock',13)} ${esc(e.error)} <a href="#" onclick="subscribe();return false" style="color:var(--brand-2)">Upgrade</a>`:esc(e.error||`Scan failed (${res.status})`)); return; }
     const rd=res.body.pipeThrough(new TextDecoderStream()).getReader(); let buf='';
     for(;;){ const {value,done}=await rd.read(); if(done)break; buf+=value; let i; while((i=buf.indexOf('\n\n'))!==-1){ const fr=buf.slice(0,i); buf=buf.slice(i+2); const ev=/event: (.*)/.exec(fr)?.[1], dt=/data: ([\s\S]*)/.exec(fr)?.[1]; if(!ev||dt==null)continue; let p; try{p=JSON.parse(dt)}catch{continue}
       if(ev==='finding'){ S.findings.push(p); st.querySelector('b')&&(st.innerHTML=`<span class="spin"></span> ${S.findings.length} finding(s)…`); }
@@ -813,7 +978,7 @@ async function doScan(src){
 function fixableFindings(list){ return (list||[]).filter(f=>f.location?.file&&f.location.file.indexOf('.')>-1); }
 function scanDone(r){
   const fixableN=fixableFindings(r.findings).length;
-  $('#sstatus').innerHTML=`✓ Complete — health ${r.codeHealthScore}/100 · ${r.summary.total} findings · <a href="#" data-exp="sarif">SARIF</a> · <a href="#" data-exp="json">JSON</a> · <a href="#" data-exp="html">Report</a> · <a href="#" onclick="go('findings');return false">Open in Findings →</a>`;
+  $('#sstatus').innerHTML=`${I('check',14)} Complete — health ${r.codeHealthScore}/100 · ${r.summary.total} findings · <a href="#" data-exp="sarif">SARIF</a> · <a href="#" data-exp="json">JSON</a> · <a href="#" data-exp="html">Report</a> · <a href="#" onclick="go('findings');return false">Open in Findings</a>`;
   $$('#sstatus [data-exp]').forEach(a=>a.onclick=e=>{e.preventDefault();exportAs(a.dataset.exp);});
   $('#sresult').innerHTML = `<div class="panel"><div style="display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap">${ring(r.codeHealthScore,80)}
       <div style="min-width:0"><div class="mono">${esc(S.sourceKey)}</div><div style="margin:.55rem 0"><span class="pill2 CRITICAL">${r.summary.critical} critical</span> <span class="pill2 HIGH">${r.summary.high} high</span> <span class="pill2 MEDIUM">${r.summary.medium} med</span> <span class="pill2 LOW">${r.summary.low} low</span></div></div>
@@ -831,7 +996,7 @@ function findingRowHtml(f, gi){ const cat=catOf(f.type); const fixable=f.locatio
     <td class="mono">${esc(f.location?.file||'')}:${f.location?.line||0}</td>
     <td><span class="cat-badge cat-${cat}">${catIco(cat)} ${cat}</span></td>
     <td>${fixable?`<span class="aifix" title="AI auto-fixable">${I('sparkle',13)}</span> `:''}${f.source==='ai'?`<span class="src-tag ai">${I('cpu',12)} ${esc(f.model||'AI')}</span>`:'<span class="src-tag">pattern</span>'}</td>
-    <td class="mono chev">▾</td></tr>
+    <td class="chev"><span class="cv">${I('chevdown',14)}</span></td></tr>
     <tr class="fdetail" data-detail="${gi}" style="display:none"><td colspan="6"></td></tr>`; }
 function findingsTable(list){
   if(!list.length) return `<div class="empty"><div class="big">${I('checkcircle',40)}</div><h2>No findings</h2><p>Nothing flagged here — nice and clean.</p></div>`;
@@ -841,12 +1006,12 @@ function findingsTable(list){
 function wireFindingRows(root){
   $$('tr[data-row]',root).forEach(tr=>tr.onclick=()=>{
     const i=+tr.dataset.row, det=$(`tr[data-detail="${i}"]`,root); const f=(S._tableList&&S._tableList[i])||S.findings[i];
-    if(det.style.display==='none'){ det.style.display=''; det.querySelector('td').innerHTML=detailHtml(f,i); tr.querySelector('td:last-child').textContent='▴'; wireDetail(det,f); }
-    else { det.style.display='none'; tr.querySelector('td:last-child').textContent='▾'; }
+    if(det.style.display==='none'){ det.style.display=''; det.querySelector('td').innerHTML=detailHtml(f,i); tr.querySelector('.cv')?.classList.add('open'); wireDetail(det,f); }
+    else { det.style.display='none'; tr.querySelector('.cv')?.classList.remove('open'); }
   });
 }
 function detailHtml(f,i){
-  const ex=f.example&&(f.example.vulnerable||f.example.safe)?`<div class="fd-ex"><div class="ex-bad"><span class="mono">✗ vulnerable</span><pre>${esc(f.example.vulnerable||'')}</pre></div><div class="ex-ok"><span class="mono">✓ safe</span><pre>${esc(f.example.safe||'')}</pre></div></div>`:'';
+  const ex=f.example&&(f.example.vulnerable||f.example.safe)?`<div class="fd-ex"><div class="ex-bad"><span class="mono" style="display:inline-flex;align-items:center;gap:.3rem;color:var(--crit)">${I('x',12)} vulnerable</span><pre>${esc(f.example.vulnerable||'')}</pre></div><div class="ex-ok"><span class="mono" style="display:inline-flex;align-items:center;gap:.3rem;color:var(--ok)">${I('check',12)} safe</span><pre>${esc(f.example.safe||'')}</pre></div></div>`:'';
   const fixable=f.location?.file&&f.location.file.indexOf('.')>-1;
   return `<div class="fd-grid"><div class="fd-desc">${esc(f.description||'')}</div>
     <div class="mono">${esc(f.owasp||'')}</div>
@@ -861,7 +1026,7 @@ function renderFindings(){
   $('#tact').innerHTML = all.length?`<a href="#" class="btn ghost sm" data-exp="sarif">SARIF</a><a href="#" class="btn ghost sm" data-exp="json">JSON</a><a href="#" class="btn ghost sm" data-exp="html">Report</a>${fixableN?`<button class="btn primary sm" id="fixAllBtn">${I('sparkle',14)} Fix all (${fixableN})</button>`:''}<button class="btn primary sm" onclick="go('scan')">${I('plus',14)} Scan</button>`:'';
   $$('#tact [data-exp]').forEach(a=>a.onclick=e=>{e.preventDefault();exportAs(a.dataset.exp);});
   const fab=$('#fixAllBtn'); if(fab) fab.onclick=()=>doFixAll(fab,renderFindings);
-  if(!all.length){ c.innerHTML=`<div class="empty"><div class="big">${I('alert',40)}</div><h2>No findings to show yet</h2><p>Run a scan and your vulnerabilities appear here as a filterable, groupable list — expand any row for the fix and one-click AI auto-fix.</p><button class="btn primary" onclick="go('scan')">${I('plus',14)} New scan →</button></div><div class="panel"><h2>${I('shield',16)} What we look for</h2>${capCards()}</div>`; return; }
+  if(!all.length){ c.innerHTML=`<div class="empty"><div class="big">${I('alert',40)}</div><h2>No findings to show yet</h2><p>Run a scan and your vulnerabilities appear here as a filterable, groupable list — expand any row for the fix and one-click AI auto-fix.</p><button class="btn primary" onclick="go('scan')">${I('plus',14)} New scan</button></div><div class="panel"><h2>${I('shield',16)} What we look for</h2>${capCards()}</div>`; return; }
   const sevC=s=>all.filter(f=>f.severity===s).length, catC=cat=>all.filter(f=>catOf(f.type)===cat).length;
   const sevs=['CRITICAL','HIGH','MEDIUM','LOW'];
   c.innerHTML=`
@@ -924,7 +1089,7 @@ async function renderMonitoring(){
   const watched = `<div class="panel"><h2>${I('refresh',16)} Watched repositories <span class="right">${monitors.length} active · scan on push + daily</span></h2>
     ${monitors.length?`<table class="tbl"><thead><tr><th>Repository</th><th>Scan-on-push</th><th>Auto-fix</th><th>Last score</th><th>Last scan</th><th></th></tr></thead><tbody>
       ${monitors.map(m=>`<tr><td class="src-name">${esc(m.repo)} <span class="mono">@${esc(m.branch||'main')}</span></td>
-        <td><span class="pill2 ${m.hook_id?'LOW':'MEDIUM'}">${m.hook_id?'● active':'manual'}</span></td>
+        <td><span class="pill2 ${m.hook_id?'LOW':'MEDIUM'}">${m.hook_id?'active':'manual'}</span></td>
         <td><label class="chk" style="margin:0" title="AI-fix critical &amp; high findings and commit them automatically on every scan"><input type="checkbox" data-autofix="${esc(m.repo)}" ${m.auto_fix?'checked':''}> auto-commit</label></td>
         <td>${m.last_score!=null?`<span class="pill2 ${m.last_score>=70?'LOW':m.last_score>=40?'MEDIUM':'CRITICAL'}">${m.last_score}/100</span>`:'<span class="mono">pending first push</span>'}</td>
         <td class="mono">${ago(m.last_scan_at)||'—'}</td>
@@ -956,9 +1121,9 @@ async function toggleMonitor(repo,on,btn){ btn.disabled=true; const t=btn.innerH
 async function renderIntegrations(){
   const c=$('#content'); const d=await api('/api/security/integrations'); const g=d.integrations||{};
   c.innerHTML=`<div class="integ-cards">
-    <div class="icard"><h3>${I('slack',15)} Slack <span class="st ${g.slack?'on':'off'}">${g.slack?'connected':'off'}</span></h3><p class="mono">Post a summary to a channel after each scan.</p><input id="iSlack" placeholder="${g.slack?'configured ✓ (blank = keep)':'https://hooks.slack.com/services/…'}"></div>
+    <div class="icard"><h3>${I('slack',15)} Slack <span class="st ${g.slack?'on':'off'}">${g.slack?'connected':'off'}</span></h3><p class="mono">Post a summary to a channel after each scan.</p><input id="iSlack" placeholder="${g.slack?'configured (blank = keep)':'https://hooks.slack.com/services/…'}"></div>
     <div class="icard"><h3>${I('puzzle',15)} Jira <span class="st ${g.jira?'on':'off'}">${g.jira?'connected':'off'}</span></h3><p class="mono">Open a ticket for each critical finding.</p>
-      <input id="iJiraBase" placeholder="${g.jira?'configured ✓':'https://you.atlassian.net'}"><input id="iJiraEmail" placeholder="you@company.com"><input id="iJiraToken" type="password" placeholder="${g.jira?'••• (blank = keep)':'API token'}"><input id="iJiraProj" value="${esc(g.jira_project||'')}" placeholder="Project key (e.g. SEC)"></div>
+      <input id="iJiraBase" placeholder="${g.jira?'configured':'https://you.atlassian.net'}"><input id="iJiraEmail" placeholder="you@company.com"><input id="iJiraToken" type="password" placeholder="${g.jira?'••• (blank = keep)':'API token'}"><input id="iJiraProj" value="${esc(g.jira_project||'')}" placeholder="Project key (e.g. SEC)"></div>
     <div class="icard"><h3>${I('github',15)} GitHub <span class="st ${S.github.connected?'on':'off'}">${S.github.connected?'connected':'off'}</span></h3><p class="mono">On monitored repos, report results inline.</p>
       <label class="chk"><input type="checkbox" id="iStatus" ${g.post_commit_status!==0?'checked':''}> Set commit-status checks</label>
       <label class="chk"><input type="checkbox" id="iPr" ${g.post_pr_comments?'checked':''}> Comment findings on PRs</label></div>
@@ -966,7 +1131,7 @@ async function renderIntegrations(){
   <div style="margin-top:1.2rem;display:flex;gap:.6rem;align-items:center"><button class="btn primary" id="iSave">Save integrations</button><span class="mono" id="iMsg"></span></div>`;
   $('#iSave').onclick=async()=>{ const v=s=>$(s).value.trim();
     const body={slack_webhook:v('#iSlack')||undefined,jira_base:v('#iJiraBase')||undefined,jira_email:v('#iJiraEmail')||undefined,jira_token:v('#iJiraToken')||undefined,jira_project:v('#iJiraProj')||undefined,post_pr_comments:$('#iPr').checked,post_commit_status:$('#iStatus').checked};
-    $('#iMsg').textContent='Saving…'; const r=await api('/api/security/integrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); $('#iMsg').textContent=r.ok?'Saved ✓':'Failed'; toast(r.ok?'Integrations saved':'Save failed'); };
+    $('#iMsg').textContent='Saving…'; const r=await api('/api/security/integrations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); $('#iMsg').textContent=r.ok?'Saved':'Failed'; toast(r.ok?'Integrations saved':'Save failed'); };
 }
 
 // ---------------- upsell / marketing ----------------
@@ -980,9 +1145,19 @@ function renderUpsell(view){
 function renderMarketing(s){
   document.body.classList.remove('sec-app'); // the marketing page scrolls; the app shell doesn't
   const cta = s.loginRequired?`<a class="btn primary lg" href="/login?redirect=/security">Sign in to start</a>`:(s.priceConfigured?`<button class="btn primary lg" onclick="subscribe()">Get Security Pro</button>`:`<button class="btn primary lg" disabled>Launching soon</button>`);
-  document.body.innerHTML=`<div id="root"><header class="nav"><a class="brand" href="/security" style="display:flex;align-items:center;gap:.5rem">${secMark(22)}<span class="sec-word-wrap"><span class="sec-word">Security</span><span class="sec-by">by Yield</span></span></a><nav class="nav-links"><a class="toplink" href="/" style="display:flex;align-items:center;gap:.35rem"><span class="logo" style="font-size:1rem">◆</span>Yield</a><a href="/app">Builder</a><a href="/pricing">Pricing</a><a class="btn ghost sm" href="/login?redirect=/security">Sign in</a></nav></header>
-  <main class="mkt"><div class="mkt-hero"><h1>Find vulnerabilities before attackers do.</h1>
-    <p>Scan your GitHub repos and Yield projects with a live advisory feed (OSV / GitHub Advisories) and every top AI model. SAST · SCA · IaC · secrets · licenses — with AI auto-fix and continuous monitoring.</p>${cta}</div>
+  document.body.innerHTML=`<div id="root"><header class="nav"><a class="brand" href="/security" style="display:flex;align-items:center;gap:.5rem">${secMark(22)}<span class="sec-word-wrap"><span class="sec-word">Security</span><span class="sec-by">by Yield</span></span></a><nav class="nav-links"><a class="toplink" href="/" style="display:flex;align-items:center;gap:.35rem"><span class="logo" style="display:inline-flex">${I('diamond',16)}</span>Yield</a><a href="/app">Builder</a><a href="/pricing">Pricing</a><a class="btn ghost sm" href="/login?redirect=/security">Sign in</a></nav></header>
+  <main class="mkt"><div class="mkt-hero mkt-hero-2">
+    <div class="mh-copy">
+      <p class="eyebrow">SAST · SCA · IAC · SECRETS · LICENSES</p>
+      <h1>Find vulnerabilities before attackers do.</h1>
+      <p>Scan your GitHub repos and Yield projects for real, exploitable vulnerabilities — with AI auto-fix and continuous monitoring.</p>${cta}</div>
+    <div class="mh-mock" aria-hidden="true">
+      <div class="mh-mock-head"><span class="live-dot"></span>scanning ryan/yield · main</div>
+      <div class="mh-row" style="--rail:var(--crit)"><span class="pill2 CRITICAL">CRIT</span><span class="mh-name">SQL Injection</span><span class="mh-path">api/users.js:42</span></div>
+      <div class="mh-row" style="--rail:var(--high)"><span class="pill2 HIGH">HIGH</span><span class="mh-name">Hardcoded Secret</span><span class="mh-path">config/db.js:8</span></div>
+      <div class="mh-row" style="--rail:var(--med)"><span class="pill2 MEDIUM">MED</span><span class="mh-name">Outdated Dependency</span><span class="mh-path">lodash@4.17.15</span></div>
+      <div class="mh-foot"><span style="color:var(--brand-2);display:inline-flex">${I('sparkle',13)}</span>3 findings · 2 AI-fixable · health 62/100</div>
+    </div></div>
   <div class="mkt-feats">
     <div class="mkt-feat"><h3>${I('flask',16)} SAST · SCA · IaC</h3><p>Code flaws, dependency CVEs from the live OSV feed, and container/IaC misconfigs in one scan.</p></div>
     <div class="mkt-feat"><h3>${I('sparkle',16)} AI ensemble + auto-fix</h3><p>Every top model audits your code; generate and apply the corrected file in one click.</p></div>
@@ -992,9 +1167,9 @@ function renderMarketing(s){
     <div class="mkt-feat"><h3>${I('lock',16)} Privacy first</h3><p>Code is analyzed and discarded immediately — only finding metadata is kept.</p></div>
   </div>
   <div class="tier-grid">
-    <div class="tcard"><h3>Free</h3><div class="amt">$0</div><ul><li>✓ Basic pattern scans</li><li>✓ 3 scans / day</li><li>✓ Projects & repos</li><li style="opacity:.5">✗ AI ensemble</li></ul><a class="btn ghost" href="/login?redirect=/security">Start free</a></div>
-    <div class="tcard feat"><span class="pill">Most popular</span><h3>Pro</h3><div class="amt">$19<small>/mo</small></div><ul><li>✓ AI ensemble — every top model</li><li>✓ Live OSV + license + IaC</li><li>✓ Continuous monitoring</li><li>✓ Slack · Jira · PR comments</li><li>✓ AI auto-fix</li></ul>${cta}</div>
-    <div class="tcard"><h3>Team</h3><div class="amt">$49<small>/mo</small></div><ul><li>✓ Everything in Pro</li><li>✓ Shared org repos</li><li>✓ Priority scanning</li><li>✓ Support</li></ul><a class="btn ghost" href="mailto:bobitho69@gmail.com?subject=Yield Security Team">Contact us</a></div>
+    <div class="tcard"><h3>Free</h3><div class="amt">$0</div><ul><li>${I('check',13)} Basic pattern scans</li><li>${I('check',13)} 3 scans / day</li><li>${I('check',13)} Projects & repos</li><li data-x style="opacity:.5">${I('x',13)} AI ensemble</li></ul><a class="btn ghost" href="/login?redirect=/security">Start free</a></div>
+    <div class="tcard feat"><span class="pill">Most popular</span><h3>Pro</h3><div class="amt">$19<small>/mo</small></div><ul><li>${I('check',13)} AI ensemble — every top model</li><li>${I('check',13)} Live OSV + license + IaC</li><li>${I('check',13)} Continuous monitoring</li><li>${I('check',13)} Slack · Jira · PR comments</li><li>${I('check',13)} AI auto-fix</li></ul>${cta}</div>
+    <div class="tcard"><h3>Team</h3><div class="amt">$49<small>/mo</small></div><ul><li>${I('check',13)} Everything in Pro</li><li>${I('check',13)} Shared org repos</li><li>${I('check',13)} Priority scanning</li><li>${I('check',13)} Support</li></ul><a class="btn ghost" href="mailto:bobitho69@gmail.com?subject=Yield Security Team">Contact us</a></div>
   </div></main></div>`;
 }
 async function subscribe(){ if(S.loginRequired){ location.href='/login?redirect=/security'; return; } const r=await api('/api/security/checkout',{method:'POST'}); if(r.url) location.href=r.url; else alert(r.error||'Subscription isn’t available yet.'); }
@@ -1065,21 +1240,21 @@ async function doFixAll(btn,onDone){
 }
 function fixModal(f,fixed,payload){
   const m=document.createElement('div'); m.className='fix-modal';
-  m.innerHTML=`<div class="fix-box"><div class="fix-head">${I('sparkle',14)} AI Fix — ${esc((f.type||'').replace(/_/g,' '))} <span class="mono">${esc(f.location.file)}</span><button class="btn ghost sm" id="fxX" style="margin-left:auto">✕</button></div>
+  m.innerHTML=`<div class="fix-box"><div class="fix-head">${I('sparkle',14)} AI Fix — ${esc((f.type||'').replace(/_/g,' '))} <span class="mono">${esc(f.location.file)}</span><button class="btn ghost sm" id="fxX" style="margin-left:auto">${I('x',14)}</button></div>
     <pre class="fix-pre">${esc(fixed)}</pre>
-    <div class="fix-foot"><span class="mono" style="flex:1">Review the rewritten file, then apply it to your ${payload.source==='repo'?'repo (a commit)':'project'}.</span><button class="btn ghost sm" id="fxCopy">Copy</button><button class="btn primary sm" id="fxApply">Apply fix →</button></div></div>`;
+    <div class="fix-foot"><span class="mono" style="flex:1">Review the rewritten file, then apply it to your ${payload.source==='repo'?'repo (a commit)':'project'}.</span><button class="btn ghost sm" id="fxCopy">Copy</button><button class="btn primary sm" id="fxApply">Apply fix</button></div></div>`;
   document.body.appendChild(m); const close=()=>m.remove();
   $('#fxX',m).onclick=close; m.onclick=e=>{if(e.target===m)close()};
   $('#fxCopy',m).onclick=()=>{navigator.clipboard?.writeText(fixed); $('#fxCopy',m).textContent='Copied';};
   $('#fxApply',m).onclick=async()=>{ const b=$('#fxApply',m); b.disabled=true; b.textContent='Applying…';
     const r=await api('/api/security/fix',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...payload,apply:true})});
-    if(!r.jobId){ b.disabled=false; b.textContent='Apply fix →'; alert(r.error||'Could not start applying the fix.'); return; }
+    if(!r.jobId){ b.disabled=false; b.textContent='Apply fix'; alert(r.error||'Could not start applying the fix.'); return; }
     pollFixJob(r.jobId,{
       onFinish:(result)=>{
-        if(result&&result.applied){ if(document.contains(b)) b.textContent='✓ Applied'; S.findings=S.findings.filter(x=>x!==f); toast('Fix applied'); setTimeout(close,800); }
-        else { if(document.contains(b)){ b.disabled=false; b.textContent='Apply fix →'; } alert((result&&result.applyError)||'Could not apply — copy the code instead.'); }
+        if(result&&result.applied){ if(document.contains(b)) b.innerHTML=I('check',14)+' Applied'; S.findings=S.findings.filter(x=>x!==f); toast('Fix applied'); setTimeout(close,800); }
+        else { if(document.contains(b)){ b.disabled=false; b.textContent='Apply fix'; } alert((result&&result.applyError)||'Could not apply — copy the code instead.'); }
       },
-      onFail:(msg)=>{ if(document.contains(b)){ b.disabled=false; b.textContent='Apply fix →'; } alert(msg||'Could not apply — copy the code instead.'); },
+      onFail:(msg)=>{ if(document.contains(b)){ b.disabled=false; b.textContent='Apply fix'; } alert(msg||'Could not apply — copy the code instead.'); },
     });
   };
 }

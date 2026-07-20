@@ -8,64 +8,225 @@
   <link rel="stylesheet" href="/styles.css" />
   <style>
     :root {
-      --bg: #0a0c11; --bg-2: #0f131b; --panel: #141823; --panel-2: #1a1f2b; --line: #222836;
-      --text: #eef0f8; --muted: #98a2b3; --brand: #7c5cff; --brand-2: #00d4b4;
+      --bg: #0a0c11; --bg-2: #0d1017; --panel: #141823; --panel-2: #1a1f2b; --panel-3: #212838;
+      --line: #232a39; --line-strong: #313a4d;
+      --text: #f2f4f8; --muted: #98a2b8; --faint: #5e6880;
+      --brand: #7c5cff; --brand-2: #00d4b4;
       --ok: #3ecf8e; --warn: #e8c24a; --err: #f0566d;
+      --font-mono-stack: var(--font-mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+      --font-disp-stack: var(--font-display, "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif);
+      --font-body-stack: var(--font-body, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0; background: var(--bg);
-      color: var(--text); font-family: var(--font-body, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif); font-size: 15px; line-height: 1.55;
-      min-height: 100vh;
+      color: var(--text); font-family: var(--font-body-stack); font-size: 15px; line-height: 1.55;
+      min-height: 100vh; -webkit-font-smoothing: antialiased;
     }
-    .wrap { max-width: 760px; margin: 0 auto; padding: 2.2rem 1.1rem 3rem; }
-    header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.4rem; }
-    .brand { font-family: var(--font-display, "Space Grotesk", inherit); font-weight: 700; font-size: 1.15rem; letter-spacing: -.01em; }
-    .brand .grad { color: var(--brand); }
-    .brand .dia { color: var(--brand); margin-right: .3rem; }
     a { color: var(--brand-2); text-decoration: none; }
     a:hover { text-decoration: underline; }
-    .banner {
-      display: flex; align-items: center; gap: .75rem; padding: 1rem 1.15rem; border-radius: 14px;
-      border: 1px solid var(--line); background: var(--panel); margin-bottom: 1.4rem; font-weight: 600;
+    :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 3px; }
+
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px 96px; }
+
+    /* ---- Nav ---- */
+    .nav {
+      position: sticky; top: 0; z-index: 20; height: 56px;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      background: rgba(10,12,17,.92); border-bottom: 1px solid var(--line);
+      margin: 0 -24px 0; padding: 0 24px;
     }
-    .banner .big-dot { width: 13px; height: 13px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 4px rgba(255,255,255,.04); }
-    .banner.ok { border-color: rgba(34,197,94,.4); }
-    .banner.bad { border-color: rgba(239,68,68,.4); }
-    .banner small { display: block; color: var(--muted); font-weight: 400; font-size: .82rem; }
-    section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 1.1rem; overflow: hidden; }
-    .sec-head { padding: .8rem 1.15rem; font-weight: 700; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
-    .sec-head .count { color: var(--muted); letter-spacing: 0; text-transform: none; font-weight: 600; }
-    .sub-head { padding: .7rem 1.15rem .5rem; font-weight: 700; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-top: 1px solid var(--line); background: var(--panel-2); }
-    .row { display: flex; align-items: center; gap: .8rem; padding: .8rem 1.15rem; border-bottom: 1px solid var(--line); }
-    .row:last-child { border-bottom: 0; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
-    .name { font-weight: 600; }
-    .row .meta { margin-left: auto; color: var(--muted); font-size: .82rem; text-align: right; white-space: nowrap; }
-    .sub { color: var(--muted); font-size: .8rem; margin-top: .15rem; }
-    footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.4rem; color: var(--muted); font-size: .82rem; flex-wrap: wrap; }
-    button.refresh { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: .42rem .8rem; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; }
-    button.refresh:hover { border-color: var(--brand); }
+    .nav-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .nav-mark { color: var(--text); display: block; flex: 0 0 auto; }
+    .nav-mark .accent { color: var(--brand); }
+    .nav-brand { font-family: var(--font-disp-stack); font-weight: 700; font-size: 1.02rem; letter-spacing: -.02em; }
+    .crumb { font-family: var(--font-mono-stack); font-size: .74rem; letter-spacing: .04em; color: var(--faint); white-space: nowrap; }
+    .crumb::before { content: "/"; margin-right: .5ch; color: var(--line-strong); }
+    .nav-right { display: flex; align-items: center; gap: 6px; }
+    .navlink { font-family: var(--font-mono-stack); font-size: .78rem; letter-spacing: .04em; color: var(--muted); padding: 7px 10px; border-radius: 7px; }
+    .navlink:hover { color: var(--text); text-decoration: none; }
+    .btn-primary {
+      font-family: var(--font-body-stack); font-size: .82rem; font-weight: 600; color: #fff; background: var(--brand);
+      padding: 8px 14px; border-radius: 8px; border: 1px solid transparent; line-height: 1; margin-left: 4px;
+    }
+    .btn-primary:hover { background: #8f70ff; text-decoration: none; }
+
+    /* ---- Verdict band ---- */
+    .banner {
+      display: flex; align-items: center; gap: 16px;
+      padding: 40px 4px 36px; margin: 0 0 48px;
+      border-bottom: 1px solid var(--line);
+    }
+    .banner .big-dot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; margin-top: 10px; align-self: flex-start; }
+    .banner > div { min-width: 0; }
+    .banner {
+      font-family: var(--font-disp-stack); font-weight: 700;
+      font-size: clamp(1.7rem, 4vw, 2.9rem); line-height: 1.05; letter-spacing: -.03em;
+    }
+    .banner small {
+      display: block; margin-top: 12px;
+      font-family: var(--font-mono-stack); font-weight: 400; color: var(--muted);
+      font-size: .78rem; letter-spacing: .04em; line-height: 1.5;
+    }
+
+    /* ---- Main grid ---- */
+    .grid { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 40px; align-items: start; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; gap: 40px; } }
+
+    /* ---- Ledger groups (sections populated by JS) ---- */
+    .ledger section { background: transparent; border: 0; margin: 0 0 48px; overflow: visible; }
+    .ledger section:last-child { margin-bottom: 0; }
+    /* the JS injects .sec-head first, then rows; wrap the rows visually with a panel via ::after not possible,
+       so we panel the section and float the label to the top */
+    section { position: relative; }
+    .sec-head {
+      padding: 0 0 14px; margin: 0;
+      font-family: var(--font-mono-stack); font-weight: 500; font-size: .72rem; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--muted);
+      display: flex; justify-content: space-between; align-items: baseline;
+      border: 0; background: transparent;
+    }
+    .sec-head .count { font-family: var(--font-mono-stack); color: var(--faint); letter-spacing: .04em; text-transform: none; font-weight: 500; font-size: .72rem; }
+    /* group the rows into a hairline panel: sec-head sits above, first .row starts the panel */
+    .row {
+      display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+      background: var(--panel); border: 1px solid var(--line); border-top: 0;
+    }
+    .row:first-of-type { border-top: 1px solid var(--line); border-radius: 10px 10px 0 0; }
+    .row:last-child { border-radius: 0 0 10px 10px; }
+    .row:only-of-type { border-radius: 10px; border-top: 1px solid var(--line); }
+    .row:hover { background: var(--panel-2); }
+    .sub-head {
+      padding: 12px 16px 8px; margin: 0;
+      font-family: var(--font-mono-stack); font-weight: 500; font-size: .66rem; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--faint);
+      background: var(--panel); border: 1px solid var(--line); border-top: 0;
+    }
+    /* rows following a sub-head keep continuous panel edges */
+    .sub-head + .row { border-top: 0; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+    .name { font-family: var(--font-body-stack); font-weight: 600; font-size: .95rem; color: var(--text); }
+    .row .meta {
+      margin-left: auto; font-family: var(--font-mono-stack); color: var(--muted);
+      font-size: .78rem; letter-spacing: .02em; text-align: right; white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .sub { color: var(--faint); font-size: .82rem; margin-top: 3px; line-height: 1.45; }
+
+    /* Builds group reads distinctly: left status rail */
+    #builds .row { border-left: 2px solid var(--line); }
+    #builds .row:first-of-type { border-radius: 10px 10px 0 0; }
+
     .c-ok { background: var(--ok); } .c-warn { background: var(--warn); } .c-err { background: var(--err); } .c-mut { background: var(--muted); }
+
+    /* ---- Sidebar ---- */
+    .side { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 80px; }
+    @media (max-width: 900px) { .side { position: static; } }
+    .side-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+    .side-label {
+      font-family: var(--font-mono-stack); font-weight: 500; font-size: .68rem; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 12px;
+    }
+    .checked-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    #updated { font-family: var(--font-mono-stack); font-size: .74rem; color: var(--faint); letter-spacing: .02em; }
+    button.refresh {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+      padding: 7px 11px; font-family: var(--font-mono-stack); font-size: .72rem; font-weight: 500;
+      letter-spacing: .04em; cursor: pointer; flex: 0 0 auto;
+    }
+    button.refresh:hover { border-color: var(--line-strong); background: var(--panel-2); }
+    button.refresh .ic { transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+    button.refresh:active .ic { transform: rotate(-360deg); }
+
+    .legend-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+    .legend-row .dot { width: 9px; height: 9px; }
+    .legend-row span:last-child { font-family: var(--font-mono-stack); font-size: .72rem; letter-spacing: .04em; color: var(--muted); }
+
+    .event-empty { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .82rem; }
+    .event-empty .ic { color: var(--ok); flex: 0 0 auto; }
+
+    .side-card p { margin: 0 0 12px; color: var(--muted); font-size: .82rem; line-height: 1.5; }
+    .sub-form { display: flex; flex-direction: column; gap: 8px; }
+    .sub-form input {
+      width: 100%; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
+      padding: 9px 11px; color: var(--text); font-family: var(--font-body-stack); font-size: .82rem;
+    }
+    .sub-form input::placeholder { color: var(--faint); }
+    .sub-form input:focus { outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--line-strong); }
+    .sub-form button {
+      background: var(--brand); color: #fff; border: 1px solid transparent; border-radius: 8px;
+      padding: 9px 12px; font-family: var(--font-body-stack); font-size: .82rem; font-weight: 600; cursor: pointer;
+    }
+    .sub-form button:hover { background: #8f70ff; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <header>
-      <div class="brand"><span class="dia">◆</span>Yield <span style="color:var(--muted);font-weight:400">· System Status</span></div>
-      <a href="/app">Open the builder →</a>
-    </header>
+    <nav class="nav">
+      <div class="nav-left">
+        <svg class="nav-mark" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M8 8.2l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="accent" d="M12 12.2V16.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <span class="nav-brand">Yield</span>
+        <span class="crumb">system-status</span>
+      </div>
+      <div class="nav-right">
+        <a class="navlink" href="/chat">Chat</a>
+        <a class="navlink" href="/app">Code</a>
+        <a class="btn-primary" href="/chat">Open Chat</a>
+      </div>
+    </nav>
 
     <div id="banner" class="banner"><span class="big-dot c-mut"></span><div>Checking status…</div></div>
 
-    <section id="ai"><div class="sec-head">AIs</div><div class="row"><span class="name">Loading…</span></div></section>
-    <section id="platform"><div class="sec-head">Platform</div><div class="row"><span class="name">Loading…</span></div></section>
-    <section id="builds"><div class="sec-head">Builds</div><div class="row"><span class="name">Loading…</span></div></section>
+    <div class="grid">
+      <main class="ledger">
+        <section id="ai"><div class="sec-head">AIs</div><div class="row"><span class="name">Loading…</span></div></section>
+        <section id="platform"><div class="sec-head">Platform</div><div class="row"><span class="name">Loading…</span></div></section>
+        <section id="builds"><div class="sec-head">Builds</div><div class="row"><span class="name">Loading…</span></div></section>
+      </main>
 
-    <footer>
-      <span id="updated">—</span>
-      <button class="refresh" id="refreshBtn">↻ Refresh</button>
-    </footer>
+      <aside class="side">
+        <div class="side-card">
+          <div class="side-label">Last checked</div>
+          <div class="checked-row">
+            <span id="updated">—</span>
+            <button class="refresh" id="refreshBtn">
+              <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div class="side-card">
+          <div class="side-label">Legend</div>
+          <div class="legend-row"><span class="dot c-ok"></span><span>Operational</span></div>
+          <div class="legend-row"><span class="dot c-warn"></span><span>Degraded / slow</span></div>
+          <div class="legend-row"><span class="dot c-err"></span><span>Down / unavailable</span></div>
+          <div class="legend-row"><span class="dot c-mut"></span><span>Not configured</span></div>
+        </div>
+
+        <div class="side-card">
+          <div class="side-label">Recent events</div>
+          <div class="event-empty">
+            <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>No incidents in the last 90 days.</span>
+          </div>
+        </div>
+
+        <div class="side-card">
+          <div class="side-label">Subscribe to updates</div>
+          <p>Get an email when a system is degraded or recovers.</p>
+          <form class="sub-form" onsubmit="return false">
+            <input type="email" placeholder="you@example.com" aria-label="Email address" />
+            <button type="submit">Subscribe</button>
+          </form>
+        </div>
+      </aside>
+    </div>
   </div>
 
   <script>

@@ -10,130 +10,164 @@
   /* Single-chat Roblox workspace: games rail · chatbot · live Studio panel
      (Activity feed + full-game Explorer). Uses the shared design tokens + .nav. */
   body.rbx-app { height:100vh; overflow:hidden; display:flex; flex-direction:column; }
-  .rbx-grid { display:grid; grid-template-columns:244px 1fr 372px; flex:1; min-height:0; overflow:hidden; }
-  .badge { display:inline-flex; align-items:center; gap:.35rem; font-size:.72rem; font-weight:600; padding:.24rem .55rem; border-radius:999px; border:1px solid var(--line); background:var(--panel-2); color:var(--muted); white-space:nowrap; }
-  .badge.ok { color:#5fe0a6; border-color:#1e4d31; background:#0f2417; }
-  .sec-label { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); }
+  .rbx-grid { display:grid; grid-template-columns:264px 1fr 400px; flex:1; min-height:0; overflow:hidden; }
+  svg.ic { flex:0 0 auto; display:block; }
+  .badge { display:inline-flex; align-items:center; gap:.4rem; font-family:var(--font-mono); font-size:.66rem; font-weight:500; letter-spacing:.04em; padding:.26rem .55rem; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--muted); white-space:nowrap; text-transform:uppercase; }
+  .badge::before { content:""; width:6px; height:6px; border-radius:2px; background:var(--faint); flex:0 0 auto; }
+  .badge.ok { color:var(--brand-2); border-color:rgba(0,212,180,.35); background:rgba(0,212,180,.08); }
+  .badge.ok::before { background:var(--brand-2); }
+  .sec-label { font-family:var(--font-mono); font-size:.66rem; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); }
   .dim { color:var(--faint); font-weight:400; }
   .center { text-align:center; }
 
   /* ---------- Left rail ---------- */
-  .rail { background:var(--bg); border-right:1px solid var(--line); display:flex; flex-direction:column; gap:.35rem; padding:1rem .85rem; min-height:0; overflow-y:auto; }
-  .rail-label { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); padding:.2rem .2rem .4rem; }
-  .proj-item { display:flex; align-items:center; gap:.6rem; padding:.55rem .62rem; border-radius:9px; color:var(--muted); font-size:.86rem; font-weight:500; cursor:pointer; transition:.12s; }
+  .rail { background:var(--bg); border-right:1px solid var(--line); display:flex; flex-direction:column; gap:2px; padding:16px 12px; min-height:0; overflow-y:auto; }
+  .rail-label { font-family:var(--font-mono); font-size:.66rem; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); padding:.2rem .3rem .5rem; }
+  .proj-item { position:relative; display:flex; align-items:center; gap:.55rem; height:40px; padding:0 .6rem; border-radius:6px; color:var(--muted); font-size:.86rem; font-weight:500; cursor:pointer; transition:background .12s,color .12s; }
+  .proj-item::before { content:""; position:absolute; left:0; top:50%; transform:translateY(-50%); width:2px; height:0; border-radius:1px; background:var(--brand); transition:height .15s; }
   .proj-item:hover { background:var(--panel-2); color:var(--text); }
-  .proj-item.active { background:#171a2e; color:var(--text); font-weight:600; }
+  .proj-item.active { background:var(--panel-2); color:var(--text); font-weight:600; }
+  .proj-item.active::before { height:20px; }
+  .proj-item:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
   .proj-item .pi-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .proj-item .pi-dot { width:8px; height:8px; border-radius:50%; background:#3a4257; flex:0 0 auto; }
-  .proj-item.paired .pi-dot { background:#3ecf8e; }
-  .rail-new { justify-content:center; width:100%; margin-top:.35rem; }
-  .rail-foot { margin-top:auto; padding-top:.8rem; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:.3rem; }
-  .rail-dl { font-size:.8rem; font-weight:600; color:var(--muted); cursor:pointer; }
-  .rail-dl:hover { color:var(--text); }
-  .rail-sub { font-family:var(--font-mono); font-size:.7rem; color:var(--faint); }
+  .proj-item .pi-dot { width:6px; height:6px; border-radius:2px; background:var(--faint); flex:0 0 auto; }
+  .proj-item.paired .pi-dot { background:var(--brand-2); }
+  .rail-new { justify-content:center; width:100%; margin-top:8px; gap:.4rem; }
+  .rail-foot { margin-top:auto; padding-top:12px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:8px; }
+  .rail-dl { display:inline-flex; align-items:center; justify-content:center; gap:.45rem; font-size:.8rem; font-weight:500; color:var(--muted); cursor:pointer; border:1px solid var(--line); border-radius:8px; padding:.5rem .6rem; transition:.12s; }
+  .rail-dl:hover { color:var(--text); border-color:var(--line-strong); background:var(--panel-2); }
+  .rail-dl:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+  .rail-sub { font-family:var(--font-mono); font-size:.66rem; color:var(--faint); text-align:center; }
 
   /* ---------- Center chat ---------- */
-  .chat { display:flex; flex-direction:column; min-width:0; min-height:0; }
-  .chat-head { display:flex; align-items:center; gap:.75rem; padding:.85rem 1.4rem; border-bottom:1px solid var(--line); background:var(--bg); flex:0 0 auto; }
-  .chat-head h1 { font-family:var(--font-display); font-size:1.12rem; margin:0; letter-spacing:-.01em; font-weight:700; }
-  .chat-head input.title-edit { background:none; border:none; color:var(--text); font-family:var(--font-display); font-size:1.12rem; font-weight:700; letter-spacing:-.01em; padding:.1rem .3rem; border-radius:6px; }
-  .chat-head input.title-edit:focus { background:var(--panel-2); outline:1px solid var(--line); }
+  .chat { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--panel); }
+  .chat-head { display:flex; align-items:center; gap:.6rem; height:56px; padding:0 1.25rem; border-bottom:1px solid var(--line); background:var(--panel); flex:0 0 auto; }
+  .chat-head h1 { font-family:var(--font-display); font-size:1.125rem; margin:0; letter-spacing:-.01em; font-weight:600; }
+  .chat-head input.title-edit { background:none; border:none; color:var(--text); font-family:var(--font-display); font-size:1.125rem; font-weight:600; letter-spacing:-.01em; padding:.15rem .35rem; border-radius:6px; }
+  .chat-head input.title-edit:hover { background:var(--panel-2); }
+  .chat-head input.title-edit:focus { background:var(--panel-2); outline:2px solid var(--brand); outline-offset:0; }
   .chat-head-sp { flex:1; }
-  .messages { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:1.15rem; padding:1.4rem 1.5rem; }
-  .msg { max-width:660px; display:flex; flex-direction:column; gap:.35rem; }
-  .msg.user { align-self:flex-end; max-width:520px; }
-  .msg .meta { font-family:var(--font-mono); font-size:.7rem; color:var(--faint); padding-left:.15rem; }
-  .msg.user .meta { color:var(--brand); text-align:right; padding-right:.15rem; }
-  .msg .bubble { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:.7rem .9rem; font-size:.88rem; line-height:1.55; white-space:pre-wrap; word-break:break-word; color:#dbe1ee; }
-  .msg.user .bubble { background:#171a2e; border-color:#2a2560; }
-  .think, .livecode, .happening { margin-top:.15rem; border:1px solid var(--line); border-radius:9px; background:var(--panel-2); overflow:hidden; }
-  .think summary, .livecode summary, .happening summary { cursor:pointer; padding:.45rem .7rem; font-size:.76rem; color:var(--muted); list-style:none; }
-  .livecode summary { color:var(--brand); }
-  .hp-tabs { display:flex; gap:.35rem; padding:0 .7rem .4rem; }
-  .hp-tab { font-size:.68rem; padding:.15rem .55rem; border-radius:999px; border:1px solid var(--line); background:transparent; color:var(--muted); cursor:pointer; }
-  .hp-tab.on { color:var(--brand); border-color:var(--brand); }
-  .hp-body { padding:0 .8rem .6rem; font-size:.76rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
+  .icon-btn { display:inline-flex; align-items:center; justify-content:center; gap:.4rem; }
+  .icon-btn.square { width:32px; height:32px; padding:0; }
+  .messages { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:1.5rem; padding:1.5rem; }
+  .msg { max-width:720px; width:100%; display:flex; flex-direction:column; gap:.4rem; }
+  .msg.user { align-self:flex-end; max-width:560px; }
+  .messages .msg.ai { border-top:1px solid var(--line); padding-top:1.5rem; }
+  .messages .msg.ai:first-child { border-top:none; padding-top:0; }
+  .msg .meta { font-family:var(--font-mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); padding-left:.1rem; }
+  .msg.user .meta { color:var(--muted); text-align:right; padding-right:.1rem; }
+  .msg .bubble { font-size:.94rem; line-height:1.6; white-space:pre-wrap; word-break:break-word; color:var(--text); }
+  .msg.user .bubble { background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.65rem .85rem; font-size:.9rem; }
+  .think, .livecode, .happening { margin-top:.25rem; border:1px solid var(--line); border-left:2px solid var(--line-strong); border-radius:8px; background:var(--panel-2); overflow:hidden; }
+  .think summary, .livecode summary, .happening summary { display:flex; align-items:center; gap:.45rem; cursor:pointer; padding:.5rem .7rem; font-family:var(--font-mono); font-size:.72rem; letter-spacing:.02em; color:var(--muted); list-style:none; }
+  .think summary::-webkit-details-marker, .livecode summary::-webkit-details-marker, .happening summary::-webkit-details-marker { display:none; }
+  .livecode summary { color:var(--muted); }
+  .disc-cx { display:inline-flex; transition:transform .15s; color:var(--faint); }
+  details[open] > summary .disc-cx { transform:rotate(90deg); }
+  summary:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; border-radius:6px; }
+  .hp-tabs { display:flex; gap:1rem; padding:0 .7rem .1rem; }
+  .hp-tab { font-family:var(--font-mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; padding:.15rem 0 .35rem; border:none; border-bottom:2px solid transparent; background:transparent; color:var(--muted); cursor:pointer; }
+  .hp-tab.on { color:var(--text); border-bottom-color:var(--brand-2); }
+  .hp-tab:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+  .hp-body { padding:.2rem .8rem .6rem; font-size:.76rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
   .hp-body.raw { font-family:var(--font-mono); font-size:.7rem; }
-  .think .think-body { padding:0 .8rem .6rem; font-size:.76rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
+  .think .think-body { padding:.2rem .8rem .6rem; font-size:.76rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
   .lc-file { border-top:1px solid var(--line); }
-  .lc-head { padding:.35rem .7rem; font-size:.74rem; color:var(--muted); font-family:var(--font-mono); background:var(--bg-2); }
-  .lc-pre { margin:0; padding:.55rem .7rem; font-size:.76rem; white-space:pre-wrap; overflow:auto; max-height:280px; background:#0a0c11; font-family:var(--font-mono); }
-  .lc-pre.live::after { content:'▋'; color:var(--brand); animation:wkblink 1s steps(1) infinite; }
-  .working { display:flex; align-items:center; gap:.5rem; font-size:.75rem; color:var(--muted); margin-bottom:.15rem; }
-  .wk-spin { width:11px; height:11px; border-radius:50%; border:2px solid var(--line); border-top-color:var(--brand); animation:wkspin .7s linear infinite; flex:0 0 auto; }
+  .lc-head { padding:.4rem .7rem; font-size:.72rem; color:var(--muted); font-family:var(--font-mono); background:var(--bg-2); }
+  .lc-pre { margin:0; padding:.55rem .7rem; font-size:.74rem; white-space:pre-wrap; overflow:auto; max-height:280px; background:var(--bg); font-family:var(--font-mono); color:#dfe6f5; }
+  .lc-pre.live::after { content:''; display:inline-block; width:7px; height:1em; vertical-align:text-bottom; background:var(--brand-2); animation:wkblink 1s steps(1) infinite; }
+  .working { display:flex; align-items:center; gap:.5rem; font-family:var(--font-mono); font-size:.72rem; color:var(--muted); margin-bottom:.35rem; }
+  .wk-spin { width:11px; height:11px; border-radius:50%; border:2px solid var(--line); border-top-color:var(--muted); animation:wkspin .7s linear infinite; flex:0 0 auto; }
   @keyframes wkspin { to { transform:rotate(360deg); } }
   @keyframes wkblink { 50% { opacity:0; } }
   .act-chips { display:flex; flex-direction:column; gap:.4rem; margin-top:.15rem; }
-  .chip { display:flex; align-items:center; gap:.55rem; padding:.45rem .65rem; border-radius:9px; background:#10131c; border:1px solid var(--line); font-family:var(--font-mono); font-size:.75rem; color:#c9d2e3; }
+  .chip { display:flex; align-items:center; gap:.55rem; padding:.45rem .65rem; border-radius:8px; background:var(--panel-2); border:1px solid var(--line); font-family:var(--font-mono); font-size:.75rem; color:#c9d2e3; }
   .chip .chip-t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .sent-note { font-size:.72rem; font-weight:500; color:#5fe0a6; margin-top:.1rem; }
+  .sent-note { font-family:var(--font-mono); font-size:.72rem; font-weight:500; color:var(--brand-2); margin-top:.2rem; }
   .note-line { font-size:.76rem; color:var(--warn); margin-top:.15rem; line-height:1.45; }
-  .ask-card { margin-top:.3rem; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.7rem .8rem; }
-  .ask-q { font-size:.84rem; margin-bottom:.5rem; }
+  .ask-card { margin-top:.4rem; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.75rem .85rem; }
+  .ask-q { font-size:.9rem; margin-bottom:.55rem; color:var(--text); }
   .ask-opts { display:flex; flex-wrap:wrap; gap:.4rem; }
-  .ask-opt { background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:.35rem .8rem; font-size:.8rem; color:var(--text); cursor:pointer; }
-  .ask-opt:hover { border-color:var(--brand); } .ask-opt.chosen { background:var(--brand); color:#fff; }
-  .empty-chat { margin:auto; text-align:center; color:var(--muted); max-width:520px; padding:2rem; }
-  .empty-chat .big { font-size:2.4rem; margin-bottom:.5rem; }
-  .empty-chat h2 { color:var(--text); margin:.2rem 0 .5rem; font-family:var(--font-display); }
-  .empty-chat p { line-height:1.6; font-size:.9rem; margin:0 0 1.1rem; }
-  .suggest { display:flex; flex-wrap:wrap; gap:.5rem; justify-content:center; }
-  .suggest button { background:var(--panel); border:1px solid var(--line); color:var(--muted); border-radius:999px; padding:.4rem .8rem; font-size:.82rem; cursor:pointer; }
-  .suggest button:hover { border-color:var(--brand); color:var(--text); }
+  .ask-opt { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.35rem .8rem; font-size:.82rem; color:var(--text); cursor:pointer; transition:.12s; }
+  .ask-opt:hover { border-color:var(--line-strong); background:var(--panel-3); }
+  .ask-opt:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+  .ask-opt.chosen { background:var(--panel-3); border-color:var(--brand-2); color:var(--text); }
+  .empty-chat { margin:0; max-width:640px; color:var(--muted); padding:2.5rem 0 1rem; }
+  .empty-chat .big { display:none; }
+  .empty-chat h2 { color:var(--text); margin:0 0 .6rem; font-family:var(--font-display); font-size:1.75rem; font-weight:600; letter-spacing:-.02em; line-height:1.1; }
+  .empty-chat p { line-height:1.6; font-size:.92rem; margin:0 0 1.4rem; }
+  .empty-chat .es-sub { font-family:var(--font-mono); font-size:.74rem; color:var(--faint); letter-spacing:.02em; margin:0 0 1.6rem; }
+  .suggest { display:flex; flex-direction:column; gap:.5rem; align-items:stretch; max-width:520px; }
+  .suggest button { width:100%; text-align:left; background:var(--panel); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:.7rem .85rem; font-size:.86rem; cursor:pointer; transition:.12s; display:flex; align-items:center; gap:.6rem; }
+  .suggest button::before { content:""; width:6px; height:6px; border-radius:2px; background:var(--faint); flex:0 0 auto; }
+  .suggest button:hover { border-color:var(--brand-2); background:var(--panel-2); }
+  .suggest button:hover::before { background:var(--brand-2); }
+  .suggest button:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
   .composer-wrap { flex:0 0 auto; padding:.5rem 1.5rem 1.35rem; }
-  .composer { display:flex; gap:.55rem; align-items:flex-end; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:.65rem .7rem; }
-  .composer textarea { flex:1; background:none; border:none; color:var(--text); font-family:inherit; font-size:.9rem; resize:none; min-height:26px; max-height:180px; outline:none; line-height:1.4; }
+  .composer { display:flex; gap:.55rem; align-items:flex-end; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.65rem .7rem; transition:border-color .12s, box-shadow .12s; }
+  .composer:focus-within { border-color:var(--line-strong); box-shadow:0 0 0 2px rgba(124,92,255,.35); }
+  .composer textarea { flex:1; background:none; border:none; color:var(--text); font-family:inherit; font-size:.94rem; resize:none; min-height:26px; max-height:180px; outline:none; line-height:1.5; }
   .composer textarea::placeholder { color:var(--faint); }
-  .composer .csel { background:var(--panel-2); border:1px solid var(--line); color:var(--muted); border-radius:8px; padding:.42rem .5rem; font-size:.78rem; font-family:inherit; align-self:center; }
+  .composer .csel { background:var(--panel-2); border:1px solid var(--line); color:var(--muted); border-radius:6px; padding:.42rem .5rem; font-size:.72rem; font-family:var(--font-mono); align-self:center; }
+  .composer .csel:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
   .composer .btn { align-self:center; }
-  .composer .char-count { font-size:.66rem; color:var(--faint); font-family:var(--font-mono); align-self:center; white-space:nowrap; }
+  .composer .char-count { font-size:.64rem; color:var(--faint); font-family:var(--font-mono); align-self:center; white-space:nowrap; }
   .composer .char-count.warn { color:var(--warn); }
-  .composer .stop-btn { align-self:center; border-radius:9px; }
+  .composer .stop-btn { align-self:center; border-radius:8px; display:inline-flex; align-items:center; gap:.4rem; color:#f58ea0; border-color:rgba(245,142,160,.4); }
+  .composer .stop-btn:hover { color:#f58ea0; border-color:rgba(245,142,160,.7); background:rgba(245,142,160,.08); }
 
   /* ---------- Right Studio panel ---------- */
-  .studio { background:#0b0e15; border-left:1px solid var(--line); display:flex; flex-direction:column; gap:.9rem; padding:1.1rem 1rem; min-height:0; }
-  .studio-head { display:flex; align-items:center; gap:.6rem; }
-  .studio-title { font-weight:600; font-size:.92rem; }
+  .studio { background:var(--bg-2); border-left:1px solid var(--line); display:flex; flex-direction:column; gap:1rem; padding:16px; min-height:0; }
+  .studio-head { display:flex; align-items:center; gap:.5rem; }
+  .studio-title { font-family:var(--font-mono); font-size:.66rem; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); }
   .studio-head .badge { margin-left:auto; }
-  .studio-sub { font-family:var(--font-mono); font-size:.7rem; color:var(--faint); margin-top:-.5rem; }
-  .seg { display:flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:#12151f; }
-  .seg button { flex:1; padding:.42rem; border:none; background:none; color:var(--muted); font-family:inherit; font-size:.78rem; font-weight:600; cursor:pointer; }
-  .seg button.on { background:var(--brand); color:#fff; }
-  .studio-body { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:.9rem; }
-  .studio-sec { display:flex; flex-direction:column; gap:.45rem; }
-  .actions-feed { display:flex; flex-direction:column; gap:.5rem; }
-  .action { display:flex; align-items:center; gap:.6rem; padding:.6rem .68rem; border-radius:10px; background:#12151f; border:1px solid var(--line); }
-  .action .a-ic { font-size:.95rem; flex:0 0 auto; }
-  .action .a-col { flex:1; min-width:0; display:flex; flex-direction:column; gap:.1rem; }
-  .action .a-title { font-family:var(--font-mono); font-size:.72rem; color:#dbe1ee; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .action .a-sub { font-size:.66rem; font-weight:500; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .status-pill { font-size:.62rem; font-weight:700; padding:.16rem .48rem; border-radius:6px; text-transform:capitalize; flex:0 0 auto; }
-  .status-pill.applied { background:#0f2417; color:#5fe0a6; border:1px solid #1e4d31; }
-  .status-pill.pending { background:#241f0f; color:var(--warn); border:1px solid #3a331a; }
-  .status-pill.failed { background:#2a1416; color:#f58ea0; border:1px solid #5a2530; }
-  .feed-empty { font-size:.76rem; color:var(--faint); padding:.5rem .1rem; line-height:1.5; }
+  .studio-sub { font-family:var(--font-mono); font-size:.68rem; color:var(--faint); margin-top:-.4rem; }
+  .seg { display:flex; gap:1.25rem; border-bottom:1px solid var(--line); }
+  .seg button { padding:.4rem 0 .5rem; border:none; border-bottom:2px solid transparent; background:none; color:var(--muted); font-family:var(--font-mono); font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; font-weight:500; cursor:pointer; margin-bottom:-1px; transition:color .12s, border-color .12s; }
+  .seg button:hover { color:var(--text); }
+  .seg button.on { color:var(--text); border-bottom-color:var(--brand-2); }
+  .seg button:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+  .studio-body { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:1.25rem; }
+  .studio-sec { display:flex; flex-direction:column; gap:.5rem; }
+  .actions-feed { display:flex; flex-direction:column; gap:.4rem; }
+  .action { display:flex; align-items:center; gap:.6rem; min-height:44px; padding:.5rem .65rem; border-radius:8px; background:var(--panel-2); border:1px solid var(--line); }
+  .action .a-ic { flex:0 0 auto; display:inline-flex; color:var(--muted); }
+  .action .a-col { flex:1; min-width:0; display:flex; flex-direction:column; gap:.15rem; }
+  .action .a-title { font-family:var(--font-mono); font-size:.72rem; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .action .a-sub { font-family:var(--font-mono); font-size:.64rem; font-weight:500; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .status-pill { font-family:var(--font-mono); font-size:.6rem; font-weight:600; padding:.18rem .45rem; border-radius:6px; text-transform:uppercase; letter-spacing:.04em; flex:0 0 auto; }
+  .status-pill.applied { background:rgba(0,212,180,.08); color:var(--brand-2); border:1px solid rgba(0,212,180,.35); }
+  .status-pill.pending { background:transparent; color:var(--warn); border:1px solid rgba(232,194,74,.4); }
+  .status-pill.failed { background:transparent; color:#f58ea0; border:1px solid rgba(245,142,160,.4); }
+  .feed-empty { display:flex; flex-direction:column; gap:.3rem; font-size:.8rem; color:var(--muted); padding:.6rem .1rem; line-height:1.5; }
+  .feed-empty .fe-hint { font-family:var(--font-mono); font-size:.68rem; color:var(--faint); }
   /* Explorer tree */
   .tree { display:flex; flex-direction:column; gap:1px; }
-  .tnode { display:flex; align-items:center; gap:.4rem; padding:.32rem .4rem; border-radius:6px; }
+  .tnode { display:flex; align-items:center; gap:.4rem; height:28px; padding:0 .4rem; border-radius:6px; }
   .tnode:hover { background:var(--panel-2); }
-  .tnode .t-ic { font-size:.8rem; flex:0 0 auto; }
+  .tnode .t-ic { flex:0 0 auto; display:inline-flex; color:var(--muted); }
   .tnode .t-name { font-family:var(--font-mono); font-size:.72rem; color:#c9d2e3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tnode.root .t-name { font-family:var(--font-body); font-weight:700; color:#eef1f8; font-size:.78rem; }
-  .tnode .t-cls { margin-left:auto; font-size:.6rem; padding:.06rem .38rem; border-radius:5px; background:var(--panel-2); color:var(--muted); flex:0 0 auto; }
-  .script-row { display:flex; align-items:center; gap:.5rem; padding:.42rem .5rem; border-radius:7px; cursor:pointer; }
+  .tnode.root .t-name { font-family:var(--font-body); font-weight:700; color:var(--text); font-size:.78rem; }
+  .tnode .t-cls { margin-left:auto; font-family:var(--font-mono); font-size:.58rem; padding:.08rem .38rem; border-radius:5px; background:var(--panel-2); color:var(--muted); flex:0 0 auto; }
+  .script-row { display:flex; align-items:center; gap:.5rem; padding:.42rem .5rem; border-radius:6px; cursor:pointer; }
   .script-row:hover { background:var(--panel-2); }
+  .script-row:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
   .script-row .sc-path { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-mono); font-size:.72rem; color:#c9d2e3; }
-  .script-row .sc-cls { font-size:.62rem; padding:.1rem .42rem; border-radius:5px; background:var(--panel-2); color:var(--muted); flex:0 0 auto; }
-  .pair-code { font-size:1.9rem; font-weight:800; letter-spacing:.14em; text-align:center; padding:.9rem; background:var(--panel-2); border:1px dashed var(--line); border-radius:12px; margin:.6rem 0; font-family:var(--font-mono); }
-  .pair-badge { display:inline-flex; align-items:center; gap:.4rem; font-size:.82rem; padding:.3rem .7rem; border-radius:999px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); }
-  .pair-badge.on { color:#5fe0a6; border-color:#1e4d31; background:rgba(62,207,142,.1); }
+  .script-row .sc-cls { font-family:var(--font-mono); font-size:.6rem; padding:.1rem .42rem; border-radius:5px; background:var(--panel-2); color:var(--muted); flex:0 0 auto; }
+  .pair-code { display:flex; align-items:center; gap:.6rem; font-family:var(--font-mono); font-size:1.6rem; font-weight:700; letter-spacing:.14em; padding:.9rem 1rem; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; margin:.6rem 0 .3rem; color:var(--text); }
+  .pair-badge { display:inline-flex; align-items:center; gap:.45rem; font-family:var(--font-mono); font-size:.72rem; padding:.32rem .7rem; border-radius:6px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); }
+  .pair-badge::before { content:""; width:6px; height:6px; border-radius:2px; background:var(--faint); flex:0 0 auto; }
+  .pair-badge.on { color:var(--brand); border-color:rgba(124,92,255,.4); background:rgba(124,92,255,.08); }
+  .pair-badge.on::before { background:var(--brand); }
 
   /* ---------- Studio drawer (link + optional key) ---------- */
   .drawer-bg { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:90; }
   .drawer-bg.show { display:block; }
   .drawer { position:absolute; top:0; right:0; height:100%; width:min(480px,96vw); background:var(--bg); border-left:1px solid var(--line); display:flex; flex-direction:column; box-shadow:var(--shadow); }
   .drawer-head { display:flex; align-items:center; gap:.8rem; padding:.9rem 1.1rem; border-bottom:1px solid var(--line); font-family:var(--font-display); font-weight:700; }
-  .drawer-close { margin-left:auto; background:none; border:none; color:var(--muted); font-size:1.2rem; cursor:pointer; }
+  .drawer-close { margin-left:auto; background:none; border:none; color:var(--muted); cursor:pointer; display:inline-flex; align-items:center; padding:.25rem; border-radius:6px; }
+  .drawer-close:hover { color:var(--text); }
+  .drawer-close:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
   .drawer-body { flex:1; overflow-y:auto; padding:1.2rem 1.1rem 2.5rem; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.1rem 1.2rem; margin-bottom:1.1rem; }
   .panel h2 { margin:0 0 .3rem; font-size:1rem; font-family:var(--font-display); }
@@ -145,7 +179,7 @@
   @media (max-width:520px) { .row2 { grid-template-columns:1fr; } }
   .steps { display:flex; flex-direction:column; gap:.55rem; margin:1rem 0; }
   .step { display:flex; gap:.7rem; align-items:flex-start; }
-  .step .sn { width:22px; height:22px; border-radius:50%; background:var(--brand); color:#fff; display:grid; place-items:center; font-weight:800; flex:0 0 auto; font-size:.76rem; }
+  .step .sn { width:22px; height:22px; border-radius:6px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); display:grid; place-items:center; font-family:var(--font-mono); font-weight:600; flex:0 0 auto; font-size:.72rem; }
   .step p { margin:0; font-size:.84rem; line-height:1.5; color:var(--muted); }
   .step code { font-family:var(--font-mono); font-size:.78rem; background:var(--panel-2); padding:.05rem .3rem; border-radius:4px; }
 
@@ -154,7 +188,9 @@
   .modal-bg.show { display:grid; }
   .modal-box { background:var(--panel); border:1px solid var(--line); border-radius:14px; width:min(760px,96vw); max-height:88vh; display:flex; flex-direction:column; box-shadow:var(--shadow); }
   .modal-head { display:flex; align-items:center; gap:.6rem; padding:.9rem 1.1rem; border-bottom:1px solid var(--line); font-weight:700; font-family:var(--font-mono); font-size:.84rem; }
-  .modal-head .close { margin-left:auto; cursor:pointer; color:var(--muted); background:none; border:none; font-size:1.1rem; }
+  .modal-head .close { margin-left:auto; cursor:pointer; color:var(--muted); background:none; border:none; display:inline-flex; align-items:center; padding:.25rem; border-radius:6px; }
+  .modal-head .close:hover { color:var(--text); }
+  .modal-head .close:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
   .modal-box textarea.code-edit { flex:1; margin:0; padding:1rem; background:#0a0c11; color:#dfe6f5; border:none; outline:none; font-size:.82rem; white-space:pre; font-family:var(--font-mono); resize:none; min-height:320px; }
   .modal-foot { display:flex; gap:.6rem; padding:.8rem 1.1rem; border-top:1px solid var(--line); }
   .toast { position:fixed; bottom:18px; left:50%; transform:translate(-50%,14px); background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:.6rem .9rem; font-size:.84rem; box-shadow:var(--shadow); z-index:200; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
@@ -170,14 +206,14 @@
 </head>
 <body class="rbx-app">
   <header class="nav">
-    <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+    <a class="brand" href="/"><svg class="logo-mark" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="3" transform="rotate(45 12 12)" fill="#7c5cff"/><rect x="10" y="10" width="4" height="4" rx="1.2" transform="rotate(45 12 12)" fill="#00d4b4"/></svg> Yield</a>
     <nav class="nav-links">
       <a class="toplink" href="/dashboard">Projects</a>
       <a class="toplink" href="/security">Security</a>
       <a class="toplink" href="/roblox">Roblox</a>
       <a class="toplink" href="/pricing">Pricing</a>
       <a class="toplink" href="/account">Account</a>
-      <a class="btn primary sm" href="/app">＋ New app</a>
+      <a class="btn primary sm icon-btn" href="/app"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New app</a>
       <span id="authArea"></span>
     </nav>
   </header>
@@ -187,9 +223,9 @@
     <aside class="rail">
       <div class="rail-label">Games</div>
       <div id="projList"></div>
-      <button class="btn ghost sm rail-new" id="newProjectBtn">＋ New game</button>
+      <button class="btn ghost sm rail-new icon-btn" id="newProjectBtn"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New game</button>
       <div class="rail-foot">
-        <a class="rail-dl" href="/api/roblox/plugin.lua" id="downloadPluginLink2">⬇  Download plugin</a>
+        <a class="rail-dl" href="/api/roblox/plugin.lua" id="downloadPluginLink2"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg> Download plugin</a>
         <span class="rail-sub">Yield Studio plugin</span>
       </div>
     </aside>
@@ -200,19 +236,19 @@
         <span id="titleWrap"><h1 id="projTitle">Yield Roblox</h1></span>
         <span id="placeBadge" class="badge" style="display:none"></span>
         <span class="chat-head-sp"></span>
-        <button class="btn ghost sm" id="playtestBtn" title="Run the place in Studio for a few seconds and report any errors/warnings">🧪 Playtest</button>
-        <button class="btn ghost sm" id="qualityBtn" title="Structural quality critique benchmarked against researched top-Roblox-game patterns">📊 Quality check</button>
-        <button class="btn ghost sm" id="toolsBtn">⋯  Studio</button>
+        <button class="btn ghost sm icon-btn" id="playtestBtn" title="Run the place in Studio for a few seconds and report any errors or warnings"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg><span class="lbl">Playtest</span></button>
+        <button class="btn ghost sm icon-btn" id="qualityBtn" title="Structural quality critique benchmarked against researched top-Roblox-game patterns"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></svg><span class="lbl">Quality check</span></button>
+        <button class="btn ghost sm icon-btn" id="toolsBtn" title="Studio link, marketplace key and connection settings"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.2"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.2"/></svg><span class="lbl">Studio</span></button>
         <button class="btn ghost sm" id="deleteProjectBtn" style="display:none">Delete</button>
       </div>
       <div class="messages" id="messages"></div>
       <div class="composer-wrap">
         <div class="composer">
-          <textarea id="promptBox" rows="1" maxlength="4000" placeholder="Ask for anything — build, script, or edit your game…"></textarea>
+          <textarea id="promptBox" rows="1" maxlength="4000" placeholder="Describe a change — a script, a build, an edit — and watch it land in Studio…"></textarea>
           <span id="charCount" class="char-count"></span>
           <select class="csel" id="modelSel"><option value="auto">Auto</option></select>
           <button class="btn primary" id="sendBtn" disabled>Send</button>
-          <button class="stop-btn hidden" id="stopBtn">■ Stop</button>
+          <button class="btn ghost sm stop-btn hidden icon-btn" id="stopBtn"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Stop</button>
         </div>
       </div>
     </main>
@@ -221,7 +257,7 @@
     <aside class="studio">
       <div class="studio-head">
         <span class="studio-title">Roblox Studio</span>
-        <span id="studioBadge" class="badge">○ …</span>
+        <span id="studioBadge" class="badge">Checking</span>
       </div>
       <div class="studio-sub" id="studioSub">Checking link…</div>
       <button class="btn primary sm" id="studioLinkBtn" style="display:none;width:100%">Link Studio</button>
@@ -234,13 +270,13 @@
         <div id="view-activity">
           <div class="studio-sec">
             <div class="sec-label">Live actions</div>
-            <div id="actionsFeed" class="actions-feed"><div class="feed-empty">Ask the chatbot to build something — every action it sends to Studio shows here and flips to Applied once the plugin syncs.</div></div>
+            <div id="actionsFeed" class="actions-feed"><div class="feed-empty">Every edit Yield sends to Studio lands here.<span class="fe-hint">Turns teal once the plugin applies it.</span></div></div>
           </div>
         </div>
         <div id="view-explorer" style="display:none">
           <div class="studio-sec">
             <div class="sec-label">Game <span id="treeMeta" class="dim"></span></div>
-            <div id="treeBox" class="tree"><div class="feed-empty">Open a place in Studio and the plugin pushes the full game here — every instance Yield can see and edit.</div></div>
+            <div id="treeBox" class="tree"><div class="feed-empty">Open a place in Studio to browse it here.<span class="fe-hint">Every instance Yield can see and edit.</span></div></div>
           </div>
           <div class="studio-sec">
             <div class="sec-label">Scripts <span id="scriptCount" class="dim"></span></div>
@@ -254,7 +290,7 @@
   <!-- Studio drawer: link + optional Open Cloud key -->
   <div class="drawer-bg" id="drawer">
     <div class="drawer">
-      <div class="drawer-head">Studio<button class="drawer-close" id="drawerClose">✕</button></div>
+      <div class="drawer-head">Studio<button class="drawer-close" id="drawerClose" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
       <div class="drawer-body">
         <div class="panel">
           <h2>Link Roblox Studio</h2>
@@ -292,7 +328,7 @@
   <!-- Editor modal -->
   <div class="modal-bg" id="editorModal">
     <div class="modal-box">
-      <div class="modal-head"><span id="editorPath"></span><button class="close" id="editorClose">✕</button></div>
+      <div class="modal-head"><span id="editorPath"></span><button class="close" id="editorClose" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
       <textarea class="code-edit" id="editorSource" spellcheck="false"></textarea>
       <div class="modal-foot">
         <button class="btn primary sm" id="editorSave">Save &amp; sync</button>
@@ -310,16 +346,40 @@ const ago = (t) => { if (!t) return 'never'; const d = Date.now() / 1000 - t; if
 let toastTimer;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200); }
 
-const OP_ICON = { upsert_script: '📜', delete_script: '🗑', build_map: '🗺', insert_model: '📦', create_mesh: '🗿', set_properties: '🎨', create_instance: '🧱', delete_instance: '🗑', rename_instance: '✏️', move_instance: '↔️', find_model: '🔍', apply_texture: '🖌', lookup_docs: '📚', playtest: '🧪' };
+// Crisp 16px stroke-icon set — replaces every emoji glyph the UI used to render.
+const IC = (p, sw) => `<svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw || 1.6}" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICON = {
+  script: IC('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m10 13-2 2 2 2"/><path d="m14 13 2 2-2 2"/>'),
+  map: IC('<path d="m9 4-6 3v13l6-3 6 3 6-3V4l-6 3z"/><path d="M9 4v13"/><path d="M15 7v13"/>'),
+  box: IC('<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/>'),
+  cube: IC('<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5"/><path d="M12 12v10"/>'),
+  sliders: IC('<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="2" y1="14" x2="6" y2="14"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="18" y1="16" x2="22" y2="16"/>'),
+  trash: IC('<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6"/>'),
+  play: IC('<polygon points="6 4 20 12 6 20 6 4"/>'),
+  book: IC('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'),
+  search: IC('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'),
+  brush: IC('<path d="M9.5 12 3 18.5V21h2.5L12 14.5"/><path d="m14 8 2-2 4 4-2 2z"/><path d="m16 6 3-4 3 3-4 3"/>'),
+  move: IC('<path d="M5 9 2 12l3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/>'),
+  edit: IC('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  folder: IC('<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.5l-2-2.5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2z"/>'),
+  light: IC('<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.3h6c0-1 .4-1.8 1-2.3A7 7 0 0 0 12 2z"/>'),
+  frame: IC('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>'),
+  layers: IC('<path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>'),
+  dot: IC('<circle cx="12" cy="12" r="4"/>'),
+  gear: IC('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 6 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H2a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 3.4 6l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H8a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V8a1.7 1.7 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+};
+const OP_ICON = { upsert_script: ICON.script, delete_script: ICON.trash, build_map: ICON.map, insert_model: ICON.box, create_mesh: ICON.cube, set_properties: ICON.sliders, create_instance: ICON.cube, delete_instance: ICON.trash, rename_instance: ICON.edit, move_instance: ICON.move, find_model: ICON.search, apply_texture: ICON.brush, lookup_docs: ICON.book, playtest: ICON.play };
 const OP_TYPE = { upsert_script: 'Script', delete_script: 'Delete script', build_map: 'Build map', insert_model: 'Insert model', create_mesh: 'Build mesh', set_properties: 'Edit properties', create_instance: 'Create', delete_instance: 'Delete', rename_instance: 'Rename', move_instance: 'Move', find_model: 'Marketplace search', apply_texture: 'AI texture', lookup_docs: 'Docs lookup', playtest: 'Playtest' };
 const CLASS_ICON = (cls) => {
-  if (/Script$/.test(cls)) return '📜';
-  if (cls === 'Folder' || cls === 'Model' || cls === 'Configuration') return '📁';
-  if (/Part$|^Part$|Mesh|Union|Seat|SpawnLocation|TrussPart/.test(cls)) return '🧊';
-  if (/Light$/.test(cls)) return '💡';
-  if (/Gui|Frame|Label|Button|ScreenGui/.test(cls)) return '🖼';
-  return '•';
+  if (/Script$/.test(cls)) return ICON.script;
+  if (cls === 'Folder' || cls === 'Model' || cls === 'Configuration') return ICON.folder;
+  if (/Part$|^Part$|Mesh|Union|Seat|SpawnLocation|TrussPart/.test(cls)) return ICON.cube;
+  if (/Light$/.test(cls)) return ICON.light;
+  if (/Gui|Frame|Label|Button|ScreenGui/.test(cls)) return ICON.frame;
+  return ICON.dot;
 };
+// Small inline chevron for disclosure summaries (rotates 90° via CSS on open).
+const CHEV = '<svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
 
 const state = { projects: [], currentId: null, current: null, streaming: false, studioPoll: null, robloxSignin: false, studioView: 'activity' };
 
@@ -384,7 +444,7 @@ async function createFirstProject() {
     state.projects.unshift(project); renderRail(); selectProject(project.id);
   } catch (e) {
     if (e.message === 'auth') return;
-    $('#messages').innerHTML = `<div class="empty-chat"><div class="big">🎮</div><h2>Build Roblox games with AI</h2><p>Chat to write Luau, design maps, and sync it live into Studio.</p><button class="btn primary" onclick="createProject()">Start a game</button></div>`;
+    $('#messages').innerHTML = `<div class="empty-chat"><h2>Build your place by talking to it.</h2><p class="es-sub">Writes Luau · builds maps · inserts scanned models · edits any instance — live in Studio.</p><button class="btn primary" onclick="createProject()">Start a game</button></div>`;
   }
 }
 $('#deleteProjectBtn').onclick = async () => {
@@ -423,12 +483,12 @@ function renderMessages() {
   const m = $('#messages'); m.innerHTML = '';
   const msgs = state.current.messages || [];
   if (!msgs.length) {
-    m.innerHTML = `<div class="empty-chat"><div class="big">🎮</div><h2>What do you want to build?</h2>
-      <p>I'm one AI with full access to your place — I write Luau, build extravagant maps, sculpt & 3D-generate models, insert virus-scanned free models, and edit anything. Just ask.</p>
+    m.innerHTML = `<div class="empty-chat"><h2>Build your place by talking to it.</h2>
+      <p class="es-sub">Writes Luau · builds maps · inserts scanned models · edits any instance — live in Studio.</p>
       <div class="suggest">
-        <button data-s="Build a big medieval village with a market square, houses, a tavern and a forest border">Medieval village</button>
-        <button data-s="Make a sword tool that does 25 damage and knocks players back on hit">Sword with knockback</button>
-        <button data-s="Turn the ground to snow and add a pine forest with a frozen lake">Snowy forest</button>
+        <button data-s="Build a big medieval village with a market square, houses, a tavern and a forest border">Build a medieval village with a market square, tavern and forest border</button>
+        <button data-s="Make a sword tool that does 25 damage and knocks players back on hit">Make a sword that does 25 damage and knocks players back</button>
+        <button data-s="Turn the ground to snow and add a pine forest with a frozen lake">Turn the ground to snow with a pine forest and a frozen lake</button>
       </div></div>`;
     $$('.suggest button', m).forEach((b) => b.addEventListener('click', () => sendPrompt(b.dataset.s)));
     return;
@@ -493,9 +553,9 @@ async function sendPrompt(overrideText) {
   aiDiv.querySelector('.bubble').appendChild(chatSpan);
   const bubbleEl = aiDiv.querySelector('.bubble');
   let thinkEl, thinkBody, thinkAcc = '';
-  const ensureThink = () => { if (!thinkEl) { thinkEl = document.createElement('details'); thinkEl.className = 'think'; thinkEl.innerHTML = '<summary>💭 Thinking…</summary><div class="think-body"></div>'; aiDiv.appendChild(thinkEl); thinkBody = thinkEl.querySelector('.think-body'); } return thinkEl; };
+  const ensureThink = () => { if (!thinkEl) { thinkEl = document.createElement('details'); thinkEl.className = 'think'; thinkEl.innerHTML = '<summary>' + CHEV + 'Reasoning</summary><div class="think-body"></div>'; aiDiv.appendChild(thinkEl); thinkBody = thinkEl.querySelector('.think-body'); } return thinkEl; };
   let lcEl, lcBody; const codeSecs = {};
-  const ensureLive = () => { if (!lcEl) { lcEl = document.createElement('details'); lcEl.className = 'livecode'; lcEl.open = true; lcEl.innerHTML = '<summary>⌨ Writing code — live</summary><div class="lc-body"></div>'; aiDiv.appendChild(lcEl); lcBody = lcEl.querySelector('.lc-body'); } return lcEl; };
+  const ensureLive = () => { if (!lcEl) { lcEl = document.createElement('details'); lcEl.className = 'livecode'; lcEl.open = true; lcEl.innerHTML = '<summary>' + CHEV + 'Writing code · live</summary><div class="lc-body"></div>'; aiDiv.appendChild(lcEl); lcBody = lcEl.querySelector('.lc-body'); } return lcEl; };
 
   // "What's happening" — a live feed of what the AI is doing. Raw mode shows the
   // event lines as they arrive; Plain English mode has gpt-oss-20b interpret the
@@ -525,7 +585,7 @@ async function sendPrompt(overrideText) {
     if (hpEl) return hpEl;
     hpEl = document.createElement('details');
     hpEl.className = 'happening';
-    hpEl.innerHTML = '<summary>👁 What’s happening…</summary><div class="hp-tabs"><button class="hp-tab on" data-m="plain">Plain English</button><button class="hp-tab" data-m="raw">Raw</button></div><div class="hp-body"></div>';
+    hpEl.innerHTML = '<summary>' + CHEV + 'What’s happening</summary><div class="hp-tabs"><button class="hp-tab on" data-m="plain">Plain English</button><button class="hp-tab" data-m="raw">Raw</button></div><div class="hp-body"></div>';
     aiDiv.appendChild(hpEl);
     hpBody = hpEl.querySelector('.hp-body');
     hpEl.querySelectorAll('.hp-tab').forEach((b) => b.addEventListener('click', (e) => {
@@ -573,40 +633,40 @@ async function sendPrompt(overrideText) {
         const data = /data: ([\s\S]*)/.exec(frame)?.[1];
         if (!ev || data == null) continue;
         let payload; try { payload = JSON.parse(data); } catch { continue; }
-        if (ev === 'status') { wkSet(payload.stage || 'Working…'); hpLine('▸ ' + (payload.stage || 'Working…')); }
-        else if (ev === 'meta') { aiDiv.querySelector('.meta').textContent = payload.label ? ('yield · ' + payload.label) : 'yield'; wkSet('Generating…'); hpLine('⚡ model: ' + (payload.label || payload.model || 'auto')); }
-        else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; if (!hpThought) { hpThought = true; hpLine('💭 reasoning about the request…'); } }
+        if (ev === 'status') { wkSet(payload.stage || 'Working…'); hpLine('· ' + (payload.stage || 'Working…')); }
+        else if (ev === 'meta') { aiDiv.querySelector('.meta').textContent = payload.label ? ('yield · ' + payload.label) : 'yield'; wkSet('Generating…'); hpLine('model: ' + (payload.label || payload.model || 'auto')); }
+        else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; if (!hpThought) { hpThought = true; hpLine('reasoning about the request…'); } }
         else if (ev === 'chat') { chatAcc += payload; chatSpan.textContent = chatAcc; m.scrollTop = m.scrollHeight; }
-        else if (ev === 'code') { appendCode(payload); if (payload.start) hpLine('✎ writing ' + payload.path + ' (' + (payload.className || 'Script') + ')'); }
+        else if (ev === 'code') { appendCode(payload); if (payload.start) hpLine('writing ' + payload.path + ' (' + (payload.className || 'Script') + ')'); }
         else if (ev === 'ops') {
           const opNames = { apply_texture: 'AI texture', gen_texture: 'AI texture', texture: 'AI texture', build_map: 'map build', find_model: 'marketplace model', gen_model: '3D model', generate_model: '3D model', model3d: '3D model', create_mesh: '3D mesh', insert_model: 'model insert', set_properties: 'property edit', create_instance: 'create', delete_instance: 'delete', rename_instance: 'rename', move_instance: 'move', upsert_script: 'script', delete_script: 'script removal', lookup_docs: 'Roblox docs lookup', playtest: 'playtest', quality_review: 'quality review' };
-          hpLine('⚙ queued: ' + ((payload.types || []).map((t) => opNames[t] || t).join(', ') || 'edits'));
+          hpLine('queued: ' + ((payload.types || []).map((t) => opNames[t] || t).join(', ') || 'edits'));
         }
         else if (ev === 'image') {
-          if (payload.url) { const fig = document.createElement('figure'); fig.style.margin = '.5rem 0 0'; fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" loading="lazy">` + (payload.prompt ? `<figcaption class="dim" style="font-size:.72rem;margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : ''); aiDiv.appendChild(fig); m.scrollTop = m.scrollHeight; hpLine('🖼 concept art: ' + (payload.prompt || 'image')); }
+          if (payload.url) { const fig = document.createElement('figure'); fig.style.margin = '.5rem 0 0'; fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" loading="lazy">` + (payload.prompt ? `<figcaption class="dim" style="font-size:.72rem;margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : ''); aiDiv.appendChild(fig); m.scrollTop = m.scrollHeight; hpLine('concept art: ' + (payload.prompt || 'image')); }
         } else if (ev === 'ask') {
           const el = document.createElement('div'); el.className = 'ask-card';
-          el.innerHTML = `<div class="ask-q">🤔 ${esc(payload.question)}</div>` + (payload.options && payload.options.length ? `<div class="ask-opts">${payload.options.map((o) => `<button class="ask-opt">${esc(o)}</button>`).join('')}</div>` : '');
+          el.innerHTML = `<div class="ask-q">${esc(payload.question)}</div>` + (payload.options && payload.options.length ? `<div class="ask-opts">${payload.options.map((o) => `<button class="ask-opt">${esc(o)}</button>`).join('')}</div>` : '');
           el.querySelectorAll('.ask-opt').forEach((b) => b.addEventListener('click', () => { el.querySelectorAll('.ask-opt').forEach((x) => x.disabled = true); b.classList.add('chosen'); sendPrompt(b.textContent); }));
           aiDiv.appendChild(el); m.scrollTop = m.scrollHeight;
         } else if (ev === 'done') {
           if (wk) wk.remove();
           aiDiv.querySelectorAll('.lc-pre.live').forEach((p) => p.classList.remove('live'));
           const nfiles = Object.keys(codeSecs).length;
-          if (lcEl) { const sm = lcEl.querySelector('summary'); if (sm) sm.textContent = `✓ Wrote ${nfiles} script${nfiles === 1 ? '' : 's'}`; }
+          if (lcEl) { const sm = lcEl.querySelector('summary'); if (sm) sm.innerHTML = CHEV + `Wrote ${nfiles} script${nfiles === 1 ? '' : 's'}`; }
           const n = (payload.scripts ? payload.scripts.length : 0) + (payload.edits || 0);
           if (n > 0) { const note = document.createElement('div'); note.className = 'sent-note'; note.textContent = `→ Sent ${n} action(s) to Roblox Studio`; aiDiv.appendChild(note); }
-          (payload.notes || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.textContent = '⚠ ' + t; aiDiv.appendChild(nl); });
-          (payload.info || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.style.color = 'var(--dim, #9aa0ae)'; nl.textContent = 'ℹ ' + t; aiDiv.appendChild(nl); });
-          if (hpEl) { hpLine(n > 0 ? `✓ done — sent ${n} action(s) to Studio` : '✓ done'); const sm = hpEl.querySelector('summary'); if (sm) sm.textContent = '👁 What happened'; }
+          (payload.notes || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.textContent = t; aiDiv.appendChild(nl); });
+          (payload.info || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.style.color = 'var(--muted)'; nl.textContent = t; aiDiv.appendChild(nl); });
+          if (hpEl) { hpLine(n > 0 ? `done — sent ${n} action(s) to Studio` : 'done'); const sm = hpEl.querySelector('summary'); if (sm) sm.innerHTML = CHEV + 'What happened'; }
         } else if (ev === 'blocked' || ev === 'gate' || ev === 'error') {
           const e = document.createElement('div'); e.style.cssText = 'color:#f58ea0;margin-top:.4rem;font-size:.85rem'; e.textContent = payload.message || 'Something went wrong.'; aiDiv.appendChild(e);
-          if (hpEl) hpLine('⚠ ' + (payload.message || 'error'));
+          if (hpEl) hpLine('error: ' + (payload.message || 'error'));
         }
       }
     }
   } catch (e) {
-    if (e && e.name === 'AbortError') { const s = document.createElement('div'); s.className = 'dim'; s.style.cssText = 'font-size:.75rem;margin-top:.3rem'; s.textContent = '⏹ Stopped.'; aiDiv.appendChild(s); }
+    if (e && e.name === 'AbortError') { const s = document.createElement('div'); s.className = 'dim'; s.style.cssText = 'font-size:.75rem;margin-top:.3rem'; s.textContent = 'Stopped.'; aiDiv.appendChild(s); }
     else if (e) console.error(e);
   }
   finally {
@@ -651,24 +711,24 @@ $('#drawer').addEventListener('click', (e) => { if (e.target === $('#drawer')) $
 
 $('#playtestBtn').onclick = async () => {
   if (!state.currentId) return;
-  const btn = $('#playtestBtn');
-  btn.disabled = true; const was = btn.textContent; btn.textContent = '🧪 Queuing…';
+  const btn = $('#playtestBtn'); const lbl = btn.querySelector('.lbl');
+  btn.disabled = true; const was = lbl.textContent; lbl.textContent = 'Queuing…';
   try {
     await api('/api/roblox/projects/' + state.currentId + '/playtest', { method: 'POST' });
     toast('Playtest queued — Studio will run it on its next sync (~a few seconds), results land in chat.');
   } catch (e) { toast(e.message); }
-  finally { btn.disabled = false; btn.textContent = was; }
+  finally { btn.disabled = false; lbl.textContent = was; }
 };
 $('#qualityBtn').onclick = async () => {
   if (!state.currentId) return;
-  const btn = $('#qualityBtn');
-  btn.disabled = true; const was = btn.textContent; btn.textContent = '📊 Reviewing…';
+  const btn = $('#qualityBtn'); const lbl = btn.querySelector('.lbl');
+  btn.disabled = true; const was = lbl.textContent; lbl.textContent = 'Reviewing…';
   try {
     const r = await api('/api/roblox/projects/' + state.currentId + '/quality-review', { method: 'POST' });
     $('#messages').appendChild(bubble('yield', r.text, false));
     $('#messages').scrollTop = $('#messages').scrollHeight;
   } catch (e) { toast(e.message); }
-  finally { btn.disabled = false; btn.textContent = was; }
+  finally { btn.disabled = false; lbl.textContent = was; }
 };
 
 // Account-level Marketplace Key (a Roblox Open Cloud key) — added once, used by the
@@ -680,7 +740,7 @@ async function loadMarketplaceStatus() {
     const conn = !!r.connected;
     const masked = r.last4 ? `key ····${esc(r.last4)}` : 'key saved';
     $('#keyStatus').textContent = conn
-      ? (r.creatorId ? `● Connected · ${masked} · creator #${r.creatorId} (${r.creatorType || 'User'})` : `● Connected · ${masked} — add a creator id below to enable 3D-model upload`)
+      ? (r.creatorId ? `Connected · ${masked} · creator #${r.creatorId} (${r.creatorType || 'User'})` : `Connected · ${masked} — add a creator id below to enable 3D-model upload`)
       : 'Not connected — the AI models detailed props from parts instead.';
     if (conn && r.creatorType) $('#creatorTypeInput').value = r.creatorType;
     if (conn && r.creatorId) $('#creatorIdInput').value = r.creatorId;
@@ -703,7 +763,7 @@ $('#connectKeyBtn').onclick = async () => {
     $('#robloxKeyInput').value = '';
     msg.style.color = '#5fe0a6';
     const savedNote = r.last4 ? ` Saved as ····${r.last4} — the old key stops working immediately.` : '';
-    msg.textContent = (rotating ? '✓ Key rotated.' : '✓ Connected.') + (r.creatorId ? ' The chatbot can now upload 3D models.' : ' Add a creator id for 3D upload.') + savedNote;
+    msg.textContent = (rotating ? 'Key rotated.' : 'Connected.') + (r.creatorId ? ' The chatbot can now upload 3D models.' : ' Add a creator id for 3D upload.') + savedNote;
     loadMarketplaceStatus(); toast(rotating ? 'Marketplace Key rotated.' : 'Marketplace Key connected.');
   } catch (e) { msg.style.color = '#f58ea0'; msg.textContent = e.message; }
 };
@@ -732,18 +792,18 @@ async function loadLink() {
   // if talking to a not-yet-redeployed API.
   const linked = r.linked !== undefined ? !!r.linked : (r.linkedPlaces > 0 || !!r.lastSeenAt);
   const badge = $('#studioBadge');
-  badge.className = 'badge' + (linked ? ' ok' : ''); badge.textContent = linked ? '● Linked' : '○ Not linked';
+  badge.className = 'badge' + (linked ? ' ok' : ''); badge.textContent = linked ? 'Linked' : 'Not linked';
   $('#studioSub').textContent = linked
     ? [r.linkedPlaces ? r.linkedPlaces + ' place' + (r.linkedPlaces === 1 ? '' : 's') : '', r.robloxUsername ? '@' + r.robloxUsername : '', r.lastSeenAt ? 'synced ' + ago(r.lastSeenAt) : ''].filter(Boolean).join(' · ')
     : 'Link Studio so the AI can read + build your game';
   $('#studioLinkBtn').style.display = linked ? 'none' : '';
-  $('#linkStatus').innerHTML = `<span class="pair-badge ${linked ? 'on' : ''}">${linked ? '● Studio linked' : '○ Studio not linked yet'}${r.robloxUsername ? ' · @' + esc(r.robloxUsername) : ''}${r.linkedPlaces ? ' · ' + r.linkedPlaces + ' place' + (r.linkedPlaces === 1 ? '' : 's') : ''}${r.lastSeenAt ? ' · last seen ' + ago(r.lastSeenAt) : ''}</span>`;
+  $('#linkStatus').innerHTML = `<span class="pair-badge ${linked ? 'on' : ''}">${linked ? 'Studio linked' : 'Studio not linked yet'}${r.robloxUsername ? ' · @' + esc(r.robloxUsername) : ''}${r.linkedPlaces ? ' · ' + r.linkedPlaces + ' place' + (r.linkedPlaces === 1 ? '' : 's') : ''}${r.lastSeenAt ? ' · last seen ' + ago(r.lastSeenAt) : ''}</span>`;
   $('#unlinkBtn').style.display = linked ? '' : 'none';
   $('#robloxSigninBtn').style.display = (state.robloxSignin && !r.robloxConnected) ? '' : 'none';
   const bound = state.current && state.current.project && state.current.project.place_id;
   const pb = $('#placeBadge');
-  if (bound) { pb.className = 'badge ok'; pb.textContent = '● place linked'; pb.style.display = ''; }
-  else if (linked) { pb.className = 'badge'; pb.textContent = '○ open this place in Studio'; pb.style.display = ''; }
+  if (bound) { pb.className = 'badge ok'; pb.textContent = 'place linked'; pb.style.display = ''; }
+  else if (linked) { pb.className = 'badge'; pb.textContent = 'open this place in Studio'; pb.style.display = ''; }
   else pb.style.display = 'none';
 }
 async function getLinkCode(targetEl) {
@@ -768,7 +828,7 @@ async function loadOps() {
   const ops = Array.isArray(r.ops) ? r.ops : []; // a 200 without an ops[] must not throw + freeze the feed
   if (!ops.length) { feed.innerHTML = `<div class="feed-empty">Ask the chatbot to build something — every action it sends to Studio shows here and flips to <b>Applied</b> once the plugin syncs.</div>`; return; }
   feed.innerHTML = ops.map((o) => {
-    const icon = OP_ICON[o.type] || '⚙';
+    const icon = OP_ICON[o.type] || ICON.gear;
     const sub = o.detail ? esc(o.detail) : (OP_TYPE[o.type] || o.type || 'action') + ' · ' + ago(o.created_at);
     return `<div class="action"><span class="a-ic">${icon}</span><div class="a-col"><div class="a-title">${esc(o.label || OP_TYPE[o.type] || o.type || 'action')}</div><div class="a-sub">${sub}</div></div><span class="status-pill ${esc(o.status)}">${esc(o.status)}</span></div>`;
   }).join('');
@@ -791,7 +851,7 @@ async function loadTree() {
     const depth = segs.length - 1;
     const name = segs[segs.length - 1];
     const root = depth === 0;
-    return `<div class="tnode ${root ? 'root' : ''}" style="padding-left:${6 + depth * 14}px" title="${esc(n.path)}"><span class="t-ic">${root ? '🗂' : CLASS_ICON(n.className)}</span><span class="t-name">${esc(name)}</span><span class="t-cls">${esc(n.className)}</span></div>`;
+    return `<div class="tnode ${root ? 'root' : ''}" style="padding-left:${6 + depth * 14}px" title="${esc(n.path)}"><span class="t-ic">${root ? ICON.layers : CLASS_ICON(n.className)}</span><span class="t-name">${esc(name)}</span><span class="t-cls">${esc(n.className)}</span></div>`;
   }).join('');
 }
 </script>

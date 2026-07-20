@@ -88,6 +88,7 @@ Tune with `--epochs`, `--lr`, `--rank`, `--max-len`, `--grad-accum` (run `python
 | File | What it does |
 |------|--------------|
 | `train_yield_ai_colab.ipynb` | **Free Colab notebook** — train the LoRA on a T4, download the adapter. |
+| `gpt-oss.md` | Fine-tune the stronger **gpt-oss-20b** free (via Unsloth, ~14 GB). |
 | `prepare_data.py` | Validates + splits seed and your data into `data/train.jsonl` / `val.jsonl`. |
 | `train_lora.py` | QLoRA supervised fine-tune → `out/yield-ai-lora/` adapter. |
 | `merge_lora.py` | Merges the adapter into the base → `out/yield-ai-merged/` (servable). |

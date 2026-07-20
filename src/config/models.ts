@@ -256,6 +256,31 @@ export const CODER_MODELS: ModelDef[] = [
     // named exactly after the modelId, and falls back to NVIDIA_API_KEY.
     provider: { apiKeyEnv: 'NEMOTRON_API_KEY' },
   },
+  {
+    id: 'gpt-oss-120b',
+    label: 'GPT-OSS 120B',
+    modelId: 'openai/gpt-oss-120b',
+    role: 'coder',
+    tier: 'pro',
+    speed: 2,
+    blurb: "OpenAI's open 120B MoE — strong reasoning & coding. Apache 2.0.",
+    pros: ['Elite open-weights reasoning', 'Great on complex, multi-file apps', 'Apache 2.0 — fully open'],
+    cons: ['Heavier / slower', 'Overkill for tiny tweaks'],
+    // NVIDIA endpoint; shares the router's GPTOSS key, falling back to NVIDIA_API_KEY.
+    provider: { apiKeyEnv: 'GPTOSS_API_KEY' },
+  },
+  {
+    id: 'gpt-oss-20b',
+    label: 'GPT-OSS 20B',
+    modelId: 'openai/gpt-oss-20b',
+    role: 'coder',
+    tier: 'standard',
+    speed: 4,
+    blurb: "OpenAI's open 20B MoE — fast, efficient reasoning & code. Apache 2.0.",
+    pros: ['Fast & efficient MoE', 'Apache 2.0 — fully open (great fine-tune base)', 'Solid everyday all-rounder'],
+    cons: ['Less depth than the 120B on hard logic', 'Newer / less battle-tested'],
+    provider: { apiKeyEnv: 'GPTOSS_API_KEY' },
+  },
   // --- ZenMux free models (OpenAI-compatible; share the ZEMUZAPI key) ------------
   // TEXT/CODE models only. ZenMux's image/vision models (GLM-4.6V, Gemini image) are
   // NOT here — image models are for image/vision, never coding (see visionEndpoint).

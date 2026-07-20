@@ -32,7 +32,8 @@ a { color: inherit; text-decoration: none; }
 .hidden { display: none !important; }
 /* Logo: bare glyph, flat brand color, no container/box/gradient — never redesign this construction. */
 .logo { color: var(--brand); }
-.brand { font-family: var(--font-display); font-weight: 700; }
+.brand { font-family: var(--font-display); font-weight: 700; display: inline-flex; align-items: center; gap: .45rem; }
+.logo-mark { flex: 0 0 auto; display: block; }
 .grad { color: var(--brand); } /* gradient text is banned — flat brand color only */
 
 /* Buttons — flat fills only, no gradients, no glow at rest */
@@ -49,6 +50,8 @@ a { color: inherit; text-decoration: none; }
 .btn.lg { padding: .8rem 1.3rem; font-size: 1rem; }
 .btn.sm { padding: .4rem .7rem; font-size: .82rem; }
 .btn.send { padding: .6rem 1.1rem; }
+/* Visible keyboard focus everywhere interactive — a real product detail AI templates skip */
+.btn:focus-visible, .nav-links a:focus-visible, .surface-card:focus-visible, a.toplink:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 8px; }
 .stop-btn { padding: .6rem 1rem; background: #2a1416; color: #ff8a8a; border: 1px solid #6b2b2b; font-weight: 700; white-space: nowrap; }
 .stop-btn:hover { background: #3a1a1d; border-color: #b33; color: #fff; }
 .stop-btn:disabled { opacity: .7; cursor: default; }
@@ -68,10 +71,13 @@ a { color: inherit; text-decoration: none; }
 
 /* Asymmetric two-column hero: left-aligned copy + the Build Transcript panel */
 .hero { padding: 6rem 6vw 5rem; max-width: 1280px; margin: 0 auto; }
-.hero-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 4rem; align-items: center; }
-.hero-copy { max-width: 620px; }
-.hero-copy h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(2.4rem, 4.2vw, 3.7rem); line-height: 1.06; margin: 0 0 1.4rem; letter-spacing: -.025em; text-align: left; }
-.sub { color: var(--muted); font-size: 1.12rem; line-height: 1.6; margin: 0 0 1.8rem; max-width: 480px; }
+.hero-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 4rem; align-items: start; }
+.hero-copy { max-width: 640px; padding-top: .5rem; }
+/* Mono eyebrow/kicker — signature texture, sets an editorial tone above the headline */
+.eyebrow { font-family: var(--font-mono); font-size: .74rem; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--brand-2); margin: 0 0 1.1rem; }
+.hero-copy h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(3rem, 6vw, 4.75rem); line-height: 1.02; margin: 0 0 1.5rem; letter-spacing: -.03em; text-align: left; }
+.sub { color: var(--text); font-size: 1.2rem; line-height: 1.6; margin: 0 0 2rem; max-width: 500px; font-weight: 400; }
+.sub b { font-weight: 600; }
 .hero-cta { display: flex; align-items: center; gap: 1.3rem; flex-wrap: wrap; margin-bottom: 1.4rem; }
 .hero-cta .btn.ghost { border: none; padding-left: 0; padding-right: 0; }
 .hero-cta .btn.ghost:hover { background: transparent; color: var(--text); }
@@ -89,9 +95,9 @@ a { color: inherit; text-decoration: none; }
 .tr-file .ok { color: var(--brand-2); font-weight: 600; }
 .tr-divider { height: 1px; background: var(--line); margin: 0 0 1.1rem; }
 .tr-live { display: flex; align-items: center; gap: 1rem; }
-.tr-ring { width: 52px; height: 52px; border-radius: 50%; flex: 0 0 auto; background: conic-gradient(var(--brand) 0deg 223deg, var(--panel-3) 223deg 360deg); display: grid; place-items: center; }
-.tr-ring::after { content: ''; width: 39px; height: 39px; border-radius: 50%; background: var(--panel); }
-.tr-live-info b { display: block; font-size: .85rem; font-weight: 500; color: var(--muted); }
+/* Flat teal "committed/shipped" badge — no gradient, no conic ring. Teal = success only. */
+.tr-ring { width: 44px; height: 44px; border-radius: 12px; flex: 0 0 auto; background: rgba(0,212,180,.08); border: 1px solid var(--brand-2); display: grid; place-items: center; color: var(--brand-2); }
+.tr-live-info b { display: block; font-size: .85rem; font-weight: 600; color: var(--text); }
 .tr-live-info span { font-family: var(--font-mono); font-size: .76rem; color: var(--faint); }
 
 /* Positioning bar */
@@ -131,7 +137,7 @@ a { color: inherit; text-decoration: none; }
 .feat-list { display: flex; flex-direction: column; margin-top: .5rem; }
 .feat-row { display: grid; grid-template-columns: 240px 1fr; gap: 2rem; padding: 1.4rem 0; border-bottom: 1px solid var(--line); }
 .feat-row:last-child { border-bottom: none; }
-.feat-row .ic { width: 22px; height: 22px; margin-bottom: .5rem; color: var(--brand); }
+.feat-row .ic { width: 22px; height: 22px; margin-bottom: .5rem; color: var(--muted); }
 .feat-row h3 { font-size: 1.02rem; font-weight: 600; margin: 0; }
 .feat-row p { color: var(--muted); font-size: .88rem; line-height: 1.55; margin: 0; }
 
@@ -139,7 +145,8 @@ a { color: inherit; text-decoration: none; }
 .surface-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; margin-top: .5rem; }
 .surface-card { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1.6rem 1.5rem; transition: border-color .15s, transform .15s; }
 .surface-card:hover { border-color: var(--brand); transform: translateY(-2px); }
-.surface-card .ic { width: 26px; height: 26px; color: var(--brand); margin-bottom: .8rem; }
+.surface-card .ic { width: 26px; height: 26px; color: var(--muted); margin-bottom: .8rem; transition: color .15s; }
+.surface-card:hover .ic { color: var(--text); }
 .surface-card h3 { font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; margin: 0 0 .5rem; letter-spacing: -.01em; }
 .surface-card p { color: var(--muted); font-size: .9rem; line-height: 1.55; margin: 0 0 1.1rem; flex: 1; }
 .surface-go { color: var(--brand-2); font-size: .88rem; font-weight: 600; }

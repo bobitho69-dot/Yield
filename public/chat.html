@@ -5,9 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Yield Chat — talk to the AI. Free.</title>
   <meta name="description" content="Yield Chat — a free AI assistant you can just talk to. Ask anything, get answers, brainstorm, debug, and write code. Powered by 15+ frontier models with an Auto router." />
+  <meta name="theme-color" content="#0a0c11" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <script>try{if(new URLSearchParams(location.search).has('embed')||window.top!==window.self)document.documentElement.classList.add('embed');}catch(e){document.documentElement.classList.add('embed');}</script>
   <link rel="stylesheet" href="/styles.css" />
   <style>
     /* ---------- Yield Chat ---------- */
+    /* Embedded inside the Yield workspace shell: hide this page's own top nav links. */
+    html.embed .cc-toplinks { display: none; }
+    html.embed .cc-top { padding-top: .45rem; padding-bottom: .45rem; }
     .chatapp { display: grid; grid-template-columns: 260px 1fr; height: 100vh; overflow: hidden; }
     .cc-side { display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--bg-2); min-height: 0; }
     .cc-side-top { padding: .8rem; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: .6rem; }

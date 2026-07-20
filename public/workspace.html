@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Yield — Chat &amp; Code</title>
+  <meta name="description" content="Yield workspace — chat with the AI and code on your GitHub repos in one app." />
+  <meta name="theme-color" content="#0a0c11" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    html, body { height: 100%; overflow: hidden; }
+    .ws { display: flex; height: 100vh; height: 100dvh; }
+
+    /* Far-left app rail (Claude-style): switch between the two sections */
+    .ws-rail { width: 76px; flex: 0 0 76px; background: var(--bg-2); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: .7rem 0; gap: .3rem; }
+    .ws-logo { width: 40px; height: 40px; display: grid; place-items: center; margin-bottom: .5rem; }
+    .ws-logo svg { width: 30px; height: 30px; }
+    .ws-item { width: 60px; padding: .55rem 0; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: .25rem; font-family: var(--font-body); font-size: .68rem; font-weight: 600; transition: background .15s, color .15s, border-color .15s; text-decoration: none; }
+    .ws-item svg { width: 22px; height: 22px; }
+    .ws-item:hover { background: var(--panel); color: var(--text); }
+    .ws-item.active { background: var(--panel); color: var(--text); border-color: var(--brand); }
+    .ws-item.active svg { color: var(--brand); }
+    .ws-spacer { flex: 1; }
+    .ws-sep { width: 34px; height: 1px; background: var(--line); margin: .35rem 0; }
+
+    /* Main area: both sections mounted, toggled — so switching preserves each side's state */
+    .ws-main { flex: 1; position: relative; min-width: 0; background: var(--bg); }
+    .ws-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .ws-frame.hidden { display: none; }
+    .ws-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-family: var(--font-mono); font-size: .85rem; }
+    .ws-loading .spin { width: 26px; height: 26px; border: 3px solid var(--line-strong); border-top-color: var(--brand); border-radius: 50%; animation: wsspin .8s linear infinite; margin: 0 auto .7rem; }
+    @keyframes wsspin { to { transform: rotate(360deg); } }
+
+    /* Install toast (PWA) */
+    .ws-install { position: fixed; right: 16px; bottom: 16px; z-index: 60; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; padding: .8rem 1rem; box-shadow: var(--shadow); display: none; align-items: center; gap: .8rem; max-width: 340px; }
+    .ws-install.show { display: flex; }
+    .ws-install .txt { font-size: .84rem; color: var(--muted); line-height: 1.4; }
+    .ws-install .txt b { color: var(--text); }
+    .ws-install .x { color: var(--faint); cursor: pointer; font-size: 1.1rem; line-height: 1; }
+
+    @media (max-width: 640px) {
+      .ws-rail { width: 60px; flex-basis: 60px; }
+      .ws-item { width: 52px; font-size: .62rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ws">
+    <nav class="ws-rail">
+      <a class="ws-logo" href="/" title="Yield home" aria-label="Yield home">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.5" transform="rotate(45 12 12)" fill="#7c5cff"/><rect x="10" y="10" width="4" height="4" rx="1" transform="rotate(45 12 12)" fill="#00d4b4"/></svg>
+      </a>
+      <button class="ws-item" data-view="chat" title="Chat with the AI">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Chat
+      </button>
+      <button class="ws-item" data-view="code" title="Code on your repos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m8 9-3 3 3 3"/><path d="m16 9 3 3-3 3"/><path d="M13 5 11 19"/></svg>
+        Code
+      </button>
+      <div class="ws-sep"></div>
+      <a class="ws-item" href="/app" title="Build a web app from a prompt">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Build
+      </a>
+      <a class="ws-item" href="/security" title="Yield Security">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8.3-7 10-4-1.7-7-5.6-7-10V6z"/></svg>
+        Security
+      </a>
+      <div class="ws-spacer"></div>
+      <a class="ws-item" href="/download" title="Install / get the app" id="railGet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        Get app
+      </a>
+    </nav>
+
+    <main class="ws-main">
+      <div class="ws-loading" id="wsLoading"><div><div class="spin"></div>Loading…</div></div>
+      <iframe class="ws-frame hidden" id="frameChat" title="Yield Chat" allow="clipboard-write"></iframe>
+      <iframe class="ws-frame hidden" id="frameCode" title="Yield Code" allow="clipboard-write"></iframe>
+    </main>
+  </div>
+
+  <div class="ws-install" id="installToast">
+    <div class="txt"><b>Install Yield</b> as an app — it opens in its own window with a dock icon.</div>
+    <button class="btn primary sm" id="installBtn">Install</button>
+    <span class="x" id="installX" title="Dismiss">×</span>
+  </div>
+
+  <script>
+    (function () {
+      var frames = { chat: document.getElementById('frameChat'), code: document.getElementById('frameCode') };
+      var loaded = { chat: false, code: false };
+      var loading = document.getElementById('wsLoading');
+      var items = Array.prototype.slice.call(document.querySelectorAll('.ws-item[data-view]'));
+
+      function srcFor(view) { return (view === 'code' ? '/code' : '/chat') + '?embed=1'; }
+
+      function show(view) {
+        if (view !== 'chat' && view !== 'code') view = 'chat';
+        // Lazy-load the iframe the first time its section is opened (preserves state after).
+        if (!loaded[view]) {
+          frames[view].src = srcFor(view);
+          loaded[view] = true;
+          loading.style.display = 'grid';
+          frames[view].addEventListener('load', function () { loading.style.display = 'none'; }, { once: true });
+        } else {
+          loading.style.display = 'none';
+        }
+        frames.chat.classList.toggle('hidden', view !== 'chat');
+        frames.code.classList.toggle('hidden', view !== 'code');
+        items.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === view); });
+        try { localStorage.setItem('yield.workspace.view', view); } catch (e) {}
+        try { var u = new URL(location.href); u.searchParams.set('view', view); history.replaceState(null, '', u); } catch (e) {}
+      }
+
+      items.forEach(function (b) { b.addEventListener('click', function () { show(b.getAttribute('data-view')); }); });
+
+      // Initial view: ?view= param wins, else last used, else chat.
+      var initial = new URLSearchParams(location.search).get('view');
+      if (initial !== 'chat' && initial !== 'code') { try { initial = localStorage.getItem('yield.workspace.view'); } catch (e) {} }
+      show(initial === 'code' ? 'code' : 'chat');
+
+      // --- PWA: register the service worker + wire the install prompt ---
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
+      }
+      var deferred = null, toast = document.getElementById('installToast');
+      var standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault(); deferred = e;
+        if (!standalone) toast.classList.add('show');
+      });
+      document.getElementById('installBtn').addEventListener('click', function () {
+        if (!deferred) { location.href = '/download'; return; }
+        deferred.prompt(); deferred.userChoice.finally(function () { deferred = null; toast.classList.remove('show'); });
+      });
+      document.getElementById('installX').addEventListener('click', function () { toast.classList.remove('show'); });
+      window.addEventListener('appinstalled', function () { toast.classList.remove('show'); });
+    })();
+  </script>
+</body>
+</html>

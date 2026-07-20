@@ -200,6 +200,8 @@
         <span id="titleWrap"><h1 id="projTitle">Yield Roblox</h1></span>
         <span id="placeBadge" class="badge" style="display:none"></span>
         <span class="chat-head-sp"></span>
+        <button class="btn ghost sm" id="playtestBtn" title="Run the place in Studio for a few seconds and report any errors/warnings">🧪 Playtest</button>
+        <button class="btn ghost sm" id="qualityBtn" title="Structural quality critique benchmarked against researched top-Roblox-game patterns">📊 Quality check</button>
         <button class="btn ghost sm" id="toolsBtn">⋯  Studio</button>
         <button class="btn ghost sm" id="deleteProjectBtn" style="display:none">Delete</button>
       </div>
@@ -308,8 +310,8 @@ const ago = (t) => { if (!t) return 'never'; const d = Date.now() / 1000 - t; if
 let toastTimer;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200); }
 
-const OP_ICON = { upsert_script: '📜', delete_script: '🗑', build_map: '🗺', insert_model: '📦', create_mesh: '🗿', set_properties: '🎨', create_instance: '🧱', delete_instance: '🗑', rename_instance: '✏️', move_instance: '↔️' };
-const OP_TYPE = { upsert_script: 'Script', delete_script: 'Delete script', build_map: 'Build map', insert_model: 'Insert model', create_mesh: 'Build mesh', set_properties: 'Edit properties', create_instance: 'Create', delete_instance: 'Delete', rename_instance: 'Rename', move_instance: 'Move' };
+const OP_ICON = { upsert_script: '📜', delete_script: '🗑', build_map: '🗺', insert_model: '📦', create_mesh: '🗿', set_properties: '🎨', create_instance: '🧱', delete_instance: '🗑', rename_instance: '✏️', move_instance: '↔️', find_model: '🔍', apply_texture: '🖌', lookup_docs: '📚', playtest: '🧪' };
+const OP_TYPE = { upsert_script: 'Script', delete_script: 'Delete script', build_map: 'Build map', insert_model: 'Insert model', create_mesh: 'Build mesh', set_properties: 'Edit properties', create_instance: 'Create', delete_instance: 'Delete', rename_instance: 'Rename', move_instance: 'Move', find_model: 'Marketplace search', apply_texture: 'AI texture', lookup_docs: 'Docs lookup', playtest: 'Playtest' };
 const CLASS_ICON = (cls) => {
   if (/Script$/.test(cls)) return '📜';
   if (cls === 'Folder' || cls === 'Model' || cls === 'Configuration') return '📁';
@@ -576,7 +578,10 @@ async function sendPrompt(overrideText) {
         else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; if (!hpThought) { hpThought = true; hpLine('💭 reasoning about the request…'); } }
         else if (ev === 'chat') { chatAcc += payload; chatSpan.textContent = chatAcc; m.scrollTop = m.scrollHeight; }
         else if (ev === 'code') { appendCode(payload); if (payload.start) hpLine('✎ writing ' + payload.path + ' (' + (payload.className || 'Script') + ')'); }
-        else if (ev === 'ops') { hpLine('⚙ queued edits: ' + ((payload.types || []).join(', ') || 'ops')); }
+        else if (ev === 'ops') {
+          const opNames = { apply_texture: 'AI texture', gen_texture: 'AI texture', texture: 'AI texture', build_map: 'map build', find_model: 'marketplace model', gen_model: '3D model', generate_model: '3D model', model3d: '3D model', create_mesh: '3D mesh', insert_model: 'model insert', set_properties: 'property edit', create_instance: 'create', delete_instance: 'delete', rename_instance: 'rename', move_instance: 'move', upsert_script: 'script', delete_script: 'script removal', lookup_docs: 'Roblox docs lookup', playtest: 'playtest', quality_review: 'quality review' };
+          hpLine('⚙ queued: ' + ((payload.types || []).map((t) => opNames[t] || t).join(', ') || 'edits'));
+        }
         else if (ev === 'image') {
           if (payload.url) { const fig = document.createElement('figure'); fig.style.margin = '.5rem 0 0'; fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" loading="lazy">` + (payload.prompt ? `<figcaption class="dim" style="font-size:.72rem;margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : ''); aiDiv.appendChild(fig); m.scrollTop = m.scrollHeight; hpLine('🖼 concept art: ' + (payload.prompt || 'image')); }
         } else if (ev === 'ask') {
@@ -592,6 +597,7 @@ async function sendPrompt(overrideText) {
           const n = (payload.scripts ? payload.scripts.length : 0) + (payload.edits || 0);
           if (n > 0) { const note = document.createElement('div'); note.className = 'sent-note'; note.textContent = `→ Sent ${n} action(s) to Roblox Studio`; aiDiv.appendChild(note); }
           (payload.notes || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.textContent = '⚠ ' + t; aiDiv.appendChild(nl); });
+          (payload.info || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.style.color = 'var(--dim, #9aa0ae)'; nl.textContent = 'ℹ ' + t; aiDiv.appendChild(nl); });
           if (hpEl) { hpLine(n > 0 ? `✓ done — sent ${n} action(s) to Studio` : '✓ done'); const sm = hpEl.querySelector('summary'); if (sm) sm.textContent = '👁 What happened'; }
         } else if (ev === 'blocked' || ev === 'gate' || ev === 'error') {
           const e = document.createElement('div'); e.style.cssText = 'color:#f58ea0;margin-top:.4rem;font-size:.85rem'; e.textContent = payload.message || 'Something went wrong.'; aiDiv.appendChild(e);
@@ -642,6 +648,28 @@ $('#editorDelete').onclick = async () => {
 $('#toolsBtn').onclick = () => { $('#drawer').classList.add('show'); loadLink(); loadMarketplaceStatus(); };
 $('#drawerClose').onclick = () => $('#drawer').classList.remove('show');
 $('#drawer').addEventListener('click', (e) => { if (e.target === $('#drawer')) $('#drawer').classList.remove('show'); });
+
+$('#playtestBtn').onclick = async () => {
+  if (!state.currentId) return;
+  const btn = $('#playtestBtn');
+  btn.disabled = true; const was = btn.textContent; btn.textContent = '🧪 Queuing…';
+  try {
+    await api('/api/roblox/projects/' + state.currentId + '/playtest', { method: 'POST' });
+    toast('Playtest queued — Studio will run it on its next sync (~a few seconds), results land in chat.');
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; btn.textContent = was; }
+};
+$('#qualityBtn').onclick = async () => {
+  if (!state.currentId) return;
+  const btn = $('#qualityBtn');
+  btn.disabled = true; const was = btn.textContent; btn.textContent = '📊 Reviewing…';
+  try {
+    const r = await api('/api/roblox/projects/' + state.currentId + '/quality-review', { method: 'POST' });
+    $('#messages').appendChild(bubble('yield', r.text, false));
+    $('#messages').scrollTop = $('#messages').scrollHeight;
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; btn.textContent = was; }
+};
 
 // Account-level Marketplace Key (a Roblox Open Cloud key) — added once, used by the
 // AI for free-model search + 3D upload across every game. The key is never returned

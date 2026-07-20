@@ -758,10 +758,15 @@ export async function addRobloxMessage(env: Env, m: { project_id: string; role: 
     .run();
 }
 
-export function listRobloxMessages(env: Env, projectId: string): Promise<{ results: any[] }> {
-  return env.DB.prepare('SELECT role,content,model,created_at FROM roblox_messages WHERE project_id=? ORDER BY created_at LIMIT 200')
+export async function listRobloxMessages(env: Env, projectId: string): Promise<{ results: any[] }> {
+  // NEWEST 200, then reversed back to chronological — a plain ascending LIMIT
+  // returns the OLDEST 200, so once a chatty project crossed that line the AI's
+  // history slice (and the docs-lookup results posted into chat) froze in the past.
+  const { results } = await env.DB
+    .prepare('SELECT role,content,model,created_at FROM roblox_messages WHERE project_id=? ORDER BY created_at DESC, rowid DESC LIMIT 200')
     .bind(projectId)
     .all();
+  return { results: (results as any[]).reverse() };
 }
 
 // --- Roblox sync ops (outbox the plugin polls) ---------------------------------
@@ -797,9 +802,31 @@ export async function ackRobloxOps(env: Env, projectId: string, results: { id: s
   const t = now();
   const stmts = results.slice(0, 300).map((r) =>
     env.DB.prepare("UPDATE roblox_ops SET status=?, detail=?, applied_at=? WHERE id=? AND project_id=?")
-      .bind(r.ok ? 'applied' : 'failed', (r.detail || '').slice(0, 500) || null, t, r.id, projectId),
+      .bind(r.ok ? 'applied' : 'failed', (r.detail || '').slice(0, 4000) || null, t, r.id, projectId),
   );
   if (stmts.length) await env.DB.batch(stmts);
+}
+
+// Looks up the `type` each queued op was created with, keyed by id — used when acking
+// to special-case op types that need their result fed back to the AI (e.g. playtest).
+// D1 caps bound parameters at 100 per query — a full 100-op ack batch (the plugin's
+// own pull limit) plus the project_id param would blow that, so this chunks to stay
+// safely under it rather than risk the query throwing and wedging the whole ack.
+export async function getRobloxOpTypes(env: Env, projectId: string, ids: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const clean = ids.filter((id) => typeof id === 'string' && id).slice(0, 300);
+  const CHUNK = 90; // + 1 for project_id, comfortably under D1's 100-param limit
+  for (let i = 0; i < clean.length; i += CHUNK) {
+    const batch = clean.slice(i, i + CHUNK);
+    const placeholders = batch.map(() => '?').join(',');
+    const { results } = await env.DB.prepare(`SELECT id, op FROM roblox_ops WHERE project_id=? AND id IN (${placeholders})`)
+      .bind(projectId, ...batch)
+      .all<{ id: string; op: string }>();
+    for (const r of results) {
+      try { map.set(r.id, String(JSON.parse(r.op)?.type || '')); } catch { /* ignore malformed row */ }
+    }
+  }
+  return map;
 }
 
 export function listRecentRobloxOps(env: Env, projectId: string, limit = 40): Promise<{ results: RobloxOpRow[] }> {

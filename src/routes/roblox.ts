@@ -39,7 +39,7 @@ import { resolveModel, endpointFor, endpointsFor } from '../config/models';
 import { chat, chatStream } from '../lib/nvidia';
 import { routeModel } from './generate';
 import { generateImage, generate3dModel } from './media';
-import { ROBLOX_CONVO_SYSTEM, ROBLOX_EDIT_NOTE, ROBLOX_MAP_SYSTEM } from '../lib/robloxPrompts';
+import { ROBLOX_CONVO_SYSTEM, ROBLOX_EDIT_NOTE, ROBLOX_MAP_SYSTEM, ROBLOX_QUALITY_SYSTEM } from '../lib/robloxPrompts';
 import {
   makeScriptStreamer, sanitizeScriptPath, sanitizeClassName, sanitizeMapSpec, cleanOpPath,
   createLinkCode, redeemLinkCode, mintUserToken, authenticatePlugin, revokeUserToken, revokeAllUserTokens,
@@ -47,7 +47,9 @@ import {
   setGameTree, getGameTree, formatGameTreeForPrompt, sanitizeGenericOp, type GameTreeNode,
   setMarketplaceKey, getMarketplaceKey, marketplaceKeyStatus, validateMarketplaceKey,
   parseGlbMesh, glbBytesFromResult, extractOpsFromChat, isStudioLinked,
+  hasTextureGen, storeTexturePixels, loadTexturePixels, type TexturePixels,
 } from '../lib/roblox';
+import { decodePng, downscaleRgba } from '../lib/png';
 import { lookupRobloxDocs, autoPrefetchDocs } from '../lib/robloxDocs';
 import {
   ensureGuestUser,
@@ -56,7 +58,7 @@ import {
   touchRobloxProject, touchRobloxSeen, setRobloxApiKey, setRobloxMapPrefs, getRobloxAuth,
   listRobloxFiles, upsertRobloxFile, upsertRobloxFiles, deleteRobloxFile,
   addRobloxMessage, listRobloxMessages,
-  queueRobloxOps, listPendingRobloxOps, ackRobloxOps, listRecentRobloxOps,
+  queueRobloxOps, listPendingRobloxOps, ackRobloxOps, getRobloxOpTypes, listRecentRobloxOps,
   listRobloxAssets, addRobloxAsset, deleteRobloxAsset,
   saveRobloxMap, listRobloxMaps, logUsage, type RobloxProjectRow,
 } from '../lib/db';
@@ -150,6 +152,8 @@ export async function handleRoblox(req: Request, c: Ctx, rest: string): Promise<
   if (sub === 'tree' && req.method === 'GET') return json({ tree: await getGameTree(c.env, project.id) });
   if (sub === 'insert-asset' && req.method === 'POST') return insertAsset(req, c, project);
   if (sub === 'generate-model' && req.method === 'POST') return generateModelAsset(req, c, project);
+  if (sub === 'playtest' && req.method === 'POST') return webPlaytest(c, project);
+  if (sub === 'quality-review' && req.method === 'POST') return qualityReview(req, c, project);
 
   return error(404, 'Not found');
 }
@@ -208,6 +212,15 @@ async function handlePluginApi(req: Request, c: Ctx, segs: string[]): Promise<Re
     return json({ ok: true });
   }
 
+  // Raw RGBA pixel download for a queued texture op (apply_texture / a textured
+  // create_mesh). Keys are scoped to the authenticated plugin's user, so a leaked id
+  // is useless to any other account's Studio.
+  if (action === 'texture' && req.method === 'GET') {
+    const buf = await loadTexturePixels(c.env, userId, String(c.url.searchParams.get('id') || ''));
+    if (!buf) return error(404, 'Texture expired or not found — ask the AI to regenerate it.');
+    return new Response(buf, { headers: { 'content-type': 'application/octet-stream', 'cache-control': 'no-store' } });
+  }
+
   // Everything else needs the open place; auto-resolve (or create) its project.
   const placeIdRaw = req.method === 'GET'
     ? c.url.searchParams.get('placeId')
@@ -231,6 +244,21 @@ async function handlePluginApi(req: Request, c: Ctx, segs: string[]): Promise<Re
     const results = Array.isArray(bodyForPlace.results)
       ? (bodyForPlace.results as any[]).filter((r) => r && typeof r.id === 'string').slice(0, 300)
       : [];
+    // A playtest op's result is a transcript, not just pass/fail — post it into chat
+    // history so it's visible to the AI on its NEXT reply (same next-turn timing as
+    // lookup_docs; the model that queued it already finished streaming). Best-effort:
+    // acking below is the important part — if the type lookup fails, still ack.
+    try {
+      const types = await getRobloxOpTypes(c.env, project.id, results.map((r: any) => r.id));
+      for (const r of results) {
+        if (types.get(r.id) === 'playtest' && r.detail) {
+          // Always shown, not conditional: a script can write to a DataStore or call
+          // HttpService without that ever showing up as an Error/Warning line, so the
+          // absence of one in the transcript is not proof nothing irreversible happened.
+          await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `🧪 ${String(r.detail).slice(0, 3800)}\n\n(Any real DataStore writes or HTTP calls made during this run are permanent and were NOT undone — only tracked instance/property changes were reverted, best-effort.)` });
+        }
+      }
+    } catch (e) { console.error('playtest result relay failed:', e); }
     await ackRobloxOps(c.env, project.id, results.map((r: any) => ({ id: r.id, ok: !!r.ok, detail: r.detail ? String(r.detail) : undefined })));
     await touchRobloxSeen(c.env, project.id);
     return json({ ok: true, acked: results.length });
@@ -310,7 +338,7 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       const hasKey = keyStatus.connected || !!project.roblox_api_key_enc;
       const hasLibrary = (assetCount.results?.length || 0) > 0;
       const has3d = !!(c.env.TRELLIS_API_URL && c.env.NVIDIA_API_KEY);
-      const hasTexture = !!(c.env.IMAGE_API_URL && (c.env.IMAGE_API_KEY || c.env.NVIDIA_API_KEY));
+      const hasTexture = hasTextureGen(c.env);
       messages.push({
         role: 'system',
         content:
@@ -322,6 +350,8 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
             ? 'apply_texture IS available — generates a real image texture and applies it to an existing Part/MeshPart/Model as a PBR SurfaceAppearance (mode "surface", the default — best for walls, ground, props, character skins) or a flat Decal on one face (mode "decal" — best for signs, screens, posters). Use it whenever a surface should look like something specific (brick, wood grain, rusted metal, a poster, grass) instead of a flat Material color. '
             : 'apply_texture (AI texture generation) is NOT configured on this server — do not use it; fall back to Material + Color. ') +
           'lookup_docs IS available — pass a Roblox class name, member, or topic ("TweenService", "Humanoid:GetState", "remote events") to fetch the LIVE official API reference/guide and have it appear in chat for your next reply; use it when you are not fully certain of an exact property/method/event shape instead of guessing. ' +
+          'playtest IS available — actually runs the place in Studio and reports real Errors/Warnings back to you next reply; use it after risky script changes to self-verify. ' +
+          'quality_review IS available — a structural polish critique benchmarked against researched top-Roblox-game patterns (not a screenshot comparison); use it when asked how the game compares to top games or for a polish check. ' +
           (hasLibrary ? 'The pinned model library has assets, so matched "models" roles work too. ' : '') +
           (hasKey ? 'A Marketplace Key is connected (used only to publish generated meshes to the user\'s account when needed). ' : '') +
           'Still sculpt the BULK of scenery (trees, rocks, houses, fences) yourself as "props" built from parts — use find_model for hero marketplace assets and gen_model for the occasional bespoke mesh. NEVER tell the user you "need a model" or lack access — you have the tools.',
@@ -418,11 +448,13 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       // from one chat turn. resolveAgentOps validates + resolves them into sync ops.
       let agentQueued = 0;
       const agentNotes: string[] = [];
+      const agentInfo: string[] = [];
       if (agentOps.length) {
         const r = await resolveAgentOps(c, project, agentOps);
         if (r.queued.length) await queueRobloxOps(c.env, project.id, r.queued);
         agentQueued = r.queued.length + r.pending;
         agentNotes.push(...r.notes);
+        agentInfo.push(...r.info);
       }
       // Concept-art images the AI asked to show (never placed in-game — just a
       // visual aid in chat), reusing the same image-gen the web builder uses.
@@ -437,7 +469,9 @@ async function generateScripts(req: Request, c: Ctx, project: RobloxProjectRow):
       await recordGeneration(c);
       await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'roblox_generate', model: model.id });
 
-      await send('done', { scripts: result.scripts.map((s) => ({ path: s.path, className: s.className })), queued: result.scripts.length > 0, edits: agentQueued, notes: agentNotes });
+      // notes = problems (client shows amber ⚠); info = neutral FYIs (docs fetched,
+      // marketplace searching) so successes never read as warnings.
+      await send('done', { scripts: result.scripts.map((s) => ({ path: s.path, className: s.className })), queued: result.scripts.length > 0, edits: agentQueued, notes: agentNotes, info: agentInfo });
     } catch (e: any) {
       console.error('roblox generate failed:', e?.stack || e);
       await send('error', { message: String(e?.message || e).slice(0, 300) });
@@ -531,12 +565,25 @@ async function resolveRobloxKey(env: Env, userId: string, project: RobloxProject
 // search queued for the Studio plugin (no key) → a scanned insert; gen_model →
 // 3D generate → local mesh import (or key-based upload fallback) → insert.
 // Free models are ALWAYS virus-scanned by the plugin on insert.
-async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): Promise<{ queued: Record<string, unknown>[]; notes: string[]; pending: number }> {
-  const queued: Record<string, unknown>[] = [];
-  const notes: string[] = [];
+// A texture the AI asked for, held as a placeholder in the op list so the finished
+// apply_texture op lands at its ORIGINAL position — the model may rename/move/delete
+// the same instance later in the same reply, and reordering textures to the end
+// would make them run against stale paths.
+interface TextureJob { __tex: true; path: string; prompt: string; mode: 'surface' | 'decal'; face?: string; studsPerTile: number; done?: Record<string, unknown> | null }
+const TEXTURE_FACES = ['Front', 'Back', 'Top', 'Bottom', 'Left', 'Right'];
+
+async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): Promise<{ queued: Record<string, unknown>[]; notes: string[]; info: string[]; pending: number }> {
+  // slots preserves the model's emission order; texture placeholders are resolved in
+  // parallel afterwards and spliced back in place.
+  const slots: (Record<string, unknown> | TextureJob)[] = [];
+  const notes: string[] = []; // problems worth showing with a warning
+  const info: string[] = []; // neutral FYIs (docs fetched, marketplace searching)
   let pending = 0;
-  let textureCalls = 0;
-  if (!Array.isArray(ops) || !ops.length) return { queued, notes, pending };
+  const textureJobs: TextureJob[] = [];
+  const docsQueries: string[] = [];
+  let playtestQueued = false;
+  let qualityReviewRequested = false;
+  if (!Array.isArray(ops) || !ops.length) return { queued: [], notes, info, pending };
 
   const { results: assetRows } = await listRobloxAssets(c.env, project.id);
   const library: PinnedAsset[] = assetRows.map((a) => ({ asset_id: a.asset_id, name: a.name, tags: a.tags }));
@@ -551,18 +598,18 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
       const specRaw = op.spec && typeof op.spec === 'object' ? op.spec : op;
       const clear = typeof specRaw.clear === 'boolean' ? specRaw.clear : false;
       const { spec, unresolvedDetail } = sanitizeMapSpec(specRaw, library, clear);
-      queued.push({ type: 'build_map', spec });
+      slots.push({ type: 'build_map', spec });
       // Model roles with no pinned match: search the marketplace IN Studio and place
       // the scanned top result right where the map wanted it (capped so one map
       // can't trigger dozens of searches).
-      queued.push(...findModelOpsForRoles(unresolvedDetail, notes));
+      slots.push(...findModelOpsForRoles(unresolvedDetail, info));
     } else if (type === 'find_model' || type === 'search_model') {
       const query = String(op.query || op.role || op.name || '').trim().slice(0, 120);
       if (!query) continue;
       // Marketplace search happens IN Studio (InsertService:GetFreeModels) — Roblox
       // has no Open Cloud scope for toolbox search, so no server-side key can do it.
       // The plugin searches, virus-scans, and inserts the top match on next sync.
-      queued.push({
+      slots.push({
         type: 'find_model', query, name: String(op.name || '').slice(0, 60),
         position: posOf(op.position, [0, 5, 0]), rotation: posOf(op.rotation, [0, 0, 0]),
         scale: Number(op.scale) || 1,
@@ -576,13 +623,13 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
       const source = String(op.source ?? op.code ?? '').slice(0, 200_000);
       if (path && source.trim()) {
         await upsertRobloxFile(c.env, project.id, path, className, source);
-        queued.push({ type: 'upsert_script', path, className, source });
+        slots.push({ type: 'upsert_script', path, className, source });
       }
     } else if (type === 'delete_script') {
       const path = sanitizeScriptPath(String(op.path || ''));
       if (path) {
         await deleteRobloxFile(c.env, project.id, path);
-        queued.push({ type: 'delete_script', path });
+        slots.push({ type: 'delete_script', path });
       }
     } else if (type === 'gen_model' || type === 'generate_model' || type === 'model3d') {
       const prompt = String(op.prompt || op.description || '').trim().slice(0, 200);
@@ -596,62 +643,125 @@ async function resolveAgentOps(c: Ctx, project: RobloxProjectRow, ops: any[]): P
       pending++;
       c.ctx.waitUntil(generateAndPlaceMesh(c.env, project, prompt, op, apiKey, creator));
     } else if (type === 'lookup_docs') {
-      // The AI wants to verify an exact Roblox API shape before relying on it. This
-      // is resolved SERVER-SIDE (a live docs fetch), not by the plugin, and the result
-      // is posted into chat history so it's available on the AI's NEXT reply — the
-      // model that emitted this op already finished streaming, so it can't see the
-      // result mid-turn, only going forward.
+      // Resolved SERVER-SIDE after the loop (in parallel, capped) — the result is
+      // posted into chat history so it's available on the AI's NEXT reply; the model
+      // that emitted this op already finished streaming.
       const query = String(op.query || op.class || op.topic || '').trim().slice(0, 200);
-      if (!query) continue;
-      try {
-        const { text, hit } = await lookupRobloxDocs(c.env, query);
-        if (hit) {
-          await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `📚 Checked the Roblox docs for "${query}":\n\n${text}` });
-          notes.push(`Looked up the Roblox docs for "${query}" — I'll use that on my next reply.`);
-        } else {
-          notes.push(`Checked the Roblox docs for "${query}" but found nothing specific there — going with my best knowledge.`);
-        }
-      } catch {
-        notes.push(`Doc lookup for "${query}" failed — continuing with my best knowledge.`);
-      }
+      if (!query || docsQueries.some((q) => q.toLowerCase() === query.toLowerCase())) continue;
+      if (docsQueries.length >= 3) { info.push(`Skipped extra docs lookup "${query}" — up to 3 per reply.`); continue; }
+      docsQueries.push(query);
     } else if (type === 'apply_texture' || type === 'gen_texture' || type === 'texture') {
       const path = cleanOpPath(op.path);
       const prompt = String(op.prompt || op.texture || op.description || '').trim().slice(0, 200);
       if (!path || !prompt) continue;
-      if (!c.env.IMAGE_API_URL || !(c.env.IMAGE_API_KEY || c.env.NVIDIA_API_KEY)) {
+      if (!hasTextureGen(c.env)) {
         notes.push(`Texture generation isn't configured on this server, so I couldn't texture "${path}" — using Material/Color instead.`);
         continue;
       }
-      if (textureCalls >= 4) {
+      if (textureJobs.length >= 4) {
         notes.push(`Skipped texturing "${path}" — up to 4 textures per reply; ask again for more.`);
         continue;
       }
-      textureCalls++;
-      try {
-        const url = await generateImage(c.env, `seamless tileable material texture, flat lighting, no shadows, straight-on: ${prompt}`);
-        if (url && /^https?:\/\//i.test(url)) {
-          const mode = op.mode === 'decal' ? 'decal' : 'surface';
-          const face = typeof op.face === 'string' ? op.face.slice(0, 20) : undefined;
-          queued.push({ type: 'apply_texture', path, mode, face, colorMapUrl: url });
-        } else {
-          notes.push(`Couldn't generate a texture for "${prompt}" this time.`);
-        }
-      } catch {
-        notes.push(`Texture generation for "${prompt}" hit an error.`);
-      }
+      // Models slip on enum casing constantly ("front", "DECAL") — normalize instead
+      // of letting a case slip kill the whole op in Studio.
+      const faceRaw = typeof op.face === 'string' ? op.face.trim().toLowerCase() : '';
+      const job: TextureJob = {
+        __tex: true, path, prompt,
+        mode: String(op.mode || '').trim().toLowerCase() === 'decal' ? 'decal' : 'surface',
+        face: TEXTURE_FACES.find((f) => f.toLowerCase() === faceRaw),
+        studsPerTile: Math.max(1, Math.min(64, Number(op.studsPerTile) || 8)),
+      };
+      textureJobs.push(job);
+      slots.push(job); // placeholder — resolved below, in this exact position
+    } else if (type === 'playtest') {
+      // Queued straight to the plugin like any other op — it runs Studio's Run
+      // simulation and reports errors/warnings back through the normal ack flow
+      // (see handlePluginApi's `ack` handler), which posts the results into chat.
+      if (playtestQueued) { info.push('Skipped an extra playtest — only 1 per reply.'); continue; }
+      if (await hasPendingPlaytest(c.env, project.id)) { info.push('Skipped playtest — one is already queued or running; I\'ll wait for it.'); continue; }
+      playtestQueued = true;
+      const duration = Math.max(3, Math.min(20, Number(op.duration) || 8));
+      slots.push({ type: 'playtest', duration });
+      info.push(`Playtesting for ${duration}s in Studio — I'll report what I find on my next reply.`);
+    } else if (type === 'quality_review') {
+      // Resolved SERVER-SIDE (no plugin round-trip needed — it reads the already-
+      // synced game tree + scripts) after the loop, alongside docs lookups.
+      if (qualityReviewRequested) { info.push('Skipped an extra quality review — only 1 per reply.'); continue; }
+      qualityReviewRequested = true;
     } else {
       const clean = sanitizeGenericOp(op);
-      if (clean) queued.push(clean);
+      if (clean) slots.push(clean);
     }
   }
-  return { queued, notes, pending };
+
+  // All of a reply's texture generations + docs lookups run in parallel: four
+  // textures cost one image round-trip, and docs lookups can't stall the turn.
+  await Promise.all([
+    ...textureJobs.map(async (j) => {
+      try {
+        const tex = await generateTexturePixels(c.env, j.prompt, j.mode);
+        if (!tex) { notes.push(`Couldn't generate a texture for "${j.prompt}" this time — using Material/Color instead.`); return; }
+        const texId = await storeTexturePixels(c.env, project.user_id, tex);
+        j.done = { type: 'apply_texture', path: j.path, mode: j.mode, ...(j.face ? { face: j.face } : {}), texId, w: tex.width, h: tex.height, studsPerTile: j.studsPerTile };
+      } catch {
+        notes.push(`Texture generation for "${j.prompt}" hit an error — using Material/Color instead.`);
+      }
+    }),
+    ...docsQueries.map(async (query) => {
+      try {
+        const { text, hit } = await lookupRobloxDocs(c.env, query);
+        if (hit) {
+          await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `📚 Checked the Roblox docs for "${query}":\n\n${text}` });
+          info.push(`Looked up the Roblox docs for "${query}" — I'll use that on my next reply.`);
+        } else {
+          info.push(`Checked the Roblox docs for "${query}" but found nothing specific there — going with my best knowledge.`);
+        }
+      } catch {
+        notes.push(`Doc lookup for "${query}" failed — continuing with my best knowledge.`);
+      }
+    }),
+    ...(qualityReviewRequested ? [(async () => {
+      try {
+        const text = await runQualityReview(c.env, project);
+        await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `📊 Quality Report:\n\n${text}` });
+        info.push('Ran a quality review — I\'ll factor it into my next reply.');
+      } catch {
+        notes.push('Quality review failed — continuing without it.');
+      }
+    })()] : []),
+  ]);
+
+  const queued = slots
+    .map((s) => ('__tex' in s ? (s as TextureJob).done ?? null : (s as Record<string, unknown>)))
+    .filter((s): s is Record<string, unknown> => !!s);
+  return { queued, notes, info, pending };
+}
+
+// Generate one texture image and decode it to raw RGBA pixels ≤256x256 — the only
+// form Roblox Studio can ingest without publishing an asset (EditableImage). "surface"
+// asks the image model for a seamless tileable material; "decal" for a single flat
+// full-bleed graphic (a sign/poster shouldn't tile). Returns null on any failure —
+// callers treat that as "no texture this time", never an error.
+async function generateTexturePixels(env: Env, desc: string, mode: 'surface' | 'decal'): Promise<TexturePixels | null> {
+  const style = mode === 'decal'
+    ? 'a single flat full-bleed graphic, straight-on, no perspective, no border, no watermark'
+    : 'seamless tileable material texture, flat even lighting, no shadows, top-down orthographic, no watermark';
+  // 512x512 quarters decode cost vs the 1024 default; it downscales to 256 anyway.
+  const url = await generateImage(env, `${style}: ${desc}`, { width: 512, height: 512 });
+  if (!url) return null;
+  const bytes = await glbBytesFromResult(url); // generic data:/https -> bytes helper
+  if (!bytes) return null;
+  const decoded = await decodePng(bytes);
+  if (!decoded) return null;
+  const small = downscaleRgba(decoded, 256);
+  return { width: small.width, height: small.height, rgba: small.rgba };
 }
 
 // Turn map roles that matched no pinned asset into Studio-side marketplace searches
 // (find_model ops): the plugin's InsertService search finds the best free model,
 // virus-scans it, and drops it at the exact spot the map spec wanted. Capped at 12
 // placements per build so a huge map can't trigger an insert storm.
-function findModelOpsForRoles(roles: UnresolvedRole[], notes: string[]): Record<string, unknown>[] {
+function findModelOpsForRoles(roles: UnresolvedRole[], info: string[]): Record<string, unknown>[] {
   const ops: Record<string, unknown>[] = [];
   const searched: string[] = [];
   let budget = 12;
@@ -665,7 +775,7 @@ function findModelOpsForRoles(roles: UnresolvedRole[], notes: string[]): Record<
     }
     if (placed > 0) searched.push(u.role);
   }
-  if (searched.length) notes.push(`Searching the Roblox marketplace in Studio for: ${searched.slice(0, 8).join(', ')} — each match is virus-scanned and placed automatically on the next sync.`);
+  if (searched.length) info.push(`Searching the Roblox marketplace in Studio for: ${searched.slice(0, 8).join(', ')} — each match is virus-scanned and placed automatically on the next sync.`);
   return ops;
 }
 
@@ -681,14 +791,14 @@ async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt:
     try { await addRobloxMessage(env, { project_id: project.id, role: 'assistant', content: msg }); } catch { /* best-effort */ }
   };
   try {
-    // An optional "texture" description generates a real colorMap image alongside the
+    // An optional "texture" description generates a real texture alongside the
     // geometry (in parallel — no extra latency) so the mesh comes out textured, not
     // flat-colored. Best-effort: a failed/unconfigured texture never blocks the mesh.
     const textureDesc = typeof op.texture === 'string' ? op.texture.trim().slice(0, 200) : '';
-    const [res, colorMapUrl] = await Promise.all([
+    const [res, tex] = await Promise.all([
       generate3dModel(env, prompt),
-      textureDesc && env.IMAGE_API_URL
-        ? generateImage(env, `seamless tileable material texture, flat lighting, no shadows, straight-on: ${textureDesc}`).catch(() => null)
+      textureDesc && hasTextureGen(env)
+        ? generateTexturePixels(env, textureDesc, 'surface').catch(() => null)
         : Promise.resolve(null),
     ]);
     if (!res) {
@@ -697,8 +807,9 @@ async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt:
     }
     const position = Array.isArray(op.position) && op.position.length === 3 ? op.position.map((n: any) => Number(n) || 0) : [0, 5, 0];
     const scale = Number(op.scale) || 1;
-    const name = prompt.slice(0, 60);
-    const safeColorMapUrl = typeof colorMapUrl === 'string' && /^https?:\/\//i.test(colorMapUrl) ? colorMapUrl : undefined;
+    // "/" would break the instance path the texture follow-up op targets below.
+    const name = prompt.replace(/[/\n\r]+/g, ' ').trim().slice(0, 60) || 'Generated model';
+    const texId = tex ? await storeTexturePixels(env, project.user_id, tex) : null;
 
     const bytes = await glbBytesFromResult(res);
     const mesh = bytes ? parseGlbMesh(bytes) : null;
@@ -706,7 +817,7 @@ async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt:
       await queueRobloxOps(env, project.id, [{
         type: 'create_mesh', name, verts: mesh.verts, tris: mesh.tris, position, scale,
         color: typeof op.color === 'string' ? op.color : '#b7b0a4',
-        ...(safeColorMapUrl ? { colorMapUrl: safeColorMapUrl } : {}),
+        ...(texId && tex ? { texId, texW: tex.width, texH: tex.height } : {}),
       }]);
       await logUsage(env, { user_id: project.user_id, kind: 'roblox_mesh_local' });
       return;
@@ -719,7 +830,11 @@ async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt:
         return;
       }
       await addRobloxAsset(env, project.id, assetId, prompt.slice(0, 80), 'ai-generated');
-      await queueRobloxOps(env, project.id, [{ type: 'insert_model', assetId, name, position, rotation: [0, 0, 0], scale }]);
+      const followUps: Record<string, unknown>[] = [{ type: 'insert_model', assetId, name, position, rotation: [0, 0, 0], scale }];
+      // Don't silently drop an already-generated texture just because the mesh took
+      // the upload path — texture the inserted model right after it lands.
+      if (texId && tex) followUps.push({ type: 'apply_texture', path: `Workspace/${name}`, mode: 'surface', texId, w: tex.width, h: tex.height, studsPerTile: 8 });
+      await queueRobloxOps(env, project.id, followUps);
       await logUsage(env, { user_id: project.user_id, kind: 'roblox_model3d_agent' });
       return;
     }
@@ -728,6 +843,131 @@ async function generateAndPlaceMesh(env: Env, project: RobloxProjectRow, prompt:
     console.error('generateAndPlaceMesh failed:', e);
     await tellUser(`⚠ 3D generation for "${prompt}" hit an error — ask me to try again.`);
   }
+}
+
+// --- Quality Review: structural critique vs. researched top-game patterns -----------
+// NOT a visual/screenshot comparison — Roblox has no API for that and Studio plugins
+// can't capture the viewport. Every signal below is deterministic (counted from the
+// pushed instance tree + script source), and the rubric it's judged against
+// (ROBLOX_QUALITY_SYSTEM) is grounded in cited Roblox docs / DevForum / developer-
+// community sources, not invented. See docs/DEPLOY.md-adjacent research notes in the
+// prompt file for citations.
+const DEFAULT_NAME_RE = /^(Part|Union|Model|MeshPart|Folder|Script|LocalScript|ModuleScript|SpawnLocation)\d*$/;
+const POLISH_LIGHTING_CLASSES = new Set(['Atmosphere', 'ColorCorrectionEffect', 'BloomEffect', 'SunRaysEffect', 'DepthOfFieldEffect']);
+const POLISH_UI_CLASSES = new Set(['UICorner', 'UIStroke', 'UIGradient', 'UIListLayout', 'UIGridLayout', 'UIPadding']);
+const SCENERY_CLASSES = new Set(['Part', 'MeshPart', 'Model', 'UnionOperation', 'WedgePart', 'CornerWedgePart']);
+
+function computeQualitySignals(tree: GameTreeNode[] | null, files: { path: string; class_name: string; source: string }[]): string {
+  const lines: string[] = [];
+  const t = tree || [];
+  lines.push(`Total instances seen: ${t.length}${t.length === 0 ? ' (no snapshot yet — plugin hasn\'t synced; ask the user to Sync Now in Studio first)' : ''}`);
+
+  const sceneryCount = t.filter((n) => SCENERY_CLASSES.has(n.className)).length;
+  lines.push(`Scenery instances (Part/MeshPart/Model/Union/Wedge) under the place: ${sceneryCount}`);
+
+  const defaultNamed = t.filter((n) => DEFAULT_NAME_RE.test(n.path.split('/').pop() || ''));
+  lines.push(`Instances still using a default/generic name (Part1, Union, unrenamed Script, ...): ${defaultNamed.length}${defaultNamed.length ? ' — e.g. ' + defaultNamed.slice(0, 5).map((n) => n.path).join(', ') : ''}`);
+
+  const lightingPolish = t.filter((n) => POLISH_LIGHTING_CLASSES.has(n.className)).map((n) => n.className);
+  lines.push(lightingPolish.length ? `Lighting/post-processing instances present: ${[...new Set(lightingPolish)].join(', ')}` : 'Lighting/post-processing instances present: NONE (Atmosphere/ColorCorrectionEffect/BloomEffect/SunRaysEffect — a fresh place has none of these by default; their absence is normal but their presence signals deliberate atmosphere work)');
+
+  const uiPolish = t.filter((n) => POLISH_UI_CLASSES.has(n.className)).map((n) => n.className);
+  const uiCounts: Record<string, number> = {};
+  for (const c of uiPolish) uiCounts[c] = (uiCounts[c] || 0) + 1;
+  lines.push(Object.keys(uiCounts).length ? `UI polish instances: ${Object.entries(uiCounts).map(([k, v]) => `${k}×${v}`).join(', ')}` : 'UI polish instances (UICorner/UIStroke/UIGradient/UIListLayout/UIGridLayout): NONE found');
+
+  const surfaceAppearanceCount = t.filter((n) => n.className === 'SurfaceAppearance').length;
+  if (surfaceAppearanceCount) lines.push(`AI-generated PBR textures (SurfaceAppearance) applied: ${surfaceAppearanceCount}`);
+
+  // Reported raw, not pre-judged here — a fresh Studio baseplate template is Grass/
+  // dark-green OR Plastic/gray depending which template was used, so "is this still
+  // default" is a judgment call better left to the model (which knows both looks)
+  // than to a brittle regex on hex codes.
+  const baseplate = t.find((n) => (n.path.split('/').pop() || '').toLowerCase() === 'baseplate');
+  if (baseplate?.props) {
+    const p = baseplate.props as any;
+    lines.push(`Baseplate: material=${p.material || 'unknown'} color=${p.color || 'unknown'} (judge yourself whether this still looks like an untouched Studio default)`);
+  }
+
+  const src = files.map((f) => f.source).join('\n');
+  const has = (re: RegExp) => re.test(src);
+  const scriptSignals: string[] = [];
+  scriptSignals.push(has(/leaderstats/i) ? 'leaderstats folder referenced (progression/currency display)' : 'no "leaderstats" reference found (no visible progression/currency display)');
+  scriptSignals.push(has(/DataStoreService/) ? 'DataStoreService used (persistent progression)' : 'no DataStoreService usage found (progress likely does not persist between sessions)');
+  scriptSignals.push(has(/RemoteEvent|RemoteFunction/) ? 'RemoteEvents/RemoteFunctions present (client-server interaction)' : 'no RemoteEvents/RemoteFunctions found (little or no client-server interaction)');
+  scriptSignals.push(has(/SourceSans/) ? 'legacy SourceSans font referenced (consider Builder Sans / a custom FontFace)' : '');
+  scriptSignals.push(has(/--\s*(TODO|rest of|implement this)/i) ? 'placeholder/TODO markers found in script source (incomplete work)' : '');
+  lines.push(...scriptSignals.filter(Boolean).map((s) => `Script signal: ${s}`));
+  lines.push(`Scripts: ${files.length} total, ${Math.round(src.length / Math.max(1, files.length))} avg chars`);
+
+  return lines.join('\n');
+}
+
+// Enforced in CODE, not just prompted — a model under its own word-count budget can
+// (and sometimes will) drop a merely-instructed disclaimer to fit more score content.
+const QUALITY_REVIEW_DISCLAIMER = 'Heads up: this is a structural/technical read of your instance tree and scripts, not a real visual comparison to actual top-charting games — Roblox has no API for that and Studio plugins can\'t capture the viewport.\n\n';
+
+async function runQualityReview(env: Env, project: RobloxProjectRow): Promise<string> {
+  const [treePayload, files] = await Promise.all([getGameTree(env, project.id), listRobloxFiles(env, project.id)]);
+  const signals = computeQualitySignals(treePayload?.tree ?? null, files);
+  const treeText = formatGameTreeForPrompt(treePayload, 150);
+
+  const model = resolveModel('glm-5.1');
+  const chain = endpointsFor(env, model);
+  let lastErr: unknown = null;
+  for (const ep of chain) {
+    try {
+      const { text } = await chat({
+        baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId,
+        messages: [
+          { role: 'system', content: ROBLOX_QUALITY_SYSTEM },
+          { role: 'user', content: `STRUCTURAL SIGNALS:\n${signals}\n\n${treeText || 'No game tree available yet.'}` },
+        ],
+        temperature: 0.4, max_tokens: 1200, timeoutMs: 30000,
+      });
+      if (text.trim()) return QUALITY_REVIEW_DISCLAIMER + text.trim();
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Quality review failed');
+}
+
+async function qualityReview(req: Request, c: Ctx, project: RobloxProjectRow): Promise<Response> {
+  let text: string;
+  try {
+    text = await runQualityReview(c.env, project);
+  } catch (e: any) {
+    return error(502, String(e?.message || e).slice(0, 300));
+  }
+  // The critique itself succeeded — a failure persisting/logging it is a lesser,
+  // separate problem and must not discard a result the caller already has in hand.
+  try {
+    await addRobloxMessage(c.env, { project_id: project.id, role: 'assistant', content: `📊 Quality Report:\n\n${text}` });
+    await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'roblox_quality_review' });
+  } catch (e) { console.error('quality review persistence failed:', e); }
+  return json({ ok: true, text });
+}
+
+// Manual "Playtest Now" button — queues the same op the AI can emit itself. Results
+// land via the plugin's ack (see handlePluginApi) as a chat message + activity entry.
+// A pending playtest already queued means the plugin either hasn't synced yet (so a
+// second one would just double up once it does) or is mid-Run right now (a second
+// one would collide with RunService:IsRunning()'s guard and error immediately) —
+// either way, queuing another is never useful. Small pending-list scan, not a new
+// query shape: playtest is a rare, deliberate action, not a hot path.
+async function hasPendingPlaytest(env: Env, projectId: string): Promise<boolean> {
+  const { results } = await listPendingRobloxOps(env, projectId, 100);
+  return results.some((r) => { try { return JSON.parse(r.op)?.type === 'playtest'; } catch { return false; } });
+}
+
+async function webPlaytest(c: Ctx, project: RobloxProjectRow): Promise<Response> {
+  if (!project.place_id || !project.last_seen_at) {
+    return error(409, 'Studio hasn\'t synced this project yet — open the place in Studio and sync at least once, then try Playtest again.', { code: 'not_synced' });
+  }
+  if (await hasPendingPlaytest(c.env, project.id)) {
+    return error(409, 'A playtest is already queued or running — wait for it to finish before starting another.', { code: 'playtest_pending' });
+  }
+  await queueRobloxOps(c.env, project.id, [{ type: 'playtest', duration: 8 }]);
+  return json({ ok: true });
 }
 
 // --- AI map generation (plain JSON — usually a single fast completion) --------------
@@ -1003,6 +1243,9 @@ function opLabel(op: any): string {
     case 'set_properties': case 'delete_instance': case 'rename_instance': case 'move_instance': return String(op.path || '');
     case 'create_instance': return `${op.className || ''} ${op.name || ''}`.trim();
     case 'build_map': return `${op.spec?.parts?.length || 0} part(s) · ${(op.spec?.props?.length || 0)} prop(s) · ${op.spec?.models?.length || 0} model(s)`;
+    case 'find_model': return `marketplace: ${op.query || 'model'}`;
+    case 'apply_texture': return `texture ${op.mode === 'decal' ? '(decal) ' : ''}on ${op.path || '?'}`;
+    case 'playtest': return `${op.duration || 8}s playtest`;
     default: return '';
   }
 }

@@ -35,6 +35,8 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local AssetService = game:GetService("AssetService")
+local RunService = game:GetService("RunService")
+local LogService = game:GetService("LogService")
 
 local API_BASE = "{{APP_URL}}" .. "/api/roblox/plugin"
 
@@ -965,6 +967,265 @@ local function applyMoveInstance(op)
 	return detail
 end
 
+-- ============================================================
+-- AI-GENERATED TEXTURES (no publishing, no Marketplace Key)
+-- ============================================================
+-- Roblox never loads textures from external URLs, so Yield ships texture pixels the
+-- same way it ships mesh geometry: the server decodes the generated image into raw
+-- RGBA bytes, and this downloads them and builds an EditableImage locally. The image
+-- then attaches as:
+--   - a PBR SurfaceAppearance on MeshParts        (mode "surface"),
+--   - tiling Texture instances on all six faces of a plain Part (mode "surface"),
+--   - a single flat Decal on one face             (mode "decal" -- signs, posters).
+
+-- Indexing Enum.NormalId with a bad key THROWS in Luau (it does not return nil),
+-- so face names resolve through a lookup table -- same pattern as materialFromName.
+local FACE_LOOKUP = {
+	front = Enum.NormalId.Front, back = Enum.NormalId.Back,
+	top = Enum.NormalId.Top, bottom = Enum.NormalId.Bottom,
+	left = Enum.NormalId.Left, right = Enum.NormalId.Right,
+}
+local function faceFromName(face)
+	if type(face) ~= "string" then
+		return nil
+	end
+	return FACE_LOOKUP[string.lower(face)]
+end
+
+-- Downloads a texture's raw RGBA pixels from Yield and builds a reusable EditableImage.
+local function fetchEditableImage(texId, w, h)
+	w = math.floor(tonumber(w) or 0)
+	h = math.floor(tonumber(h) or 0)
+	if w < 1 or h < 1 or w > 1024 or h > 1024 then
+		error("texture: bad dimensions")
+	end
+	if not (buffer and buffer.fromstring) then
+		error("Texturing needs a newer Roblox Studio (buffer library unavailable) — please update Studio.")
+	end
+	if not (Content and Content.fromObject) then
+		error("Texturing needs a newer Roblox Studio (Content.fromObject unavailable) — please update Studio.")
+	end
+
+	local okReq, response = pcall(function()
+		return HttpService:RequestAsync({
+			Url = API_BASE .. "/texture?id=" .. HttpService:UrlEncode(texId),
+			Method = "GET",
+			Headers = { ["Authorization"] = "Bearer " .. tostring(token) },
+		})
+	end)
+	if not okReq then
+		error("Couldn't download the generated texture: " .. tostring(response))
+	end
+	if not response or not response.Success then
+		error("Texture download failed (HTTP " .. tostring(response and response.StatusCode or "?") .. ") — it may have expired; ask the AI to regenerate it.")
+	end
+	local body = response.Body or ""
+	if #body ~= w * h * 4 then
+		error(("Texture pixel data is the wrong size (%d bytes for %dx%d)"):format(#body, w, h))
+	end
+
+	local okImg, img = pcall(function()
+		return AssetService:CreateEditableImage({ Size = Vector2.new(w, h) })
+	end)
+	if not okImg or not img then
+		error("EditableImage isn't available — update Roblox Studio to a recent version. (" .. tostring(img) .. ")")
+	end
+	img:WritePixelsBuffer(Vector2.zero, Vector2.new(w, h), buffer.fromstring(body))
+	return img
+end
+
+-- Attaches one already-built EditableImage to one BasePart. state.firstSA memoizes
+-- the first SurfaceAppearance so later MeshParts get a cheap Clone() instead of
+-- another CreateSurfaceAppearanceAsync round-trip. Returns true if anything applied.
+local function attachTextureToPart(part, img, mode, face, studsPerTile, state)
+	if mode == "decal" then
+		return (pcall(function()
+			local decal = Instance.new("Decal")
+			local faceEnum = faceFromName(face)
+			if faceEnum then
+				decal.Face = faceEnum
+			end
+			decal.TextureContent = Content.fromObject(img)
+			decal.Parent = part
+		end))
+	end
+	if part:IsA("MeshPart") then
+		return (pcall(function()
+			local existing = part:FindFirstChildOfClass("SurfaceAppearance")
+			if existing then
+				existing:Destroy()
+			end
+			if state.firstSA then
+				state.firstSA:Clone().Parent = part
+			else
+				local appearance = AssetService:CreateSurfaceAppearanceAsync({ ColorMap = Content.fromObject(img) })
+				appearance.Parent = part
+				state.firstSA = appearance
+			end
+		end))
+	end
+	-- Plain Part: SurfaceAppearance only works on MeshParts, so tile the image across
+	-- every face with Texture instances instead.
+	local okAny = false
+	for _, faceEnum in ipairs(Enum.NormalId:GetEnumItems()) do
+		local ok = pcall(function()
+			local tex = Instance.new("Texture")
+			tex.Face = faceEnum
+			tex.TextureContent = Content.fromObject(img)
+			tex.StudsPerTileU = studsPerTile
+			tex.StudsPerTileV = studsPerTile
+			tex.Parent = part
+		end)
+		okAny = okAny or ok
+	end
+	return okAny
+end
+
+local function applyApplyTexture(op)
+	local inst = findExistingAtPath(op.path)
+	if not inst then
+		error("No instance at " .. tostring(op.path))
+	end
+	if type(op.texId) ~= "string" or op.texId == "" then
+		error("apply_texture: missing texId")
+	end
+
+	local parts = {}
+	if inst:IsA("BasePart") then
+		table.insert(parts, inst)
+	else
+		for _, d in ipairs(inst:GetDescendants()) do
+			if d:IsA("BasePart") and #parts < 40 then
+				table.insert(parts, d)
+			end
+		end
+	end
+	if #parts == 0 then
+		error("No parts found at " .. tostring(op.path) .. " to texture")
+	end
+
+	local img = fetchEditableImage(op.texId, op.w, op.h)
+	local studsPerTile = math.max(1, math.min(64, tonumber(op.studsPerTile) or 8))
+	local state = {}
+
+	ChangeHistoryService:SetWaypoint("Yield texture: " .. tostring(op.path))
+	local applied = 0
+	for _, p in ipairs(parts) do
+		if attachTextureToPart(p, img, op.mode, op.face, studsPerTile, state) then
+			applied = applied + 1
+		end
+	end
+	ChangeHistoryService:SetWaypoint("Yield texture: " .. tostring(op.path))
+
+	if applied == 0 then
+		error("Texturing failed on every part at " .. tostring(op.path) .. " — your Studio version may not support EditableImage content yet.")
+	end
+	local detail = ("Textured %d part%s at %s (AI-generated, built locally)"):format(applied, applied == 1 and "" or "s", op.path)
+	logActivity(detail)
+	return detail
+end
+
+-- ============================================================
+-- PLAYTEST (error/warning feedback loop)
+-- ============================================================
+-- Runs the place's server simulation for a few seconds, captures any Errors/Warnings
+-- printed during that window (LogService:GetLogHistory), and best-effort reverts
+-- anything the simulation changed (RunService:Stop() explicitly does NOT do this --
+-- see the RunService.Stop docs -- so a ChangeHistoryService waypoint + Undo is the
+-- only way to leave the place as it was). Runs SERVER scripts + physics; it does NOT
+-- spawn a player Character, so client LocalScripts that need one may not fully run.
+local function applyPlaytest(op)
+	if RunService:IsRunning() then
+		error("A Run/Play session is already active in this place -- stop it first")
+	end
+	local duration = math.max(3, math.min(20, tonumber(op.duration) or 8))
+
+	pcall(function()
+		LogService:ClearOutput()
+	end)
+	ChangeHistoryService:SetWaypoint("Yield playtest")
+
+	local okRun = pcall(function()
+		RunService:Run()
+	end)
+	if not okRun then
+		error("Couldn't start a Run session -- Studio may already be in a state that blocks it")
+	end
+
+	task.wait(duration)
+
+	pcall(function()
+		RunService:Stop()
+	end)
+	-- Best-effort only, NOT a guaranteed clean revert: Undo() pops ONE history entry
+	-- at a time (SetWaypoint just marks a position in that linear stack, it doesn't
+	-- group everything after it into one atomic entry) and a live Run session can
+	-- produce several tracked entries -- so this loops, bounded, while there's
+	-- something left to undo. The bound exists so a playtest that (for whatever
+	-- reason) tracked nothing of its own can't eat into real prior work; if that
+	-- happens anyway, Roblox's own Redo (Ctrl+Y) restores it. This CANNOT undo
+	-- external effects a script made during the run (a real DataStore write, an
+	-- HTTP call, etc.) -- those are permanent regardless.
+	for _ = 1, 25 do
+		local okCanUndo, canUndo = pcall(function()
+			return ChangeHistoryService:GetCanUndo()
+		end)
+		if not okCanUndo or not canUndo then
+			break
+		end
+		local okUndo = pcall(function()
+			ChangeHistoryService:Undo()
+		end)
+		if not okUndo then
+			break
+		end
+	end
+
+	local lines = {}
+	local okHist, history = pcall(function()
+		return LogService:GetLogHistory()
+	end)
+	if okHist and type(history) == "table" then
+		for _, entry in ipairs(history) do
+			-- Field names for GetLogHistory's entries aren't spelled out in the public
+			-- reference -- fall back to positional indices if the dict keys aren't there.
+			local msgType = entry.messageType or entry[2]
+			local isError = msgType == Enum.MessageType.MessageError
+			local isWarning = msgType == Enum.MessageType.MessageWarning
+			if isError or isWarning then
+				local text = tostring(entry.message or entry[1] or "")
+				table.insert(lines, (isError and "ERROR: " or "WARN: ") .. text)
+				if #lines >= 40 then
+					break
+				end
+			end
+		end
+	end
+
+	local detail
+	if #lines == 0 then
+		detail = ("Playtested %ds (server simulation) -- no errors or warnings"):format(duration)
+	else
+		detail = ("Playtested %ds -- %d issue(s):\n"):format(duration, #lines) .. table.concat(lines, "\n")
+	end
+	logActivity(("Playtested %ds -- %s"):format(duration, #lines == 0 and "clean" or (#lines .. " issue(s)")))
+	return detail:sub(1, 3800)
+end
+
+-- Safety net for applyPlaytest: pcall only catches RAISED Lua errors, not this
+-- coroutine being forcibly torn down mid-task.wait (plugin disabled/reloaded --
+-- routine during local development via file-sync, or a Studio-triggered plugin
+-- update landing mid-playtest). Without this, RunService:Run() could be left
+-- active forever with no code path left to stop it. Runs on ANY plugin teardown,
+-- not just ones applyPlaytest caused, since it's a strictly-safe no-op otherwise.
+plugin.Unloading:Connect(function()
+	if RunService:IsRunning() then
+		pcall(function()
+			RunService:Stop()
+		end)
+	end
+end)
+
 -- Builds a MeshPart LOCALLY from raw geometry via EditableMesh — NO asset upload, NO
 -- publishing, NO Open Cloud key. This is how Yield inserts AI-3D-generated meshes
 -- without needing the user to publish anything: the server parses the generated .glb
@@ -1040,107 +1301,20 @@ local function applyCreateMesh(op)
 	pcall(function()
 		meshPart:SetAttribute("YieldMap", true)
 	end)
-	-- Optional AI-generated texture (a live https image URL) — the engine fetches +
-	-- decodes it itself via Content.fromUri, no local image decoding needed. Best
-	-- effort: a failed/unsupported texture never fails the mesh build itself.
-	if type(op.colorMapUrl) == "string" and op.colorMapUrl ~= "" and Content and Content.fromUri then
+	-- Optional AI-generated texture: raw RGBA pixels downloaded from Yield and built
+	-- into an EditableImage locally (no upload, no publishing — the same machinery as
+	-- the mesh itself). Best effort: a failed texture never fails the mesh build.
+	if type(op.texId) == "string" and op.texId ~= "" then
 		pcall(function()
-			local appearance = AssetService:CreateSurfaceAppearanceAsync({ ColorMap = Content.fromUri(op.colorMapUrl) })
-			if appearance then
-				appearance.Parent = meshPart
-			end
+			local img = fetchEditableImage(op.texId, op.texW, op.texH)
+			local appearance = AssetService:CreateSurfaceAppearanceAsync({ ColorMap = Content.fromObject(img) })
+			appearance.Parent = meshPart
 		end)
 	end
 	meshPart.Parent = Workspace
 
 	ChangeHistoryService:SetWaypoint("Yield build mesh")
 	local detail = ("Built mesh '%s' locally — %d verts, %d tris (no upload)"):format(meshPart.Name, n, added)
-	logActivity(detail)
-	return detail
-end
-
--- Applies an AI-generated texture (a live https image URL) to an EXISTING Part /
--- MeshPart / Model as either a full PBR SurfaceAppearance (mode "surface", the
--- default -- walls, ground, props, character skins) or a single flat Decal on one
--- face (mode "decal" -- signs, screens, posters). Content.fromUri hands the URL to
--- the engine, which fetches + decodes it -- no local image decoding, no asset
--- upload, no publishing needed, exactly like create_mesh needs no publishing.
-local function applyTextureToPart(part, url, mode, face)
-	if mode == "decal" then
-		local decal = part:FindFirstChildOfClass("Decal") or Instance.new("Decal")
-		if type(face) == "string" and face ~= "" then
-			pcall(function()
-				decal.Face = Enum.NormalId[face]
-			end)
-		end
-		local okC = pcall(function()
-			decal.ColorMapContent = Content.fromUri(url)
-		end)
-		if not okC then
-			-- Older Studio without the Content-typed property -- the deprecated
-			-- string ContentId property still accepts a plain http(s) URL.
-			pcall(function()
-				decal.Texture = url
-			end)
-		end
-		decal.Parent = part
-		return true
-	end
-	local okSA, appearance = pcall(function()
-		return AssetService:CreateSurfaceAppearanceAsync({ ColorMap = Content.fromUri(url) })
-	end)
-	if not okSA or not appearance then
-		return false
-	end
-	local existing = part:FindFirstChildOfClass("SurfaceAppearance")
-	if existing then
-		existing:Destroy()
-	end
-	appearance.Parent = part
-	return true
-end
-
-local function applyApplyTexture(op)
-	local inst = findExistingAtPath(op.path)
-	if not inst then
-		error("No instance at " .. tostring(op.path))
-	end
-	local url = op.colorMapUrl or op.url
-	if type(url) ~= "string" or url == "" then
-		error("apply_texture: missing colorMapUrl")
-	end
-	if not Content or not Content.fromUri then
-		error("Texturing needs a newer Roblox Studio version (Content.fromUri unavailable)")
-	end
-
-	ChangeHistoryService:SetWaypoint("Yield texture: " .. tostring(op.path))
-
-	local parts = {}
-	if inst:IsA("BasePart") then
-		table.insert(parts, inst)
-	else
-		for _, d in ipairs(inst:GetDescendants()) do
-			if d:IsA("BasePart") and #parts < 40 then
-				table.insert(parts, d)
-			end
-		end
-	end
-	if #parts == 0 then
-		error("No parts found at " .. tostring(op.path) .. " to texture")
-	end
-
-	local applied = 0
-	for _, p in ipairs(parts) do
-		if applyTextureToPart(p, url, op.mode, op.face) then
-			applied = applied + 1
-		end
-	end
-
-	ChangeHistoryService:SetWaypoint("Yield texture: " .. tostring(op.path))
-	if applied == 0 then
-		error("Texturing failed on every part at " .. tostring(op.path))
-	end
-	local detail = ("Textured %d part%s at %s"):format(applied, applied == 1 and "" or "s", op.path)
 	logActivity(detail)
 	return detail
 end
@@ -1239,6 +1413,8 @@ local function performSync()
 				detail = applyCreateMesh(op)
 			elseif op.type == "apply_texture" then
 				detail = applyApplyTexture(op)
+			elseif op.type == "playtest" then
+				detail = applyPlaytest(op)
 			elseif op.type == "set_properties" then
 				detail = applySetProperties(op)
 			elseif op.type == "create_instance" then

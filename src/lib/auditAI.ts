@@ -20,7 +20,7 @@ import type { AuditFinding, AuditInput, AuditLevel, Severity } from './audit';
 const AUDIT_PREFERRED = [
   'claude-sonnet-5-free', 'claude-fable-5-free',
   'nemotron-3-ultra', 'deepseek-v4-pro', 'qwen3.5-397b', 'qwen3-coder',
-  'kimi-k2.6', 'glm-5.1', 'qwen3.5-122b', 'minimax-m3',
+  'kimi-k2.6', 'glm-5.2', 'qwen3.5-122b', 'minimax-m3',
   'deepseek-v4-flash', 'step-3.7-flash', 'gemma-4-31b', 'laguna-m1', 'glm-4.7-flash-free',
 ];
 export const AUDIT_MODELS: string[] = [

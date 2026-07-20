@@ -190,15 +190,16 @@ export const CODER_MODELS: ModelDef[] = [
     provider: { apiKeyEnv: 'DEEPSEEK_PRO_API_KEY' },
   },
   {
-    id: 'glm-5.1',
-    label: 'GLM 5.1',
-    modelId: 'z-ai/glm-5.1',
+    id: 'glm-5.2',
+    label: 'GLM 5.2',
+    modelId: 'z-ai/glm-5.2',
     role: 'coder',
-    tier: 'standard',
+    tier: 'pro',
     speed: 3,
-    blurb: 'Reliable all-rounder with clean, idiomatic output.',
-    pros: ['Dependable all-rounder', 'Clean, idiomatic code', 'Good instruction-following'],
-    cons: ['Rarely the single best at extremes', 'Middle-of-the-road speed'],
+    blurb: 'Latest GLM — sharper reasoning and stronger multi-file coding.',
+    pros: ['Strong reasoning & code quality', 'Great on larger, multi-file apps', 'Clean, idiomatic output'],
+    cons: ['Heavier than the flash models', 'Overkill for tiny tweaks'],
+    // NVIDIA endpoint (default base URL); key resolves from GLM_API_KEY or NVIDIA_API_KEY.
     provider: { apiKeyEnv: 'GLM_API_KEY' },
   },
   {
@@ -408,7 +409,7 @@ export function activeCoderModels(env: Env): ModelDef[] {
 
 /** Apply optional runtime overrides of modelId via a MODEL_OVERRIDES JSON var. */
 export function resolveModel(id: string, overridesJson?: string): ModelDef {
-  const base = BY_ID[id] ?? BY_ID['glm-5.1']; // safe default
+  const base = BY_ID[id] ?? BY_ID['glm-5.2']; // safe default
   if (!overridesJson) return base;
   try {
     const overrides = JSON.parse(overridesJson) as Record<string, string>;

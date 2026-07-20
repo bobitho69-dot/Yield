@@ -257,7 +257,7 @@ async function aiFixCore(env: Ctx['env'], path: string, content: string, finding
   const sys = `You are a senior security engineer. The given file "${path}" contains the following ${plural ? 'vulnerabilities' : 'vulnerability'}:\n${list}\nReturn the COMPLETE corrected contents of the file that fixes ${plural ? 'ALL of the above' : 'this vulnerability'} while preserving all other behavior, structure, and style. Output ONLY the full file content — no markdown fences, no commentary.`;
   const auditKey = env.YIELDNVIDIAAIKEY || env.NVIDIA_API_KEY;
   // Best security/coder models first — Claude Sonnet 5 & Fable 5 lead — then strong fallbacks.
-  // Try each until one returns a usable rewrite. (GLM 5.1's upstream id is gone, so it's dropped.)
+  // Try each until one returns a usable rewrite.
   for (const id of ['claude-sonnet-5-free', 'nemotron-3-ultra', 'deepseek-v4-pro', 'claude-fable-5-free', 'deepseek-v4-flash']) {
     try {
       const m = resolveModel(id);

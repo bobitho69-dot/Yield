@@ -13,6 +13,8 @@ import { error, json } from './lib/response';
 import { getOrCreateDeviceId, readSession } from './lib/auth';
 import { ensureGuestUser, getProject } from './lib/db';
 import { handleGenerate, handleRoute } from './routes/generate';
+import { handleChat } from './routes/chat';
+import { handleCode } from './routes/code';
 import { handleProjects, serveProjectFile } from './routes/projects';
 import { handleAuth } from './routes/authRoutes';
 import { handleBilling } from './routes/billingRoutes';
@@ -59,6 +61,10 @@ export default {
       else if (path === '/api/models') res = handleModels(c);
       else if (path === '/api/status') res = await handleStatus(c);
       else if (path === '/api/generate' && request.method === 'POST') res = await handleGenerate(request, c);
+      else if (path === '/api/chat' && request.method === 'POST') res = await handleChat(request, c);
+      else if (path.startsWith('/api/code')) {
+        res = await handleCode(request, c, path.slice('/api/code/'.length).replace(/\/$/, ''));
+      }
       else if (path === '/api/route' && request.method === 'POST') res = await handleRoute(request, c);
       else if (path.startsWith('/api/auth/')) {
         const [, , , provider, action] = path.split('/'); // /api/auth/:provider/:action

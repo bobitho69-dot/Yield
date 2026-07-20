@@ -135,6 +135,72 @@ export async function getCommitFiles(token: string, fullName: string, sha: strin
   return files;
 }
 
+// Resolve a branch to the SHA its head commit points at (null if the branch/repo is
+// unreachable). Used to read a whole branch's file tree for Yield Code.
+export async function branchHeadSha(token: string, fullName: string, branch: string): Promise<string | null> {
+  const [owner, repo] = fullName.split('/');
+  const r = await gh(token, `/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=1`);
+  if (!r.ok) return null;
+  const arr = (await r.json().catch(() => [])) as any[];
+  return arr[0]?.sha ?? null;
+}
+
+// A single entry in a repo's file tree (path + whether it's a text blob we can read).
+export interface RepoTreeEntry { path: string; type: 'blob' | 'tree'; size?: number }
+
+// List every path in a branch's tree (files + folders), so Yield Code can show a real
+// file explorer without downloading every blob. Capped; skips Yield runtime data.
+export async function listRepoTree(token: string, fullName: string, branch: string): Promise<RepoTreeEntry[]> {
+  const sha = await branchHeadSha(token, fullName, branch);
+  if (!sha) return [];
+  const [owner, repo] = fullName.split('/');
+  const tr = await gh(token, `/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`);
+  if (!tr.ok) return [];
+  const tree: any = await tr.json();
+  return (tree.tree || [])
+    .filter((t: any) => (t.type === 'blob' || t.type === 'tree') && !t.path.startsWith('.yield/data/'))
+    .slice(0, 2000)
+    .map((t: any) => ({ path: t.path, type: t.type, size: t.size }));
+}
+
+// Read the readable source files of a branch (skips binaries, lockfiles, and huge files),
+// so Yield Code can load a repo's code as context. Caps count + total bytes to stay within
+// the model's context and the Worker's limits.
+export async function readRepoFiles(
+  token: string, fullName: string, branch: string,
+  opts: { maxFiles?: number; maxBytes?: number } = {},
+): Promise<{ path: string; content: string }[]> {
+  const sha = await branchHeadSha(token, fullName, branch);
+  if (!sha) return [];
+  const [owner, repo] = fullName.split('/');
+  const tr = await gh(token, `/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`);
+  if (!tr.ok) return [];
+  const tree: any = await tr.json();
+  const SKIP = /(^|\/)(node_modules|dist|build|\.git|vendor|\.next|\.venv|__pycache__|target)\//i;
+  const BINARY = /\.(png|jpe?g|gif|webp|ico|svg|pdf|zip|gz|tgz|tar|mp4|mov|webm|mp3|wav|woff2?|ttf|eot|otf|wasm|bin|lock|map|min\.js|min\.css)$/i;
+  const maxFiles = opts.maxFiles ?? 60;
+  const maxBytes = opts.maxBytes ?? 400_000;
+  const blobs = (tree.tree || [])
+    .filter((t: any) => t.type === 'blob' && !t.path.startsWith('.yield/data/') && t.path !== 'README.md')
+    .filter((t: any) => !SKIP.test('/' + t.path) && !BINARY.test(t.path))
+    .filter((t: any) => !t.size || t.size <= 100_000)
+    .sort((a: any, b: any) => (a.size || 0) - (b.size || 0)); // prefer smaller, more-signal files first
+  const files: { path: string; content: string }[] = [];
+  let total = 0;
+  for (const b of blobs) {
+    if (files.length >= maxFiles || total >= maxBytes) break;
+    const br = await gh(token, `/repos/${owner}/${repo}/git/blobs/${b.sha}`);
+    if (!br.ok) continue;
+    const blob: any = await br.json();
+    if (typeof blob.content !== 'string') continue;
+    const content = DEC.decode(unb64(blob.content.replace(/\n/g, '')));
+    if (/\x00/.test(content.slice(0, 1000))) continue; // NUL byte → binary, skip
+    total += content.length;
+    files.push({ path: b.path, content });
+  }
+  return files;
+}
+
 async function putFile(
   token: string, owner: string, repo: string, path: string, content: string, message: string, branch: string,
 ): Promise<void> {

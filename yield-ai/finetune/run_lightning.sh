@@ -37,16 +37,16 @@ echo " • No key yet?  https://huggingface.co/settings/tokens  (type: Read)"
 echo " • First click 'Agree' once here so the download works:"
 echo "     https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2"
 echo "══════════════════════════════════════════════════════════════"
-# Prefer a token from the environment (most reliable — no interactive prompt needed):
-#     export HF_TOKEN=hf_xxx    then re-run this script.
+# Prefer a token from the environment (most reliable — no CLI/prompt needed; huggingface_hub
+# reads HF_TOKEN automatically):  export HF_TOKEN=hf_xxx  then re-run this script.
 if [ -n "${HF_TOKEN:-}" ]; then
   echo "Using HF_TOKEN from the environment."
-  huggingface-cli login --token "$HF_TOKEN" --add-to-git-credential >/dev/null 2>&1 || true
 elif python -c "from huggingface_hub import HfApi; HfApi().whoami()" >/dev/null 2>&1; then
   echo "Already logged in to Hugging Face — continuing."
 else
-  echo "If no prompt appears below, press Ctrl+C and run:  export HF_TOKEN=hf_xxx  then re-run."
-  huggingface-cli login
+  echo "Log in to Hugging Face below (or press Ctrl+C and run:  export HF_TOKEN=hf_xxx  then re-run)."
+  # 'hf' is the current Hugging Face CLI (huggingface-cli is deprecated); fall back on older envs.
+  hf auth login 2>/dev/null || huggingface-cli login
 fi
 # Verify we're actually authenticated before spending time downloading a gated model.
 if ! python -c "from huggingface_hub import HfApi; HfApi().whoami()" >/dev/null 2>&1; then

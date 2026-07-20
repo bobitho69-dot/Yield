@@ -18,6 +18,12 @@ export type ModelRole = 'coder' | 'router' | 'guard';
 export interface ProviderConfig {
   /** OpenAI-compatible base URL. Defaults to env.NVIDIA_CHAT_BASE. */
   baseUrl?: string;
+  /**
+   * Name of an env var holding THIS AI's base URL, resolved at request time. Used for a
+   * SELF-HOSTED model (e.g. Yield AI) whose endpoint isn't known until you stand up the
+   * server. Takes effect when `baseUrl` isn't a static string. Falls back to NVIDIA_CHAT_BASE.
+   */
+  baseUrlEnv?: string;
   /** Name of the env var holding THIS AI's key. Falls back to NVIDIA_API_KEY. */
   apiKeyEnv: string;
 }
@@ -28,6 +34,12 @@ export interface ModelDef {
   label: string;
   /** Model id sent to the provider endpoint (the REAL NVIDIA catalog id). */
   modelId: string;
+  /**
+   * Name of an env var holding the served model id, resolved at request time. For a
+   * SELF-HOSTED model (Yield AI) whose served name you choose when you launch the server
+   * (e.g. `--served-model-name yield-ai`). Falls back to `modelId` when unset.
+   */
+  modelIdEnv?: string;
   /**
    * Name to look the API key up under, in addition to apiKeyEnv. Set this to the
    * secret name you created (often the old model id) so keys still resolve even
@@ -62,6 +74,30 @@ export interface ModelDef {
 // endpoint/key. Model ids are ZenMux "provider/model-name" slugs (free tier ends "-free").
 const ZENMUX_BASE = 'https://zenmux.ai/api/v1';
 const zenmux = (): ProviderConfig => ({ apiKeyEnv: 'ZEMUZAPI', baseUrl: ZENMUX_BASE });
+
+// ─── Yield AI — the first-party, in-house model ────────────────────────────────
+// This is NOT a third-party API. It's Yield's OWN model, self-hosted on hardware YOU
+// control (a rented cloud GPU running vLLM — see /yield-ai). The app talks only to your
+// server: no external AI provider is involved. Its endpoint + served id aren't known
+// until you stand the server up, so both resolve from env at request time:
+//   YIELD_AI_BASE_URL   e.g. https://<your-gpu-host>:8000/v1   (OpenAI-compatible)
+//   YIELD_AI_API_KEY    the key you pass vLLM's --api-key (optional; blank if none)
+//   YIELD_AI_MODEL_ID   the --served-model-name you launched with (default: yield-ai)
+// Until YIELD_AI_BASE_URL is set it's hidden from the picker (see activeCoderModels),
+// so it never shows as a broken option before the server exists.
+export const YIELD_AI_MODEL: ModelDef = {
+  id: 'yield-ai',
+  label: 'Yield AI',
+  modelId: 'yield-ai',
+  modelIdEnv: 'YIELD_AI_MODEL_ID',
+  role: 'coder',
+  tier: 'pro',
+  speed: 3,
+  blurb: "Yield's own in-house model — self-hosted and private, no third-party AI provider.",
+  pros: ['In-house & private — runs on your own server', 'No external AI API involved', 'Yours to fine-tune and specialize'],
+  cons: ['Needs your Yield AI server running (a GPU)', 'Quality scales with the hardware you give it'],
+  provider: { apiKeyEnv: 'YIELD_AI_API_KEY', baseUrlEnv: 'YIELD_AI_BASE_URL' },
+};
 
 export const CODER_MODELS: ModelDef[] = [
   {
@@ -326,8 +362,22 @@ export function visionEndpoint(env: Env): { baseUrl: string; apiKey: string; api
 }
 
 const BY_ID: Record<string, ModelDef> = Object.fromEntries(
-  [...CODER_MODELS, ROUTER_MODEL, GUARD_MODEL].map((m) => [m.id, m]),
+  [...CODER_MODELS, YIELD_AI_MODEL, ROUTER_MODEL, GUARD_MODEL].map((m) => [m.id, m]),
 );
+
+/** True once the self-hosted Yield AI endpoint is configured (YIELD_AI_BASE_URL set). */
+export function isYieldAIConfigured(env: Env): boolean {
+  return !!(envGet(env, 'YIELD_AI_BASE_URL') || '').trim();
+}
+
+/**
+ * The coder models that are actually offered right now. Yield AI (the in-house model) is
+ * prepended — featured first — ONLY when its server is configured; otherwise it's omitted
+ * so it never appears as a dead option. Everything else is the standard hosted roster.
+ */
+export function activeCoderModels(env: Env): ModelDef[] {
+  return isYieldAIConfigured(env) ? [YIELD_AI_MODEL, ...CODER_MODELS] : CODER_MODELS;
+}
 
 /** Apply optional runtime overrides of modelId via a MODEL_OVERRIDES JSON var. */
 export function resolveModel(id: string, overridesJson?: string): ModelDef {
@@ -351,13 +401,19 @@ export function keyFor(env: Env, apiKeyEnv: string): string {
   return envGet(env, apiKeyEnv) || env.NVIDIA_API_KEY;
 }
 
+/** A model lives on its own endpoint (not the shared NVIDIA one) when it declares a
+ *  static baseUrl OR an env-resolved one (self-hosted). */
+function hasOwnEndpoint(model: ModelDef): boolean {
+  return !!(model.provider.baseUrl || model.provider.baseUrlEnv);
+}
+
 /**
  * Resolve a model's API key. The whole NVIDIA catalog shares NVIDIA_API_KEY (no
- * per-model keys). Models on a DIFFERENT provider endpoint (e.g. OpenRouter) use that
- * provider's key, falling back to the NVIDIA key.
+ * per-model keys). Models on a DIFFERENT provider endpoint (e.g. OpenRouter, or the
+ * self-hosted Yield AI) use that provider's key, falling back to the NVIDIA key.
  */
 export function keyForModel(env: Env, model: ModelDef): string {
-  if (model.provider.baseUrl) return envGet(env, model.provider.apiKeyEnv) || env.NVIDIA_API_KEY;
+  if (hasOwnEndpoint(model)) return envGet(env, model.provider.apiKeyEnv) || env.NVIDIA_API_KEY;
   return env.NVIDIA_API_KEY;
 }
 
@@ -369,9 +425,18 @@ export function keyForModel(env: Env, model: ModelDef): string {
 export type Endpoint = { baseUrl: string; apiKey: string; apiKeyBackup?: string; modelId: string };
 
 export function endpointFor(env: Env, model: ModelDef): Endpoint {
-  const baseUrl = model.provider.baseUrl || env.NVIDIA_CHAT_BASE;
-  const apiKeyBackup = model.provider.baseUrl ? undefined : (env.NVIDIA_API_KEY_BACKUP || undefined);
-  return { baseUrl, apiKey: keyForModel(env, model), apiKeyBackup, modelId: model.modelId };
+  // Base URL: a static provider URL, else an env-resolved one (self-hosted Yield AI),
+  // else NVIDIA's shared endpoint.
+  const baseUrl =
+    model.provider.baseUrl ||
+    (model.provider.baseUrlEnv ? (envGet(env, model.provider.baseUrlEnv) || '').trim() : '') ||
+    env.NVIDIA_CHAT_BASE;
+  // The NVIDIA backup key only makes sense on the NVIDIA endpoint.
+  const apiKeyBackup = hasOwnEndpoint(model) ? undefined : (env.NVIDIA_API_KEY_BACKUP || undefined);
+  // Served model id: an env-provided name (self-hosted --served-model-name) wins over the
+  // static default so the same def works whatever you launched the server as.
+  const modelId = (model.modelIdEnv ? (envGet(env, model.modelIdEnv) || '').trim() : '') || model.modelId;
+  return { baseUrl, apiKey: keyForModel(env, model), apiKeyBackup, modelId };
 }
 
 /**
@@ -390,9 +455,12 @@ export function endpointsFor(env: Env, model: ModelDef): Endpoint[] {
   return chain;
 }
 
-/** Public list for the model picker (Auto + coder models, with pros/cons). */
-export function pickerModels() {
-  return [{ ...ROUTER_MODEL, internal: false }, ...CODER_MODELS].map(
+/** Public list for the model picker (Auto + coder models, with pros/cons). When `env`
+ *  is given, the in-house Yield AI is included (featured first) once its server is
+ *  configured; without `env`, the standard hosted roster is returned. */
+export function pickerModels(env?: Env) {
+  const coders = env ? activeCoderModels(env) : CODER_MODELS;
+  return [{ ...ROUTER_MODEL, internal: false }, ...coders].map(
     ({ id, label, blurb, tier, speed, pros, cons }) => ({ id, label, blurb, tier, speed, pros, cons }),
   );
 }

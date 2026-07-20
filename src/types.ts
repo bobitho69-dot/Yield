@@ -46,6 +46,16 @@ export interface Env {
   // ZenMux with the ZEMUZAPI key. Vision/image models are used ONLY here, never as coders.
   VISION_MODEL?: string;
 
+  // ── Yield AI — the in-house, self-hosted model (see /yield-ai) ────────────────
+  // The OpenAI-compatible base URL of YOUR own model server (vLLM on a rented GPU),
+  // e.g. "https://<host>:8000/v1". Set it and "Yield AI" appears in the picker; leave
+  // it blank and the model is hidden (no dead option). This is your own box — no
+  // third-party AI provider is involved.
+  YIELD_AI_BASE_URL?: string;
+  // The served model name you launched the server with (vLLM --served-model-name).
+  // Defaults to "yield-ai" when unset.
+  YIELD_AI_MODEL_ID?: string;
+
   // Secrets
   NVIDIA_API_KEY: string;         // the single key for the whole NVIDIA catalog (every model)
   NVIDIA_API_KEY_BACKUP?: string; // optional 2nd NVIDIA key; used automatically on a 429/402 (rate-limit/quota)
@@ -61,6 +71,11 @@ export interface Env {
   // models (Claude Sonnet 5 / Fable 5, GLM 4.7 Flash, Step 3.7 Flash) and the ZenMux
   // vision models (GLM-4.6V, Gemini image) when VISION_MODEL points at one. Optional.
   ZEMUZAPI?: string;
+
+  // Yield AI (in-house model): the API key your model server expects, i.e. the value you
+  // passed vLLM's `--api-key`. Optional — leave unset if your server has no auth. This is
+  // YOUR server's key, not a third-party provider key.
+  YIELD_AI_API_KEY?: string;
 
   // Secret used to sign/verify GitHub webhooks for continuous monitoring (scan-on-push).
   GITHUB_WEBHOOK_SECRET?: string;

@@ -12,7 +12,7 @@ import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
 import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, endpointsFor, visionEndpoint, type ModelDef } from '../config/models';
 import { chat, chatStream, type ContentPart } from '../lib/nvidia';
-import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, ENHANCE_SYSTEM, routerSystem } from '../lib/prompts';
+import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, ENHANCE_SYSTEM, YIELD_AI_IDENTITY, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import { verifyFiles } from '../lib/verify';
 import {
@@ -830,6 +830,9 @@ export async function runBuild(
       { role: 'system', content: CONVO_SYSTEM },
       { role: 'system', content: PLATFORM_GUIDE },
     ];
+    // When the user picked the in-house Yield AI, give it its own identity so it presents
+    // as Yield's own model rather than whatever base model is serving it.
+    if (model.id === 'yield-ai') messages.push({ role: 'system', content: YIELD_AI_IDENTITY });
     if (project) {
       const curFiles = await getProjectFiles(c.env, project);
       if (curFiles.length) {

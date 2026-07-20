@@ -1,0 +1,9 @@
+# Local server config (may contain your API key) — never commit
+.env
+
+# Fine-tuning generated artifacts
+finetune/data/
+finetune/out/
+finetune/**/__pycache__/
+__pycache__/
+*.pyc

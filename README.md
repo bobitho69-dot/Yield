@@ -71,6 +71,35 @@ if a model id is off, calls automatically fall back to a working model).
 
 ---
 
+## ◆ Yield AI — your own in-house model
+
+Every model above is a third-party API. **Yield AI is different: it's a model you self-host on a GPU you
+control**, served behind an OpenAI-compatible endpoint — no external AI provider in the loop. It shows up in
+the model picker as **"Yield AI"** (featured first), presents itself with Yield's own identity, and can be
+fine-tuned into a checkpoint that's genuinely yours.
+
+Turn it on by pointing Yield at your server — that's the only trigger:
+
+```toml
+# wrangler.toml [vars]
+YIELD_AI_BASE_URL = "https://<your-gpu-host>/v1"   # your server; blank = Yield AI hidden
+YIELD_AI_MODEL_ID = "yield-ai"                       # the --served-model-name you launched with
+```
+```bash
+wrangler secret put YIELD_AI_API_KEY    # only if your server uses --api-key
+```
+
+The full "rent a GPU → run the server → wire it in → verify" walkthrough, a model/GPU cost table, Docker/vLLM
+and Ollama recipes, honest quality expectations, and an optional **LoRA fine-tuning pipeline** live in
+**[`yield-ai/`](yield-ai/README.md)**.
+
+> Reality check: this serves (and optionally fine-tunes) a top **open-weights** model as your own — it is not
+> from-scratch pretraining, and it competes in the "excellent open model" tier, not automatically above the
+> frontier labs. The win is that it's **private, branded, tunable, and yours**. See the folder README for the
+> straight talk.
+
+---
+
 ## ☑️ Keys / accounts you need to create
 
 Put keys in `wrangler secret put …` (production) or `.dev.vars` (local). See `.dev.vars.example`.

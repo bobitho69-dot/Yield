@@ -5,14 +5,14 @@
 
 import type { Ctx } from '../types';
 import { json } from '../lib/response';
-import { CODER_MODELS, ROUTER_MODEL, endpointFor, pickerModels, visionEndpoint } from '../config/models';
+import { activeCoderModels, ROUTER_MODEL, endpointFor, pickerModels, visionEndpoint } from '../config/models';
 import { getUsageState, usageSnapshot } from '../lib/usage';
 import { enabledProviders } from '../lib/auth';
 import { chat } from '../lib/nvidia';
 import { checkPrompt } from '../lib/jailbreak';
 
-export function handleModels(): Response {
-  return json({ models: pickerModels() });
+export function handleModels(c: Ctx): Response {
+  return json({ models: pickerModels(c.env) });
 }
 
 export async function handleStatus(c: Ctx): Promise<Response> {
@@ -70,7 +70,8 @@ async function probeModels(c: Ctx): Promise<ModelHealth[]> {
     if (hit) return await hit.json();
   } catch { /* probe fresh */ }
 
-  const coders = CODER_MODELS.map((m) => probeChat(m.id, m.label, 'coder', endpointFor(c.env, m)));
+  // Probe every offered coder — including the in-house Yield AI when its server is up.
+  const coders = activeCoderModels(c.env).map((m) => probeChat(m.id, m.label, 'coder', endpointFor(c.env, m)));
 
   // Utility AIs: the Auto router + the vision (image-understanding) model share the chat
   // probe; the jailbreak guard has its own classify API, so probe it via checkPrompt.

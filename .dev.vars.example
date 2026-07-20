@@ -50,6 +50,13 @@ ROBLOX_CLIENT_SECRET=
 STRIPE_SECRET_KEY=sk_test_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx
 
+# --- Yield AI — your OWN in-house model (optional) -----------------------------
+# Yield AI is NOT a third-party API: it's a model you self-host on a GPU you control.
+# See the /yield-ai folder for the full setup. Once your server is up, set the base URL
+# in wrangler.toml [vars] (YIELD_AI_BASE_URL) — that alone makes "Yield AI" appear in the
+# picker. Only set the key here/as a secret if you launched vLLM with --api-key.
+YIELD_AI_API_KEY=        # your Yield AI server's key (blank if the server has no auth)
+
 # --- AI image generation (optional) --------------------------------------------
 # Endpoint URL goes in wrangler.toml [vars] (IMAGE_API_URL); the key is a secret.
 # Leave blank to reuse NVIDIA_API_KEY for NVIDIA FLUX image generation.

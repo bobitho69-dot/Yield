@@ -8,6 +8,10 @@
   <meta property="og:title" content="Yield — Build full apps by chatting. Free." />
   <meta property="og:description" content="Describe an app, watch it build live. Multi-file, AI agents, your code on GitHub, version history — free." />
   <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#0a0c11" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body class="landing">
@@ -103,9 +107,9 @@
         </a>
         <a class="surface-card" href="/download">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-          <h3>Desktop apps</h3>
-          <p>Get Yield for macOS and Windows — Code, Chat, and the app builder in one native app. Download the .dmg or .exe, or use everything free on the web.</p>
-          <span class="surface-go">Download for Mac &amp; Windows →</span>
+          <h3>Get the app</h3>
+          <p>Install Yield as a real app — Chat and Code in one window, on Mac, Windows, Linux and your phone. It installs straight from the browser, no app store.</p>
+          <span class="surface-go">Install the app →</span>
         </a>
       </div>
     </section>
@@ -346,6 +350,10 @@
       el.innerHTML = (models || []).map(m =>
         `<div class="chip"><b>${m.label}</b><span>${m.blurb || ''}</span></div>`).join('');
     }).catch(() => {});
+    // Register the service worker so Yield is installable as an app (PWA).
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+    }
   </script>
 </body>
 </html>

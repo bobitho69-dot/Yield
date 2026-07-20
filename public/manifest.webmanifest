@@ -1,0 +1,24 @@
+{
+  "name": "Yield — Chat & Code",
+  "short_name": "Yield",
+  "description": "Chat with AI and code on your GitHub repos — one app. Free.",
+  "id": "/workspace",
+  "start_url": "/workspace?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#0a0c11",
+  "theme_color": "#0a0c11",
+  "orientation": "any",
+  "categories": ["developer", "productivity", "utilities"],
+  "icons": [
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Chat", "short_name": "Chat", "url": "/workspace?view=chat", "description": "Talk to the AI" },
+    { "name": "Code", "short_name": "Code", "url": "/workspace?view=code", "description": "Code on your repos" },
+    { "name": "Build an app", "short_name": "Build", "url": "/app", "description": "Build a web app from a prompt" }
+  ]
+}

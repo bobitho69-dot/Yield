@@ -5,9 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Yield Code — the agentic coder. Free.</title>
   <meta name="description" content="Yield Code is Yield's answer to Claude Code — an autonomous coding agent that connects to your GitHub repo (or a Yield project), makes real multi-file changes, launches agents, uses MCP servers, and commits for you. On the web, and as a Mac & Windows app." />
+  <meta name="theme-color" content="#0a0c11" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <script>try{if(new URLSearchParams(location.search).has('embed')||window.top!==window.self)document.documentElement.classList.add('embed');}catch(e){document.documentElement.classList.add('embed');}</script>
   <link rel="stylesheet" href="/styles.css" />
   <style>
     /* ---------- Yield Code ---------- */
+    /* Embedded inside the Yield workspace shell: drop the page's own brand + nav links,
+       but keep the GitHub connection status (it's essential to Code). */
+    html.embed .yc-brand, html.embed .yc-toplinks { display: none; }
+    html.embed .yc-top { padding-top: .4rem; padding-bottom: .4rem; }
     .codeapp { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
     .yc-top { display: flex; align-items: center; gap: 1rem; padding: .55rem 1rem; border-bottom: 1px solid var(--line); background: var(--bg-2); }
     .yc-brand { display: flex; align-items: center; gap: .5rem; font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }

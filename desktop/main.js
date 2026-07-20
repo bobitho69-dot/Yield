@@ -11,7 +11,7 @@ const path = require('path');
 
 // The Yield deployment the desktop app loads. Override at runtime:  YIELD_URL=https://your-yield.workers.dev
 const APP_URL = (process.env.YIELD_URL || 'https://yield.example.workers.dev').replace(/\/+$/, '');
-const ROUTES = { code: '/code', chat: '/chat', build: '/app', security: '/security', download: '/download' };
+const ROUTES = { workspace: '/workspace', code: '/code', chat: '/chat', build: '/app', security: '/security', download: '/download' };
 
 let win = null;
 
@@ -32,7 +32,7 @@ function createWindow() {
     },
   });
 
-  go('code');
+  go('workspace');
 
   // Open external links (github.com, docs, download) in the user's real browser,
   // but keep Yield navigation inside the app window.
@@ -82,6 +82,7 @@ function buildMenu() {
     {
       label: 'Go',
       submenu: [
+        { label: 'Workspace (Chat + Code)', accelerator: 'CmdOrCtrl+0', click: () => go('workspace') },
         { label: 'Yield Code', accelerator: 'CmdOrCtrl+1', click: () => go('code') },
         { label: 'Yield Chat', accelerator: 'CmdOrCtrl+2', click: () => go('chat') },
         { label: 'App Builder', accelerator: 'CmdOrCtrl+3', click: () => go('build') },

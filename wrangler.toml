@@ -151,10 +151,10 @@ VISION_MODEL = "qwen/qwen3.5-397b-a17b"
 #      (set YIELD_AI_API_KEY as a real secret if the server uses --api-key)
 #
 # Set EITHER backend and "Yield AI" appears in the picker; leave both blank and it's hidden.
-YIELD_AI_BACKEND = ""
+YIELD_AI_BACKEND = "workers-ai"
 YIELD_AI_BASE_URL = ""
-YIELD_AI_MODEL_ID = "yield-ai"
-YIELD_AI_LORA = ""
+YIELD_AI_MODEL_ID = "@cf/mistral/mistral-7b-instruct-v0.2-lora"
+YIELD_AI_LORA = "yield-ai"
 
 # OAuth is OPTIONAL — email + password login works without it. These placeholders
 # let the app deploy today; the login UI auto-hides GitHub/Google until they're real.

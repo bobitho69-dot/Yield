@@ -72,7 +72,7 @@ export function shortReason(e: unknown): string {
 // Reliable anchor models tried as the FINAL fallback when the routed model and Auto's
 // re-picks all fail (e.g. a model id that 404s on this account). Ordered reliable-first
 // so a build still completes rather than erroring out. (Same anchors the sub-agents use.)
-export const STABLE_FALLBACKS = ['glm-5.1', 'deepseek-v4-flash', 'nemotron-3-ultra'];
+export const STABLE_FALLBACKS = ['glm-5.2', 'deepseek-v4-flash', 'nemotron-3-ultra'];
 
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
 export async function routeModel(c: Ctx, prompt: string, exclude: string[] = [], signal?: AbortSignal): Promise<{ id: string; reason: string }> {
@@ -120,7 +120,7 @@ export async function routeModel(c: Ctx, prompt: string, exclude: string[] = [],
   const tinyEdit = len < 120 && /\b(change|tweak|fix|rename|color|colour|text|move|smaller|bigger|remove|add a button)\b/.test(p);
   if (tinyEdit) return pick('deepseek-v4-flash', 'quick edit');
   if (wantsBest || multiFeature || len > 600) return pick('deepseek-v4-pro', 'building for quality');
-  if (len > 200) return pick('glm-5.1', 'standard build');
+  if (len > 200) return pick('glm-5.2', 'standard build');
   return pick('deepseek-v4-flash', 'quick build');
 }
 
@@ -594,7 +594,7 @@ export async function runResearchAgent(env: Env, req: ResearchReq, context: stri
     { role: 'system' as const, content: RESEARCH_SYSTEM },
     { role: 'user' as const, content: `Context: ${context}\n\nResearch task ("${req.name}"):\n${req.instructions}` },
   ];
-  const order = [req.model, 'glm-5.1', 'deepseek-v4-flash'].filter(Boolean) as string[];
+  const order = [req.model, 'glm-5.2', 'deepseek-v4-flash'].filter(Boolean) as string[];
   const seen = new Set<string>();
   for (const cid of order) {
     const model = resolveModel(cid);
@@ -626,7 +626,7 @@ export async function runSubAgent(env: Env, task: TaskReq, sharedContext: string
     { role: 'system' as const, content: sharedContext },
     { role: 'user' as const, content: `Your task ("${task.name}"):\n\n${task.instructions}` },
   ];
-  const order = [task.model, 'deepseek-v4-flash', 'glm-5.1'].filter(Boolean) as string[];
+  const order = [task.model, 'deepseek-v4-flash', 'glm-5.2'].filter(Boolean) as string[];
   const seen = new Set<string>();
   let lastErr = 'agent produced nothing';
   let usedModel = '';
@@ -1105,7 +1105,7 @@ export async function runBuild(
       if (project && c.user && agentReqs.length) {
         const { results: existing } = await listAgents(c.env, c.user.id, project.id);
         for (const a of agentReqs) {
-          const mdl = CODER_MODELS.some((m) => m.id === a.model) ? a.model! : 'glm-5.1';
+          const mdl = CODER_MODELS.some((m) => m.id === a.model) ? a.model! : 'glm-5.2';
           const found = existing.find((e) => e.name === a.name && e.project_id === project!.id);
           if (found) { await updateAgent(c.env, found.id, { system_prompt: a.system_prompt, model: mdl }); createdAgents[a.name] = found.id; }
           else { const ag = await createAgent(c.env, c.user.id, { name: a.name, system_prompt: a.system_prompt, model: mdl, is_public: true, project_id: project.id }); createdAgents[a.name] = ag.id; }

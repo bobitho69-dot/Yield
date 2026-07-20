@@ -43,7 +43,7 @@ export async function handleAgents(req: Request, c: Ctx, id?: string, sub?: stri
         name: String(b.name).slice(0, 80),
         description: b.description ? String(b.description).slice(0, 400) : undefined,
         system_prompt: String(b.system_prompt).slice(0, 8000),
-        model: b.model || 'glm-5.1',
+        model: b.model || 'glm-5.2',
         is_public: b.is_public !== false,
         project_id: b.project_id || project || '',
       });
@@ -98,7 +98,7 @@ async function runAgent(req: Request, c: Ctx, id: string): Promise<Response> {
   // it works). For each model: low reasoning first, then plain if the flag is
   // rejected — a placeholder id, a slow/looping reasoner, or empty content never
   // hangs the agent.
-  const candidates = [agent.model, 'deepseek-v4-flash', 'glm-5.1', 'minimax-m3', 'auto'];
+  const candidates = [agent.model, 'deepseek-v4-flash', 'glm-5.2', 'minimax-m3', 'auto'];
   const seen = new Set<string>();
   let lastErr = 'No model was able to respond.';
   for (const cid of candidates) {

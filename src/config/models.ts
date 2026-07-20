@@ -167,18 +167,6 @@ export const CODER_MODELS: ModelDef[] = [
     provider: { apiKeyEnv: 'GLM_API_KEY' },
   },
   {
-    id: 'glm-5.1',
-    label: 'GLM 5.1',
-    modelId: 'z-ai/glm-5.1',
-    role: 'coder',
-    tier: 'standard',
-    speed: 3,
-    blurb: 'Reliable all-rounder with clean, idiomatic output.',
-    pros: ['Dependable all-rounder', 'Clean, idiomatic code', 'Good instruction-following'],
-    cons: ['Rarely the single best at extremes', 'Middle-of-the-road speed'],
-    provider: { apiKeyEnv: 'GLM_API_KEY' },
-  },
-  {
     id: 'qwen3-coder',
     label: 'Qwen3 Coder 480B (free)',
     // OpenRouter's FREE Qwen3-Coder-480B-A35B-Instruct (drop ":free" for the paid tier).
@@ -344,7 +332,7 @@ const BY_ID: Record<string, ModelDef> = Object.fromEntries(
 
 /** Apply optional runtime overrides of modelId via a MODEL_OVERRIDES JSON var. */
 export function resolveModel(id: string, overridesJson?: string): ModelDef {
-  const base = BY_ID[id] ?? BY_ID['glm-5.1']; // safe default
+  const base = BY_ID[id] ?? BY_ID['glm-5.2']; // safe default
   if (!overridesJson) return base;
   try {
     const overrides = JSON.parse(overridesJson) as Record<string, string>;

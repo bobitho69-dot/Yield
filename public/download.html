@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Download Yield — Code, Chat & Build on your desktop. Free.</title>
+  <meta name="description" content="Get Yield for macOS and Windows — Yield Code (the agentic coder), Yield Chat, and the full web app builder in one free desktop app. Also on the web." />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    /* ---------- Download ---------- */
+    .dl-hero { padding: 5rem 6vw 2rem; max-width: 1100px; margin: 0 auto; text-align: center; }
+    .dl-hero h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(2.2rem, 4vw, 3.2rem); letter-spacing: -.025em; margin: 0 0 1rem; line-height: 1.08; }
+    .dl-hero p { color: var(--muted); font-size: 1.12rem; line-height: 1.6; max-width: 620px; margin: 0 auto 1.4rem; }
+    .dl-detect { font-family: var(--font-mono); font-size: .8rem; color: var(--faint); }
+
+    .dl-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.4rem; max-width: 820px; margin: 2.4rem auto 0; padding: 0 6vw; }
+    .dl-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 2rem 1.8rem; display: flex; flex-direction: column; align-items: flex-start; }
+    .dl-card.rec { border-color: var(--brand); }
+    .dl-os { display: flex; align-items: center; gap: .7rem; margin-bottom: .3rem; }
+    .dl-os svg { width: 30px; height: 30px; color: var(--text); }
+    .dl-os h2 { font-family: var(--font-display); font-size: 1.25rem; margin: 0; }
+    .dl-file { font-family: var(--font-mono); font-size: .78rem; color: var(--faint); margin: 0 0 1.2rem; }
+    .dl-card .btn.primary { width: 100%; justify-content: center; }
+    .dl-req { color: var(--faint); font-size: .78rem; margin-top: .9rem; }
+    .dl-badge { align-self: flex-end; font-family: var(--font-mono); font-size: .64rem; text-transform: uppercase; letter-spacing: .05em; color: var(--brand); border: 1px solid var(--brand); border-radius: 6px; padding: .1rem .4rem; margin-bottom: -.6rem; }
+
+    .dl-web { text-align: center; margin: 2rem auto 0; color: var(--muted); font-size: .95rem; }
+    .dl-web a { color: var(--brand-2); }
+
+    .dl-included { max-width: 1000px; margin: 4.5rem auto 0; padding: 0 6vw; }
+    .dl-included h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.7rem; text-align: center; letter-spacing: -.02em; margin: 0 0 .5rem; }
+    .dl-included .lead { text-align: center; color: var(--muted); max-width: 560px; margin: 0 auto 2.2rem; line-height: 1.55; }
+    .dl-feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }
+    .dl-feat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1.5rem; }
+    .dl-feat .fi { width: 26px; height: 26px; color: var(--brand); margin-bottom: .7rem; }
+    .dl-feat h3 { font-size: 1.05rem; margin: 0 0 .4rem; }
+    .dl-feat p { color: var(--muted); font-size: .88rem; line-height: 1.55; margin: 0; }
+    .dl-feat a { color: var(--brand-2); }
+
+    .dl-build { max-width: 820px; margin: 3.5rem auto 0; padding: 1.5rem 1.6rem; background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; }
+    .dl-build h3 { font-family: var(--font-display); margin: 0 0 .5rem; font-size: 1.05rem; }
+    .dl-build p { color: var(--muted); font-size: .9rem; line-height: 1.6; margin: 0 0 .7rem; }
+    .dl-build code, .dl-build pre { font-family: var(--font-mono); font-size: .82rem; }
+    .dl-build pre { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: .8rem 1rem; overflow-x: auto; color: var(--text); }
+    .dl-build a { color: var(--brand-2); }
+
+    @media (max-width: 720px) { .dl-cards { grid-template-columns: 1fr; } .dl-feats { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body class="landing">
+  <header class="nav lp-nav">
+    <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+    <nav class="nav-links">
+      <a href="/app">Build</a>
+      <a href="/code">Code</a>
+      <a href="/chat">Chat</a>
+      <a href="/security">Security</a>
+      <a href="/download">Download</a>
+      <a class="btn primary" href="/app">Start building →</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="dl-hero">
+      <h1>Yield on your desktop.</h1>
+      <p>The agentic coder, the chat, and the full app builder — in one free app for macOS and Windows. Connect your GitHub, launch agents and MCP servers, and ship real code. Same Yield, native.</p>
+      <div class="dl-detect" id="dlDetect"></div>
+    </section>
+
+    <section class="dl-cards">
+      <div class="dl-card" id="cardMac">
+        <span class="dl-badge hidden" id="badgeMac">Detected</span>
+        <div class="dl-os">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.365 1.43c0 1.14-.42 2.2-1.11 2.98-.75.86-1.98 1.53-3.02 1.44-.13-1.1.42-2.26 1.06-2.98.72-.82 2-1.42 3.07-1.44zM20.9 17.02c-.55 1.27-.82 1.84-1.53 2.96-.99 1.56-2.39 3.5-4.12 3.51-1.54.02-1.93-1-4.02-.99-2.09.01-2.52 1.01-4.06.99-1.73-.02-3.05-1.77-4.04-3.33C1.36 15.95.5 12.6 1.7 10.24c.86-1.69 2.4-2.76 3.98-2.76 1.6 0 2.6 1.02 3.92 1.02 1.28 0 2.06-1.02 3.92-1.02 1.4 0 2.87.76 3.93 2.08-3.45 1.9-2.89 6.82.45 8.46z"/></svg>
+          <h2>macOS</h2>
+        </div>
+        <p class="dl-file">Yield-mac.dmg · Apple Silicon &amp; Intel</p>
+        <a class="btn primary lg" id="dlMac" href="#">Download for macOS</a>
+        <p class="dl-req">Requires macOS 11 Big Sur or later.</p>
+      </div>
+
+      <div class="dl-card" id="cardWin">
+        <span class="dl-badge hidden" id="badgeWin">Detected</span>
+        <div class="dl-os">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.1 10.4 4v7.3H3V5.1zM10.4 12.7V20L3 18.9v-6.2h7.4zM11.3 3.9 21 2.5v8.8h-9.7V3.9zM21 12.7v8.8l-9.7-1.4v-7.4H21z"/></svg>
+          <h2>Windows</h2>
+        </div>
+        <p class="dl-file">Yield-setup.exe · 64-bit</p>
+        <a class="btn primary lg" id="dlWin" href="#">Download for Windows</a>
+        <p class="dl-req">Requires Windows 10 or later (x64).</p>
+      </div>
+    </section>
+
+    <p class="dl-web">Prefer the browser? Use <a href="/code">Yield Code</a>, <a href="/chat">Yield Chat</a>, and the <a href="/app">app builder</a> right on the web — nothing to install.</p>
+
+    <section class="dl-included">
+      <h2>Everything, in one app</h2>
+      <p class="lead">The desktop app is the whole Yield workspace. Launch straight into whichever tool you need.</p>
+      <div class="dl-feats">
+        <div class="dl-feat">
+          <svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m8 9-3 3 3 3"/><path d="m16 9 3 3-3 3"/><path d="M13 5 11 19"/></svg>
+          <h3>Yield Code</h3>
+          <p>The agentic coder. Connect a GitHub repo or a local folder, run auto mode, launch agents and MCP servers, and commit real multi-file changes. <a href="/code">Open on web →</a></p>
+        </div>
+        <div class="dl-feat">
+          <svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <h3>Yield Chat</h3>
+          <p>Just talk to the AI. Ask anything, brainstorm, debug, write — on 15+ frontier models with an Auto router. <a href="/chat">Open on web →</a></p>
+        </div>
+        <div class="dl-feat">
+          <svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          <h3>App builder</h3>
+          <p>Describe an app and watch it build live — multi-file, a database, agents, and version history committed to your GitHub. <a href="/app">Open on web →</a></p>
+        </div>
+      </div>
+
+      <div class="dl-build">
+        <h3>Open source builds</h3>
+        <p>The desktop apps are built from the open <code>desktop/</code> Electron project in the Yield repo, and published to GitHub Releases. Want to build your own signed copy?</p>
+        <pre>cd desktop
+npm install
+npm run dist:mac    # → .dmg     (build on macOS)
+npm run dist:win    # → .exe     (build on Windows)</pre>
+        <p>See <a href="https://github.com/bobitho69-dot/yield/tree/main/desktop">desktop/README.md</a> for signing and notarization notes. Downloads above point to the latest published release.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>◆ Yield — free AI app builder</span>
+    <span>
+      <a class="toplink" href="/code">Code</a>
+      <a class="toplink" href="/chat">Chat</a>
+      <a class="toplink" href="/pricing">Pricing</a>
+      <a class="toplink" href="/status">Status</a>
+      <a class="toplink" href="/terms">Terms</a>
+      <a class="toplink" href="/privacy">Privacy</a>
+    </span>
+    <span>Free to start · Your code stays yours</span>
+  </footer>
+
+  <script>
+    // Point downloads at the latest GitHub release, and highlight the visitor's OS.
+    var RELEASES = 'https://github.com/bobitho69-dot/yield/releases/latest';
+    document.getElementById('dlMac').href = RELEASES;
+    document.getElementById('dlWin').href = RELEASES;
+    try {
+      var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+      var ua = navigator.userAgent || '';
+      var isMac = /mac/i.test(p) || /Macintosh/i.test(ua);
+      var isWin = /win/i.test(p) || /Windows/i.test(ua);
+      if (isMac) { document.getElementById('badgeMac').classList.remove('hidden'); document.getElementById('cardMac').classList.add('rec'); document.getElementById('dlDetect').textContent = 'Looks like you’re on macOS.'; }
+      else if (isWin) { document.getElementById('badgeWin').classList.remove('hidden'); document.getElementById('cardWin').classList.add('rec'); document.getElementById('dlDetect').textContent = 'Looks like you’re on Windows.'; }
+    } catch (e) {}
+  </script>
+</body>
+</html>

@@ -154,6 +154,19 @@ export const CODER_MODELS: ModelDef[] = [
     provider: { apiKeyEnv: 'DEEPSEEK_PRO_API_KEY' },
   },
   {
+    id: 'glm-5.2',
+    label: 'GLM 5.2',
+    modelId: 'z-ai/glm-5.2',
+    role: 'coder',
+    tier: 'pro',
+    speed: 3,
+    blurb: 'Latest GLM — sharper reasoning and stronger multi-file coding.',
+    pros: ['Strong reasoning & code quality', 'Great on larger, multi-file apps', 'Clean, idiomatic output'],
+    cons: ['Heavier than the flash models', 'Overkill for tiny tweaks'],
+    // NVIDIA endpoint (default base URL); key resolves from GLM_API_KEY or NVIDIA_API_KEY.
+    provider: { apiKeyEnv: 'GLM_API_KEY' },
+  },
+  {
     id: 'glm-5.1',
     label: 'GLM 5.1',
     modelId: 'z-ai/glm-5.1',

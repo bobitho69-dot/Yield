@@ -76,34 +76,40 @@ function shortReason(e: unknown): string {
 const STABLE_FALLBACKS = ['glm-5.1', 'deepseek-v4-flash', 'nemotron-3-ultra'];
 
 // Output cap for the in-house Yield AI on Cloudflare Workers AI. Its context window is far
-// smaller than the big hosted models', so we bound the output (input + max output must fit
-// the window, else Workers AI returns error 5021).
-const YIELD_AI_WA_MAX_TOKENS = 4096;
+// smaller than the big hosted models', so we bound the output — input + max output must fit
+// the window or Workers AI returns error 5021.
+const YIELD_AI_WA_MAX_TOKENS = 2048;
 
-// A COMPACT platform note that replaces the full (large) PLATFORM_GUIDE when building with
-// the Cloudflare-hosted Yield AI — just enough of the runtime so the model can still build,
-// without blowing its limited context window.
-const YIELD_AI_WA_PLATFORM_NOTE =
-  'Yield runtime available inside generated apps (guard each call): ' +
-  'window.YIELD.entities.{list,create,get,update,delete}(entity, ...) — a built-in async database (returns Promises); ' +
-  'await window.YIELD.image(prompt) — returns an AI image URL; ' +
-  'window.YIELD.agents["Name"] — an AI agent id you POST {"input":"..."} to at /api/agents/<id>/run. ' +
-  'Style with Tailwind via CDN. Output EACH file as a line "=== file: path ===" followed by its FULL contents (index.html is the entry point). No placeholders, no dead buttons.';
+// A COMPACT builder system prompt used ONLY for the Cloudflare-hosted Yield AI. The full
+// CONVO_SYSTEM + PLATFORM_GUIDE (~8k tokens) overflow this model's small context window even
+// before the user types anything, so we swap in this short version (~300 tokens) that keeps
+// the essential behavior + runtime.
+const YIELD_AI_WA_SYSTEM =
+  `You are Yield AI 1.0, a friendly expert engineer that chats with people and builds complete, working web apps.\n` +
+  `- If the user is just chatting (e.g. "hi", "thanks", a question), reply briefly in chat with NO files.\n` +
+  `- To build or edit an app: write a one-line plan, then output EACH file as a line "=== file: path ===" followed by its FULL contents. index.html is the entry point; reference siblings with relative paths.\n` +
+  `- Build REAL, complete apps: every button/link/form works; no placeholders, no "TODO"/"coming soon", no dead links (href="#"). Handle empty/loading/error states. No mock data unless asked — build a real empty state instead.\n` +
+  `- Style with Tailwind via CDN: a real palette, good spacing, rounded corners, hover/focus states; responsive and accessible.\n` +
+  `- Persist data with window.YIELD.entities.{list,create,get,update,delete}(entity, ...) (async). Generate images with await window.YIELD.image(prompt). Never use alert()/confirm()/prompt().\n` +
+  `- Write every file IN FULL — never truncate or write "// ... rest of code".`;
 
 // Shrink the full builder message list to fit Yield AI's smaller Cloudflare context window:
-// swap the big platform guide for the short note, cap the current-files dump, and keep only
-// the most recent conversation turns. Used ONLY for the yield-ai Workers AI path.
+// swap the big system prompt + platform guide for the short prompt, cap the current-files
+// dump, and keep only the most recent turns. Used ONLY for the yield-ai Workers AI path.
 function compactMessagesForWA(
   all: { role: 'system' | 'user' | 'assistant'; content: string }[],
 ): { role: 'system' | 'user' | 'assistant'; content: string }[] {
-  const mapped = all.map((m) => {
-    if (m.role === 'system' && m.content === PLATFORM_GUIDE) return { role: m.role, content: YIELD_AI_WA_PLATFORM_NOTE };
+  const mapped: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+  for (const m of all) {
+    if (m.role === 'system' && m.content === PLATFORM_GUIDE) continue; // drop the big guide (covered by the compact prompt)
+    if (m.role === 'system' && m.content === CONVO_SYSTEM) { mapped.push({ role: m.role, content: YIELD_AI_WA_SYSTEM }); continue; }
     if (m.role === 'system' && m.content.startsWith('The current project files are:')) {
-      return { role: m.role, content: m.content.slice(0, 4000) };
+      mapped.push({ role: m.role, content: m.content.slice(0, 3000) });
+      continue;
     }
-    return m;
-  });
-  // Keep every system message (instructions/context) + only the last 4 chat turns.
+    mapped.push(m);
+  }
+  // Keep every (now-small) system message + only the last 4 chat turns.
   const sys = mapped.filter((m) => m.role === 'system');
   const convo = mapped.filter((m) => m.role !== 'system').slice(-4);
   return [...sys, ...convo];

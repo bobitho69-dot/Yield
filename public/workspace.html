@@ -99,22 +99,47 @@
 
       function srcFor(view) { return (view === 'code' ? '/code' : '/chat') + '?embed=1'; }
 
+      var activeView = null;
+      var frameLoading = { chat: false, code: false }; // per-view "still loading" state
+      var SPIN = '<div><div class="spin"></div>Loading…</div>';
+      // The overlay is shared, so show it only when the CURRENTLY-active view is still loading.
+      function refreshOverlay() {
+        if (activeView && frameLoading[activeView]) { loading.innerHTML = SPIN; loading.style.display = 'grid'; }
+        else loading.style.display = 'none';
+      }
+      function frameError(view) {
+        frameLoading[view] = false;
+        if (activeView !== view) return;
+        loading.innerHTML = '<div style="text-align:center"><p style="color:var(--muted);margin:0 0 .8rem">Couldn’t load ' +
+          (view === 'code' ? 'Yield Code' : 'Yield Chat') + '.</p><button class="btn primary" id="frameRetry">Retry</button></div>';
+        loading.style.display = 'grid';
+        var r = document.getElementById('frameRetry');
+        if (r) r.onclick = function () { loaded[view] = false; show(view); };
+      }
+
       function show(view) {
         if (view !== 'chat' && view !== 'code') view = 'chat';
-        // Lazy-load the iframe the first time its section is opened (preserves state after).
-        if (!loaded[view]) {
-          frames[view].src = srcFor(view);
-          loaded[view] = true;
-          loading.style.display = 'grid';
-          frames[view].addEventListener('load', function () { loading.style.display = 'none'; }, { once: true });
-        } else {
-          loading.style.display = 'none';
-        }
+        activeView = view;
         frames.chat.classList.toggle('hidden', view !== 'chat');
         frames.code.classList.toggle('hidden', view !== 'code');
         items.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === view); });
         try { localStorage.setItem('yield.workspace.view', view); } catch (e) {}
         try { var u = new URL(location.href); u.searchParams.set('view', view); history.replaceState(null, '', u); } catch (e) {}
+
+        // Lazy-load the iframe the first time its section is opened (preserves state after).
+        if (!loaded[view]) {
+          loaded[view] = true;
+          frameLoading[view] = true;
+          var fr = frames[view];
+          var settled = false;
+          // Only the still-active view's load/error touches the shared overlay, so a slow
+          // frame finishing after you've switched away can't flash or clear the wrong screen.
+          fr.addEventListener('load', function () { if (settled) return; settled = true; frameLoading[view] = false; refreshOverlay(); }, { once: true });
+          fr.addEventListener('error', function () { if (settled) return; settled = true; frameError(view); }, { once: true });
+          setTimeout(function () { if (!settled) { settled = true; frameError(view); } }, 20000); // never hang on "Loading…" forever
+          fr.src = srcFor(view);
+        }
+        refreshOverlay();
       }
 
       items.forEach(function (b) { b.addEventListener('click', function () { show(b.getAttribute('data-view')); }); });

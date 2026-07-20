@@ -34,6 +34,61 @@ function cleanHistory(input: ChatBody): ChatTurn[] {
     .slice(-20); // keep the last ~20 turns
 }
 
+// Tags that fence model reasoning inside the visible content stream.
+const THINK_TAGS = ['<think>', '<thinking>', '</think>', '</thinking>'];
+// Length of a trailing "<…" that could be the START of a think tag split across chunks.
+function partialTagTail(s: string): number {
+  const lt = s.lastIndexOf('<');
+  if (lt === -1) return 0;
+  const tail = s.slice(lt).toLowerCase();
+  if (tail.includes('>')) return 0; // a complete tag, not a partial — safe to emit
+  return THINK_TAGS.some((t) => t.startsWith(tail)) ? s.length - lt : 0;
+}
+
+// Strip <think>…</think> (and <thinking>) out of a streamed content channel so a model's
+// reasoning never leaks into the visible answer — it's routed to onThink instead. Tolerant
+// of tags split across streaming chunks. Mirrors what the builder's file streamer does, for
+// the plain chat surface (which previously streamed raw content, garbling replies).
+function makeThinkFilter(
+  onChat: (s: string) => Promise<void>,
+  onThink: (s: string) => Promise<void>,
+) {
+  let buf = '', inThink = false, answer = '', thought = '';
+  async function process(final: boolean): Promise<void> {
+    for (;;) {
+      if (!inThink) {
+        const m = buf.match(/<think(?:ing)?>/i);
+        if (!m) {
+          const keep = final ? 0 : partialTagTail(buf);
+          const out = buf.slice(0, buf.length - keep);
+          if (out) { answer += out; buf = buf.slice(out.length); await onChat(out); }
+          return;
+        }
+        const out = buf.slice(0, m.index);
+        if (out) { answer += out; await onChat(out); }
+        buf = buf.slice((m.index || 0) + m[0].length); inThink = true;
+      } else {
+        const m = buf.match(/<\/think(?:ing)?>/i);
+        if (!m) {
+          const keep = final ? 0 : partialTagTail(buf);
+          const out = buf.slice(0, buf.length - keep);
+          if (out) { thought += out; buf = buf.slice(out.length); await onThink(out); }
+          return;
+        }
+        const out = buf.slice(0, m.index);
+        if (out) { thought += out; await onThink(out); }
+        buf = buf.slice((m.index || 0) + m[0].length); inThink = false;
+      }
+    }
+  }
+  return {
+    async feed(d: string) { buf += d; await process(false); },
+    async end() { await process(true); buf = ''; },
+    get answer() { return answer.trim(); },
+    get thought() { return thought.trim(); },
+  };
+}
+
 export async function handleChat(req: Request, c: Ctx): Promise<Response> {
   const body = (await req.json().catch(() => ({}))) as ChatBody;
   const history = cleanHistory(body);
@@ -75,16 +130,23 @@ export async function handleChat(req: Request, c: Ctx): Promise<Response> {
       // 4) Stream the reply. <think> reasoning is routed to the Thinking panel; visible
       //    text streams as 'chat' deltas. On failure, retry plainly, then fall back
       //    through the stable anchor models so a chat reply almost always lands.
-      let sawText = false;
+      let sawText = false;   // any VISIBLE answer text (post think-strip) was produced
+      let answer = '';       // accumulated visible answer
+      let reasoning = '';    // accumulated reasoning / <think> text (fallback if answer is empty)
+      const onChat = async (s: string) => { sawText = true; answer += s; await send('chat', s); };
+      const onThink = async (s: string) => { reasoning += s; await send('thinking', s); };
       const streamWith = async (mdef: typeof model, eff: 'low' | 'medium' | 'high' | null) => {
+        // Filter out any inline <think>…</think> so reasoning never garbles the visible reply.
+        const filter = makeThinkFilter(onChat, onThink);
         // In-house Yield AI on Cloudflare Workers AI: run on Cloudflare's GPUs via the AI
         // binding (base model + optional LoRA), NOT an HTTP endpoint. Throws on failure so
         // the fallback ladder below still applies.
         if (mdef.id === 'yield-ai' && workersAiConfigured(c.env)) {
           await workersAiStream(
             c.env, compactWAMessages(messages, { maxTurns: 8 }), { temperature: 0.6, max_tokens: 2048 },
-            async (delta) => { sawText = true; await send('chat', delta); },
+            async (delta) => { await filter.feed(delta); },
           );
+          await filter.end();
           return;
         }
         const chain = endpointsFor(c.env, mdef);
@@ -97,9 +159,10 @@ export async function handleChat(req: Request, c: Ctx): Promise<Response> {
                 temperature: 0.6, top_p: 0.95, max_tokens: 8000, timeoutMs: 120000,
                 ...(eff ? { extra: { reasoning_effort: eff } } : {}),
               },
-              async (delta) => { sawText = true; await send('chat', delta); },
-              async (r) => { await send('thinking', r); },
+              async (delta) => { await filter.feed(delta); },
+              async (r) => { await onThink(r); },
             );
+            await filter.end();
             return;
           } catch (e) {
             if (sawText || i === chain.length - 1) throw e;
@@ -128,6 +191,13 @@ export async function handleChat(req: Request, c: Ctx): Promise<Response> {
             return;
           }
         }
+      }
+
+      // Reasoning-only completion: the model put its whole reply in the reasoning/<think>
+      // channel and emitted no visible content. Promote it so the user gets a real answer
+      // instead of a blank bubble, rather than treating an empty stream as success.
+      if (!answer.trim() && reasoning.trim()) {
+        await send('chat', reasoning.trim());
       }
 
       await send('done', { model: model.id, label: model.label });

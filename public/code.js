@@ -111,6 +111,7 @@
     } catch { setTree('Could not load repo tree.'); }
   }
   async function openFile(path) {
+    state.userPinned = true; // the user chose a file — stop auto-following the streaming one
     state.activePath = path; renderTree();
     const cached = state.files.get(path);
     $('filePath').textContent = path;
@@ -239,6 +240,7 @@
     const text = $('ycInput').value.trim(); if (!text || state.streaming) return;
     let hasSource = state.mode === 'local' || (state.mode === 'repo' && state.repo) || (state.mode === 'project' && state.projectId);
     if (!hasSource) return;
+    state.userPinned = false; // fresh run — auto-follow the files being written until the user picks one
     $('ycInput').value = ''; autoGrow();
     addMsg('user', `<p>${esc(text)}</p>`);
     const ai = addMsg('ai', '');
@@ -274,7 +276,9 @@
 
   function handleEvent(ev, d, ai, io) {
     if (ev === 'meta') {
-      const label = d.label || d.model; $('ycModelLabel').textContent = label && state.model !== 'auto' ? $('ycModelLabel').textContent : $('ycModelLabel').textContent;
+      const label = d.label || d.model;
+      // When the user left it on Auto, show which model the router actually picked.
+      if (label && state.model === 'auto') $('ycModelLabel').textContent = label;
       logLine('Model: ' + label + (d.mode ? ' · ' + d.mode : ''));
       setStatus(ai, 'Working with ' + label + '…');
     } else if (ev === 'status') {
@@ -311,8 +315,9 @@
       const cur = state.files.get(d.path); state.files.set(d.path, (cur == null ? '' : cur) + d.delta);
     }
     state.changed.add(d.path);
-    // Live-follow the file being written.
-    if (!state.activePath || state.streaming) { state.activePath = d.path; $('filePath').textContent = d.path; $('fileBody').textContent = state.files.get(d.path) || ''; $('fileBody').scrollTop = $('fileBody').scrollHeight; }
+    // Live-follow the file being written — but ONLY until the user picks a file to read
+    // (state.userPinned), so the viewer doesn't yank away from what they're looking at.
+    if (!state.userPinned && (!state.activePath || state.streaming)) { state.activePath = d.path; $('filePath').textContent = d.path; $('fileBody').textContent = state.files.get(d.path) || ''; $('fileBody').scrollTop = $('fileBody').scrollHeight; }
     renderTree();
   }
 

@@ -117,6 +117,10 @@
     scrollDown();
   }
   function scrollDown() { thread.scrollTop = thread.scrollHeight; }
+  // True when the user is at (or near) the bottom — so we only auto-scroll if they haven't
+  // scrolled up to read. Prevents autoscroll from yanking the view while they read history.
+  function nearBottom() { return thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120; }
+  function stickScroll(mutate) { const stick = nearBottom(); mutate(); if (stick) scrollDown(); }
 
   // ---- Conversation ops ------------------------------------------------------
   function newConvo() {
@@ -167,6 +171,11 @@
     const ai = bubble('ai', '<span class="cursor-blink"></span>', null);
     inner.appendChild(ai.wrap); scrollDown();
     let think = null, thinkText = '', answer = '', chosenModel = null;
+    const convoId = c.id;
+    // Only touch this bubble's DOM while ITS conversation is the one on screen (and the
+    // bubble is still mounted) — so switching or deleting a conversation mid-stream can't
+    // write into the wrong thread or a detached node.
+    const isLive = () => db.activeId === convoId && ai.wrap.isConnected;
 
     setStreaming(true);
     abort = new AbortController();
@@ -179,25 +188,25 @@
       await readSSE(res.body, (event, data) => {
         if (event === 'meta') {
           chosenModel = data.label || data.model;
-          ai.who.innerHTML = `Yield · <span class="mdl">${esc(chosenModel)}</span>`;
+          if (isLive()) ai.who.innerHTML = `Yield · <span class="mdl">${esc(chosenModel)}</span>`;
         } else if (event === 'thinking') {
           thinkText += data;
+          if (!isLive()) return;
           if (!think) {
             think = document.createElement('details'); think.className = 'think';
             think.innerHTML = '<summary><span class="dot"></span> Thinking…</summary><div class="tc"></div>';
             ai.prose.parentNode.insertBefore(think, ai.prose);
           }
-          think.querySelector('.tc').textContent = thinkText; scrollDown();
+          stickScroll(() => { think.querySelector('.tc').textContent = thinkText; });
         } else if (event === 'chat') {
           answer += data;
-          ai.prose.innerHTML = mdToHtml(answer) + '<span class="cursor-blink"></span>';
-          scrollDown();
+          if (isLive()) stickScroll(() => { ai.prose.innerHTML = mdToHtml(answer) + '<span class="cursor-blink"></span>'; });
         } else if (event === 'blocked') {
           answer = data.message || 'This message was blocked by the safety guard.';
-          ai.prose.innerHTML = mdToHtml(answer);
+          if (isLive()) ai.prose.innerHTML = mdToHtml(answer);
         } else if (event === 'error') {
           answer = answer || (data.message || 'Something went wrong. Please try again.');
-          ai.prose.innerHTML = mdToHtml(answer);
+          if (isLive()) ai.prose.innerHTML = mdToHtml(answer);
         } else if (event === 'done') {
           chosenModel = data.label || chosenModel;
         }
@@ -205,10 +214,15 @@
     } catch (e) {
       if (!answer) { answer = abort && abort.signal.aborted ? '■ Stopped.' : 'Connection error — please try again.'; }
     }
-    ai.prose.innerHTML = mdToHtml(answer) || '<p style="color:var(--faint)">(no response)</p>';
-    if (think) think.querySelector('summary').innerHTML = '<span class="dot"></span> Thought process';
-    c.messages.push({ role: 'assistant', content: answer, model: chosenModel });
-    save();
+    if (isLive()) {
+      ai.prose.innerHTML = mdToHtml(answer) || '<p style="color:var(--faint)">(no response)</p>';
+      if (think) think.querySelector('summary').innerHTML = '<span class="dot"></span> Thought process';
+    }
+    // Persist the reply only if its conversation still exists (wasn't deleted mid-stream).
+    if (db.convos.some((x) => x.id === convoId)) {
+      c.messages.push({ role: 'assistant', content: answer, model: chosenModel });
+      save();
+    }
     setStreaming(false); abort = null;
   }
 

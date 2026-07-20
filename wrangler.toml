@@ -154,7 +154,7 @@ VISION_MODEL = "qwen/qwen3.5-397b-a17b"
 YIELD_AI_BACKEND = "workers-ai"
 YIELD_AI_BASE_URL = ""
 YIELD_AI_MODEL_ID = "@cf/mistral/mistral-7b-instruct-v0.2-lora"
-YIELD_AI_LORA = "yield-ai"
+YIELD_AI_LORA = "yield-ai-1-1"
 
 # OAuth is OPTIONAL — email + password login works without it. These placeholders
 # let the app deploy today; the login UI auto-hides GitHub/Google until they're real.

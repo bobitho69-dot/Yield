@@ -8,9 +8,9 @@ import type { Ctx } from '../types';
 import { json, redirect, error } from '../lib/response';
 import {
   PROVIDERS, ProviderName, createSession, destroySession, enabledProviders, fetchGithubProfile,
-  fetchGoogleProfile, makeOAuthState, takeOAuthState,
+  fetchGoogleProfile, fetchRobloxProfile, makeOAuthState, takeOAuthState,
 } from '../lib/auth';
-import { createEmailUser, getUserByEmail, setGithubAuth, upsertOAuthUser } from '../lib/db';
+import { createEmailUser, getUserByEmail, setGithubAuth, setRobloxAuth, upsertOAuthUser } from '../lib/db';
 import { encryptToken } from '../lib/github';
 import { hashPassword, verifyPassword, validateCredentials } from '../lib/password';
 
@@ -42,7 +42,7 @@ export async function handleAuth(req: Request, c: Ctx, provider?: string, action
   if (action === 'login') {
     // Don't start an OAuth flow that isn't configured yet.
     const prov = enabledProviders(c.env);
-    if ((provider === 'github' && !prov.github) || (provider === 'google' && !prov.google)) {
+    if ((provider === 'github' && !prov.github) || (provider === 'google' && !prov.google) || (provider === 'roblox' && !prov.roblox)) {
       return error(503, `${provider} login isn’t configured yet. Use email + password.`, { code: 'provider_disabled' });
     }
     // Only allow same-origin relative paths (a single leading slash, not "//evil.com")
@@ -53,7 +53,10 @@ export async function handleAuth(req: Request, c: Ctx, provider?: string, action
     const scopeOverride = c.url.searchParams.get('scope') || undefined;
     const storeToken = c.url.searchParams.get('store_token') === '1';
     const scope = provider === 'github' && scopeOverride ? `${p.scope} ${scopeOverride}` : p.scope;
-    const state = await makeOAuthState(c.env, { provider, redirectTo, scope: scopeOverride, storeToken });
+    // When an already-signed-in user starts Roblox OAuth, remember to LINK it to
+    // their current account instead of creating/switching to a Roblox-only account.
+    const linkUserId = provider === 'roblox' && c.user ? c.user.id : undefined;
+    const state = await makeOAuthState(c.env, { provider, redirectTo, scope: scopeOverride, storeToken, linkUserId });
     const params = new URLSearchParams({
       client_id: p.clientId(c.env),
       redirect_uri: `${c.env.APP_URL}/api/auth/${provider}/callback`,
@@ -88,13 +91,30 @@ export async function handleAuth(req: Request, c: Ctx, provider?: string, action
     const accessToken = token.access_token;
     if (!accessToken) return error(400, 'OAuth token exchange failed');
 
-    const profile = provider === 'github' ? await fetchGithubProfile(accessToken) : await fetchGoogleProfile(accessToken);
+    const profile = provider === 'github'
+      ? await fetchGithubProfile(accessToken)
+      : provider === 'roblox'
+        ? await fetchRobloxProfile(accessToken)
+        : await fetchGoogleProfile(accessToken);
+
+    // LINKING: if this Roblox OAuth was started by an already-signed-in user, attach
+    // the Roblox identity to THAT account (don't create/switch accounts) and keep
+    // their existing session — the plugin then associates places to this user.
+    if (provider === 'roblox' && saved.linkUserId) {
+      await setRobloxAuth(c.env, saved.linkUserId, profile.provider_id, (profile as any).login || null);
+      return redirect(saved.redirectTo || '/roblox');
+    }
+
     const user = await upsertOAuthUser(c.env, { provider, ...profile });
 
     // Persist the GitHub token (encrypted) when the user is connecting code storage.
     if (provider === 'github' && saved.storeToken && (profile as any).login) {
       const enc = await encryptToken(c.env, accessToken);
       await setGithubAuth(c.env, user.id, (profile as any).login, enc);
+    }
+    // A standalone "Sign in with Roblox" also records the Roblox id/username on the row.
+    if (provider === 'roblox') {
+      await setRobloxAuth(c.env, user.id, profile.provider_id, (profile as any).login || null);
     }
 
     const setCookie = await createSession(c.env, user.id);

@@ -79,6 +79,7 @@ export interface OAuthState {
   redirectTo: string;
   scope?: string; // overrides the default scope (e.g. 'repo' for code storage)
   storeToken?: boolean; // persist the provider access token (GitHub code sync)
+  linkUserId?: string; // when set, LINK this provider to an existing account (Roblox)
 }
 
 export async function makeOAuthState(env: Env, s: OAuthState): Promise<string> {
@@ -111,18 +112,30 @@ export const PROVIDERS = {
     clientId: (e: Env) => e.GOOGLE_CLIENT_ID,
     clientSecret: (e: Env) => e.GOOGLE_CLIENT_SECRET,
   },
+  // Sign in with Roblox — OpenID Connect (apis.roblox.com/oauth/v1). The `openid
+  // profile` scope returns the user's Roblox id (sub), username, and avatar. Used
+  // both as a standalone login and to LINK a Roblox account to an existing Yield
+  // account (so the Studio plugin can associate places to the right person).
+  roblox: {
+    authUrl: 'https://apis.roblox.com/oauth/v1/authorize',
+    tokenUrl: 'https://apis.roblox.com/oauth/v1/token',
+    scope: 'openid profile',
+    clientId: (e: Env) => e.ROBLOX_CLIENT_ID,
+    clientSecret: (e: Env) => e.ROBLOX_CLIENT_SECRET,
+  },
 } as const;
 
 export type ProviderName = keyof typeof PROVIDERS;
 
 // Which login methods are usable, based on whether OAuth creds are real (not
 // placeholders). Lets the UI hide buttons that aren't configured yet.
-export function enabledProviders(env: Env): { email: boolean; github: boolean; google: boolean } {
+export function enabledProviders(env: Env): { email: boolean; github: boolean; google: boolean; roblox: boolean } {
   const ok = (v?: string) => !!v && !/placeholder/i.test(v) && !/^replace/i.test(v);
   return {
     email: true,
     github: ok(env.GITHUB_CLIENT_ID) && ok(env.GITHUB_CLIENT_SECRET),
     google: ok(env.GOOGLE_CLIENT_ID) && ok(env.GOOGLE_CLIENT_SECRET),
+    roblox: ok(env.ROBLOX_CLIENT_ID) && ok(env.ROBLOX_CLIENT_SECRET),
   };
 }
 
@@ -151,5 +164,22 @@ export async function fetchGoogleProfile(token: string) {
     email: u.email || null,
     name: u.name || null,
     avatar_url: u.picture || null,
+  };
+}
+
+// Roblox OIDC userinfo: sub = Roblox user id, preferred_username = @username,
+// nickname/name = display name, picture = avatar headshot. Roblox never returns an
+// email (no such scope by default), so email stays null. `login` carries the
+// Roblox username so we can show/verify it and key the Studio plugin's places.
+export async function fetchRobloxProfile(token: string) {
+  const u: any = await fetch('https://apis.roblox.com/oauth/v1/userinfo', {
+    headers: { authorization: `Bearer ${token}` },
+  }).then((r) => r.json());
+  return {
+    provider_id: String(u.sub),
+    email: null as string | null,
+    name: u.nickname || u.name || u.preferred_username || null,
+    avatar_url: u.picture || null,
+    login: u.preferred_username || null,
   };
 }

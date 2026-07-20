@@ -65,7 +65,7 @@ crons = ["0 6 * * *"]
 # --- Non-secret vars (override per environment) --------------------------------
 [vars]
 APP_NAME = "Yield"
-APP_URL = "https://yield.example.workers.dev"
+APP_URL = "https://yield.bobitho69.workers.dev"
 
 # NVIDIA endpoints (OpenAI-compatible chat + NemoGuard jailbreak classifier).
 NVIDIA_CHAT_BASE = "https://integrate.api.nvidia.com/v1"
@@ -136,6 +136,15 @@ GITHUB_CLIENT_ID = "PLACEHOLDER_GITHUB_CLIENT_ID"
 GITHUB_CLIENT_SECRET = "PLACEHOLDER_GITHUB_CLIENT_SECRET"
 GOOGLE_CLIENT_ID = "PLACEHOLDER_GOOGLE_CLIENT_ID"
 GOOGLE_CLIENT_SECRET = "PLACEHOLDER_GOOGLE_CLIENT_SECRET"
+
+# "Sign in with Roblox" (OAuth 2.0 / OIDC) — OPTIONAL. Register an app at
+# create.roblox.com → Creator Dashboard → Open Cloud → OAuth 2.0 Apps, set its
+# redirect URI to "<APP_URL>/api/auth/roblox/callback", request the "openid profile"
+# scopes, then put the Client ID here and set ROBLOX_CLIENT_SECRET as a real secret.
+# Left as a placeholder, the "Sign in with Roblox" button auto-hides and the Studio
+# plugin still links fine (via the link code, or with zero friction in testing mode).
+ROBLOX_CLIENT_ID = "PLACEHOLDER_ROBLOX_CLIENT_ID"
+ROBLOX_CLIENT_SECRET = "PLACEHOLDER_ROBLOX_CLIENT_SECRET"
 
 # Secrets set via `wrangler secret put` (do NOT put real values here):
 #   NVIDIA_API_KEY            nvapi-...  THE key for the whole NVIDIA catalog (every model, the router, the guard, images)

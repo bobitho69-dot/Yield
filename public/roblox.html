@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yield Roblox</title>
+<meta name="description" content="One AI chatbot with full access to your Roblox Studio place — write Luau, build extravagant maps, sculpt and 3D-generate models, insert virus-scanned free marketplace models, and edit any instance. Watch every action it sends to Studio live.">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  /* Single-chat Roblox workspace: games rail · chatbot · live Studio panel
+     (Activity feed + full-game Explorer). Uses the shared design tokens + .nav. */
+  body.rbx-app { height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+  .rbx-grid { display:grid; grid-template-columns:244px 1fr 372px; flex:1; min-height:0; overflow:hidden; }
+  .badge { display:inline-flex; align-items:center; gap:.35rem; font-size:.72rem; font-weight:600; padding:.24rem .55rem; border-radius:999px; border:1px solid var(--line); background:var(--panel-2); color:var(--muted); white-space:nowrap; }
+  .badge.ok { color:#5fe0a6; border-color:#1e4d31; background:#0f2417; }
+  .sec-label { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); }
+  .dim { color:var(--faint); font-weight:400; }
+  .center { text-align:center; }
+
+  /* ---------- Left rail ---------- */
+  .rail { background:var(--bg); border-right:1px solid var(--line); display:flex; flex-direction:column; gap:.35rem; padding:1rem .85rem; min-height:0; overflow-y:auto; }
+  .rail-label { font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); padding:.2rem .2rem .4rem; }
+  .proj-item { display:flex; align-items:center; gap:.6rem; padding:.55rem .62rem; border-radius:9px; color:var(--muted); font-size:.86rem; font-weight:500; cursor:pointer; transition:.12s; }
+  .proj-item:hover { background:var(--panel-2); color:var(--text); }
+  .proj-item.active { background:#171a2e; color:var(--text); font-weight:600; }
+  .proj-item .pi-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .proj-item .pi-dot { width:8px; height:8px; border-radius:50%; background:#3a4257; flex:0 0 auto; }
+  .proj-item.paired .pi-dot { background:#3ecf8e; }
+  .rail-new { justify-content:center; width:100%; margin-top:.35rem; }
+  .rail-foot { margin-top:auto; padding-top:.8rem; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:.3rem; }
+  .rail-dl { font-size:.8rem; font-weight:600; color:var(--muted); cursor:pointer; }
+  .rail-dl:hover { color:var(--text); }
+  .rail-sub { font-family:var(--font-mono); font-size:.7rem; color:var(--faint); }
+
+  /* ---------- Center chat ---------- */
+  .chat { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .chat-head { display:flex; align-items:center; gap:.75rem; padding:.85rem 1.4rem; border-bottom:1px solid var(--line); background:var(--bg); flex:0 0 auto; }
+  .chat-head h1 { font-family:var(--font-display); font-size:1.12rem; margin:0; letter-spacing:-.01em; font-weight:700; }
+  .chat-head input.title-edit { background:none; border:none; color:var(--text); font-family:var(--font-display); font-size:1.12rem; font-weight:700; letter-spacing:-.01em; padding:.1rem .3rem; border-radius:6px; }
+  .chat-head input.title-edit:focus { background:var(--panel-2); outline:1px solid var(--line); }
+  .chat-head-sp { flex:1; }
+  .messages { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:1.15rem; padding:1.4rem 1.5rem; }
+  .msg { max-width:660px; display:flex; flex-direction:column; gap:.35rem; }
+  .msg.user { align-self:flex-end; max-width:520px; }
+  .msg .meta { font-family:var(--font-mono); font-size:.7rem; color:var(--faint); padding-left:.15rem; }
+  .msg.user .meta { color:var(--brand); text-align:right; padding-right:.15rem; }
+  .msg .bubble { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:.7rem .9rem; font-size:.88rem; line-height:1.55; white-space:pre-wrap; word-break:break-word; color:#dbe1ee; }
+  .msg.user .bubble { background:#171a2e; border-color:#2a2560; }
+  .think, .livecode, .happening { margin-top:.15rem; border:1px solid var(--line); border-radius:9px; background:var(--panel-2); overflow:hidden; }
+  .think summary, .livecode summary, .happening summary { cursor:pointer; padding:.45rem .7rem; font-size:.76rem; color:var(--muted); list-style:none; }
+  .livecode summary { color:var(--brand); }
+  .hp-tabs { display:flex; gap:.35rem; padding:0 .7rem .4rem; }
+  .hp-tab { font-size:.68rem; padding:.15rem .55rem; border-radius:999px; border:1px solid var(--line); background:transparent; color:var(--muted); cursor:pointer; }
+  .hp-tab.on { color:var(--brand); border-color:var(--brand); }
+  .hp-body { padding:0 .8rem .6rem; font-size:.76rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
+  .hp-body.raw { font-family:var(--font-mono); font-size:.7rem; }
+  .think .think-body { padding:0 .8rem .6rem; font-size:.76rem; color:var(--muted); white-space:pre-wrap; max-height:200px; overflow:auto; }
+  .lc-file { border-top:1px solid var(--line); }
+  .lc-head { padding:.35rem .7rem; font-size:.74rem; color:var(--muted); font-family:var(--font-mono); background:var(--bg-2); }
+  .lc-pre { margin:0; padding:.55rem .7rem; font-size:.76rem; white-space:pre-wrap; overflow:auto; max-height:280px; background:#0a0c11; font-family:var(--font-mono); }
+  .lc-pre.live::after { content:'▋'; color:var(--brand); animation:wkblink 1s steps(1) infinite; }
+  .working { display:flex; align-items:center; gap:.5rem; font-size:.75rem; color:var(--muted); margin-bottom:.15rem; }
+  .wk-spin { width:11px; height:11px; border-radius:50%; border:2px solid var(--line); border-top-color:var(--brand); animation:wkspin .7s linear infinite; flex:0 0 auto; }
+  @keyframes wkspin { to { transform:rotate(360deg); } }
+  @keyframes wkblink { 50% { opacity:0; } }
+  .act-chips { display:flex; flex-direction:column; gap:.4rem; margin-top:.15rem; }
+  .chip { display:flex; align-items:center; gap:.55rem; padding:.45rem .65rem; border-radius:9px; background:#10131c; border:1px solid var(--line); font-family:var(--font-mono); font-size:.75rem; color:#c9d2e3; }
+  .chip .chip-t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sent-note { font-size:.72rem; font-weight:500; color:#5fe0a6; margin-top:.1rem; }
+  .note-line { font-size:.76rem; color:var(--warn); margin-top:.15rem; line-height:1.45; }
+  .ask-card { margin-top:.3rem; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:.7rem .8rem; }
+  .ask-q { font-size:.84rem; margin-bottom:.5rem; }
+  .ask-opts { display:flex; flex-wrap:wrap; gap:.4rem; }
+  .ask-opt { background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:.35rem .8rem; font-size:.8rem; color:var(--text); cursor:pointer; }
+  .ask-opt:hover { border-color:var(--brand); } .ask-opt.chosen { background:var(--brand); color:#fff; }
+  .empty-chat { margin:auto; text-align:center; color:var(--muted); max-width:520px; padding:2rem; }
+  .empty-chat .big { font-size:2.4rem; margin-bottom:.5rem; }
+  .empty-chat h2 { color:var(--text); margin:.2rem 0 .5rem; font-family:var(--font-display); }
+  .empty-chat p { line-height:1.6; font-size:.9rem; margin:0 0 1.1rem; }
+  .suggest { display:flex; flex-wrap:wrap; gap:.5rem; justify-content:center; }
+  .suggest button { background:var(--panel); border:1px solid var(--line); color:var(--muted); border-radius:999px; padding:.4rem .8rem; font-size:.82rem; cursor:pointer; }
+  .suggest button:hover { border-color:var(--brand); color:var(--text); }
+  .composer-wrap { flex:0 0 auto; padding:.5rem 1.5rem 1.35rem; }
+  .composer { display:flex; gap:.55rem; align-items:flex-end; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:.65rem .7rem; }
+  .composer textarea { flex:1; background:none; border:none; color:var(--text); font-family:inherit; font-size:.9rem; resize:none; min-height:26px; max-height:180px; outline:none; line-height:1.4; }
+  .composer textarea::placeholder { color:var(--faint); }
+  .composer .csel { background:var(--panel-2); border:1px solid var(--line); color:var(--muted); border-radius:8px; padding:.42rem .5rem; font-size:.78rem; font-family:inherit; align-self:center; }
+  .composer .btn { align-self:center; }
+  .composer .char-count { font-size:.66rem; color:var(--faint); font-family:var(--font-mono); align-self:center; white-space:nowrap; }
+  .composer .char-count.warn { color:var(--warn); }
+  .composer .stop-btn { align-self:center; border-radius:9px; }
+
+  /* ---------- Right Studio panel ---------- */
+  .studio { background:#0b0e15; border-left:1px solid var(--line); display:flex; flex-direction:column; gap:.9rem; padding:1.1rem 1rem; min-height:0; }
+  .studio-head { display:flex; align-items:center; gap:.6rem; }
+  .studio-title { font-weight:600; font-size:.92rem; }
+  .studio-head .badge { margin-left:auto; }
+  .studio-sub { font-family:var(--font-mono); font-size:.7rem; color:var(--faint); margin-top:-.5rem; }
+  .seg { display:flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:#12151f; }
+  .seg button { flex:1; padding:.42rem; border:none; background:none; color:var(--muted); font-family:inherit; font-size:.78rem; font-weight:600; cursor:pointer; }
+  .seg button.on { background:var(--brand); color:#fff; }
+  .studio-body { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:.9rem; }
+  .studio-sec { display:flex; flex-direction:column; gap:.45rem; }
+  .actions-feed { display:flex; flex-direction:column; gap:.5rem; }
+  .action { display:flex; align-items:center; gap:.6rem; padding:.6rem .68rem; border-radius:10px; background:#12151f; border:1px solid var(--line); }
+  .action .a-ic { font-size:.95rem; flex:0 0 auto; }
+  .action .a-col { flex:1; min-width:0; display:flex; flex-direction:column; gap:.1rem; }
+  .action .a-title { font-family:var(--font-mono); font-size:.72rem; color:#dbe1ee; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .action .a-sub { font-size:.66rem; font-weight:500; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .status-pill { font-size:.62rem; font-weight:700; padding:.16rem .48rem; border-radius:6px; text-transform:capitalize; flex:0 0 auto; }
+  .status-pill.applied { background:#0f2417; color:#5fe0a6; border:1px solid #1e4d31; }
+  .status-pill.pending { background:#241f0f; color:var(--warn); border:1px solid #3a331a; }
+  .status-pill.failed { background:#2a1416; color:#f58ea0; border:1px solid #5a2530; }
+  .feed-empty { font-size:.76rem; color:var(--faint); padding:.5rem .1rem; line-height:1.5; }
+  /* Explorer tree */
+  .tree { display:flex; flex-direction:column; gap:1px; }
+  .tnode { display:flex; align-items:center; gap:.4rem; padding:.32rem .4rem; border-radius:6px; }
+  .tnode:hover { background:var(--panel-2); }
+  .tnode .t-ic { font-size:.8rem; flex:0 0 auto; }
+  .tnode .t-name { font-family:var(--font-mono); font-size:.72rem; color:#c9d2e3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tnode.root .t-name { font-family:var(--font-body); font-weight:700; color:#eef1f8; font-size:.78rem; }
+  .tnode .t-cls { margin-left:auto; font-size:.6rem; padding:.06rem .38rem; border-radius:5px; background:var(--panel-2); color:var(--muted); flex:0 0 auto; }
+  .script-row { display:flex; align-items:center; gap:.5rem; padding:.42rem .5rem; border-radius:7px; cursor:pointer; }
+  .script-row:hover { background:var(--panel-2); }
+  .script-row .sc-path { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-mono); font-size:.72rem; color:#c9d2e3; }
+  .script-row .sc-cls { font-size:.62rem; padding:.1rem .42rem; border-radius:5px; background:var(--panel-2); color:var(--muted); flex:0 0 auto; }
+  .pair-code { font-size:1.9rem; font-weight:800; letter-spacing:.14em; text-align:center; padding:.9rem; background:var(--panel-2); border:1px dashed var(--line); border-radius:12px; margin:.6rem 0; font-family:var(--font-mono); }
+  .pair-badge { display:inline-flex; align-items:center; gap:.4rem; font-size:.82rem; padding:.3rem .7rem; border-radius:999px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); }
+  .pair-badge.on { color:#5fe0a6; border-color:#1e4d31; background:rgba(62,207,142,.1); }
+
+  /* ---------- Studio drawer (link + optional key) ---------- */
+  .drawer-bg { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:90; }
+  .drawer-bg.show { display:block; }
+  .drawer { position:absolute; top:0; right:0; height:100%; width:min(480px,96vw); background:var(--bg); border-left:1px solid var(--line); display:flex; flex-direction:column; box-shadow:var(--shadow); }
+  .drawer-head { display:flex; align-items:center; gap:.8rem; padding:.9rem 1.1rem; border-bottom:1px solid var(--line); font-family:var(--font-display); font-weight:700; }
+  .drawer-close { margin-left:auto; background:none; border:none; color:var(--muted); font-size:1.2rem; cursor:pointer; }
+  .drawer-body { flex:1; overflow-y:auto; padding:1.2rem 1.1rem 2.5rem; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.1rem 1.2rem; margin-bottom:1.1rem; }
+  .panel h2 { margin:0 0 .3rem; font-size:1rem; font-family:var(--font-display); }
+  .panel .p-hint { color:var(--muted); font-size:.84rem; margin:0 0 1rem; line-height:1.5; }
+  .field { display:flex; flex-direction:column; gap:.4rem; margin-bottom:1rem; }
+  .field label { font-size:.8rem; color:var(--muted); font-weight:600; }
+  .field textarea, .field input, .field select { background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:.6rem .7rem; color:var(--text); font-family:inherit; font-size:.88rem; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  @media (max-width:520px) { .row2 { grid-template-columns:1fr; } }
+  .steps { display:flex; flex-direction:column; gap:.55rem; margin:1rem 0; }
+  .step { display:flex; gap:.7rem; align-items:flex-start; }
+  .step .sn { width:22px; height:22px; border-radius:50%; background:var(--brand); color:#fff; display:grid; place-items:center; font-weight:800; flex:0 0 auto; font-size:.76rem; }
+  .step p { margin:0; font-size:.84rem; line-height:1.5; color:var(--muted); }
+  .step code { font-family:var(--font-mono); font-size:.78rem; background:var(--panel-2); padding:.05rem .3rem; border-radius:4px; }
+
+  /* ---------- Editor modal ---------- */
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.65); display:none; place-items:center; z-index:100; padding:1rem; }
+  .modal-bg.show { display:grid; }
+  .modal-box { background:var(--panel); border:1px solid var(--line); border-radius:14px; width:min(760px,96vw); max-height:88vh; display:flex; flex-direction:column; box-shadow:var(--shadow); }
+  .modal-head { display:flex; align-items:center; gap:.6rem; padding:.9rem 1.1rem; border-bottom:1px solid var(--line); font-weight:700; font-family:var(--font-mono); font-size:.84rem; }
+  .modal-head .close { margin-left:auto; cursor:pointer; color:var(--muted); background:none; border:none; font-size:1.1rem; }
+  .modal-box textarea.code-edit { flex:1; margin:0; padding:1rem; background:#0a0c11; color:#dfe6f5; border:none; outline:none; font-size:.82rem; white-space:pre; font-family:var(--font-mono); resize:none; min-height:320px; }
+  .modal-foot { display:flex; gap:.6rem; padding:.8rem 1.1rem; border-top:1px solid var(--line); }
+  .toast { position:fixed; bottom:18px; left:50%; transform:translate(-50%,14px); background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:.6rem .9rem; font-size:.84rem; box-shadow:var(--shadow); z-index:200; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
+  .toast.show { opacity:1; transform:translate(-50%,0); }
+
+  @media (max-width:1080px) { .rbx-grid { grid-template-columns:220px 1fr; } .studio { display:none; } }
+  @media (max-width:760px) {
+    .rbx-grid { grid-template-columns:1fr; grid-template-rows:auto 1fr; }
+    .rail { flex-direction:row; align-items:center; overflow-x:auto; border-right:none; border-bottom:1px solid var(--line); padding:.5rem .8rem; }
+    .rail-label, .rail-foot { display:none; }
+  }
+</style>
+</head>
+<body class="rbx-app">
+  <header class="nav">
+    <a class="brand" href="/"><span class="logo">◆</span> Yield</a>
+    <nav class="nav-links">
+      <a class="toplink" href="/dashboard">Projects</a>
+      <a class="toplink" href="/security">Security</a>
+      <a class="toplink" href="/roblox">Roblox</a>
+      <a class="toplink" href="/pricing">Pricing</a>
+      <a class="toplink" href="/account">Account</a>
+      <a class="btn primary sm" href="/app">＋ New app</a>
+      <span id="authArea"></span>
+    </nav>
+  </header>
+
+  <div class="rbx-grid">
+    <!-- Left rail: games -->
+    <aside class="rail">
+      <div class="rail-label">Games</div>
+      <div id="projList"></div>
+      <button class="btn ghost sm rail-new" id="newProjectBtn">＋ New game</button>
+      <div class="rail-foot">
+        <a class="rail-dl" href="/api/roblox/plugin.lua" id="downloadPluginLink2">⬇  Download plugin</a>
+        <span class="rail-sub">Yield Studio plugin</span>
+      </div>
+    </aside>
+
+    <!-- Center: the one chatbot -->
+    <main class="chat">
+      <div class="chat-head">
+        <span id="titleWrap"><h1 id="projTitle">Yield Roblox</h1></span>
+        <span id="placeBadge" class="badge" style="display:none"></span>
+        <span class="chat-head-sp"></span>
+        <button class="btn ghost sm" id="toolsBtn">⋯  Studio</button>
+        <button class="btn ghost sm" id="deleteProjectBtn" style="display:none">Delete</button>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea id="promptBox" rows="1" maxlength="4000" placeholder="Ask for anything — build, script, or edit your game…"></textarea>
+          <span id="charCount" class="char-count"></span>
+          <select class="csel" id="modelSel"><option value="auto">Auto</option></select>
+          <button class="btn primary" id="sendBtn" disabled>Send</button>
+          <button class="stop-btn hidden" id="stopBtn">■ Stop</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right: live Studio panel (Activity + Explorer) -->
+    <aside class="studio">
+      <div class="studio-head">
+        <span class="studio-title">Roblox Studio</span>
+        <span id="studioBadge" class="badge">○ …</span>
+      </div>
+      <div class="studio-sub" id="studioSub">Checking link…</div>
+      <button class="btn primary sm" id="studioLinkBtn" style="display:none;width:100%">Link Studio</button>
+      <div id="studioLinkCode"></div>
+      <div class="seg" id="studioSeg">
+        <button data-view="activity" class="on">Activity</button>
+        <button data-view="explorer">Explorer</button>
+      </div>
+      <div class="studio-body">
+        <div id="view-activity">
+          <div class="studio-sec">
+            <div class="sec-label">Live actions</div>
+            <div id="actionsFeed" class="actions-feed"><div class="feed-empty">Ask the chatbot to build something — every action it sends to Studio shows here and flips to Applied once the plugin syncs.</div></div>
+          </div>
+        </div>
+        <div id="view-explorer" style="display:none">
+          <div class="studio-sec">
+            <div class="sec-label">Game <span id="treeMeta" class="dim"></span></div>
+            <div id="treeBox" class="tree"><div class="feed-empty">Open a place in Studio and the plugin pushes the full game here — every instance Yield can see and edit.</div></div>
+          </div>
+          <div class="studio-sec">
+            <div class="sec-label">Scripts <span id="scriptCount" class="dim"></span></div>
+            <div id="scriptList"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Studio drawer: link + optional Open Cloud key -->
+  <div class="drawer-bg" id="drawer">
+    <div class="drawer">
+      <div class="drawer-head">Studio<button class="drawer-close" id="drawerClose">✕</button></div>
+      <div class="drawer-body">
+        <div class="panel">
+          <h2>Link Roblox Studio</h2>
+          <p class="p-hint">Link Studio to Yield <b>once</b>. After that, every place you open auto-syncs by its PlaceId — the chatbot can then read the whole game and build/edit it live.</p>
+          <div id="linkStatus"></div>
+          <div id="linkCodeArea"></div>
+          <div class="steps">
+            <div class="step"><span class="sn">1</span><p><a href="/api/roblox/plugin.lua" id="downloadPluginLink" style="color:var(--brand)">Download the Yield plugin</a> and drop the .lua file into your local Studio Plugins folder (Windows: <code>%LOCALAPPDATA%\Roblox\Plugins</code>, Mac: <code>~/Documents/Roblox/Plugins</code>), then restart Studio.</p></div>
+            <div class="step"><span class="sn">2</span><p>Click <b>Get link code</b>, open the Yield panel in Studio's toolbar, and paste the code — just this once.</p></div>
+            <div class="step"><span class="sn">3</span><p>Allow the HTTP-request and script-injection prompts Studio shows the first time. From then on, open any saved place and it syncs automatically.</p></div>
+          </div>
+          <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <button class="btn primary" id="linkBtn">Get link code</button>
+            <a class="btn ghost sm" id="robloxSigninBtn" href="/api/auth/roblox/login?redirect=/roblox" style="display:none">Sign in with Roblox</a>
+            <button class="btn ghost sm" id="unlinkBtn" style="display:none">Unlink Studio</button>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Marketplace Key <span class="dim" style="font-size:.8rem">(optional)</span></h2>
+          <p class="p-hint">A Roblox <b>Open Cloud</b> API key (Assets Read+Write permission), added <b>once for your whole account</b>. Only used to <b>publish AI-generated 3D models to your Roblox account</b> when a mesh can't be imported straight into Studio — a rare fallback. <b>Marketplace search doesn't need it</b>: the Studio plugin searches, virus-scans, and inserts free models itself. Stored <b>encrypted</b> — never shown again, never sent back to your browser.</p>
+          <div id="keyStatus" class="dim" style="font-size:.82rem;margin-bottom:.6rem"></div>
+          <div class="field"><label id="robloxKeyLabel">Open Cloud API key</label><input id="robloxKeyInput" type="password" placeholder="paste your key — kept encrypted" autocomplete="off"></div>
+          <div class="row2">
+            <div class="field"><label>Creator type</label><select id="creatorTypeInput"><option value="User">User</option><option value="Group">Group</option></select></div>
+            <div class="field"><label>Creator id <span class="dim">(for 3D upload)</span></label><input id="creatorIdInput" placeholder="your user or group id" autocomplete="off"></div>
+          </div>
+          <div style="display:flex;gap:.5rem;align-items:center"><button class="btn primary sm" id="connectKeyBtn">Connect</button><button class="btn ghost sm" id="disconnectKeyBtn">Disconnect</button></div>
+          <div id="keyMsg" style="font-size:.78rem;margin-top:.5rem"></div>
+          <p class="dim" style="font-size:.76rem;margin-top:.6rem">Create one at create.roblox.com → Creator Dashboard → Open Cloud → API Keys: add the <b>Assets</b> API system with <b>Read</b> and <b>Write</b> permissions for your creator (there is no "Toolbox" scope — Assets is the one that matters, and it's what enables 3D-model upload). The creator id is the numeric id of your account or group.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Editor modal -->
+  <div class="modal-bg" id="editorModal">
+    <div class="modal-box">
+      <div class="modal-head"><span id="editorPath"></span><button class="close" id="editorClose">✕</button></div>
+      <textarea class="code-edit" id="editorSource" spellcheck="false"></textarea>
+      <div class="modal-foot">
+        <button class="btn primary sm" id="editorSave">Save &amp; sync</button>
+        <button class="btn ghost sm" id="editorDelete">Delete script</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script>
+const $ = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ago = (t) => { if (!t) return 'never'; const d = Date.now() / 1000 - t; if (d < 60) return 'just now'; if (d < 3600) return Math.round(d / 60) + 'm ago'; if (d < 86400) return Math.round(d / 3600) + 'h ago'; return Math.round(d / 86400) + 'd ago'; };
+let toastTimer;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200); }
+
+const OP_ICON = { upsert_script: '📜', delete_script: '🗑', build_map: '🗺', insert_model: '📦', create_mesh: '🗿', set_properties: '🎨', create_instance: '🧱', delete_instance: '🗑', rename_instance: '✏️', move_instance: '↔️' };
+const OP_TYPE = { upsert_script: 'Script', delete_script: 'Delete script', build_map: 'Build map', insert_model: 'Insert model', create_mesh: 'Build mesh', set_properties: 'Edit properties', create_instance: 'Create', delete_instance: 'Delete', rename_instance: 'Rename', move_instance: 'Move' };
+const CLASS_ICON = (cls) => {
+  if (/Script$/.test(cls)) return '📜';
+  if (cls === 'Folder' || cls === 'Model' || cls === 'Configuration') return '📁';
+  if (/Part$|^Part$|Mesh|Union|Seat|SpawnLocation|TrussPart/.test(cls)) return '🧊';
+  if (/Light$/.test(cls)) return '💡';
+  if (/Gui|Frame|Label|Button|ScreenGui/.test(cls)) return '🖼';
+  return '•';
+};
+
+const state = { projects: [], currentId: null, current: null, streaming: false, studioPoll: null, robloxSignin: false, studioView: 'activity' };
+
+async function api(path, opts) {
+  const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts });
+  if (res.status === 401) { location.href = '/login?next=' + encodeURIComponent(location.pathname); throw new Error('auth'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || 'Request failed'), { data, status: res.status });
+  return data;
+}
+
+// ---------- Boot ----------
+(async function boot() {
+  const me = await fetch('/api/auth/me').then((r) => r.json()).catch(() => ({ user: null }));
+  const authArea = $('#authArea');
+  authArea.innerHTML = me.user ? `<button id="logoutBtn" class="btn ghost sm">Sign out</button>` : `<a class="btn ghost sm" href="/login">Sign in</a>`;
+  if (me.user) $('#logoutBtn').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); location.reload(); };
+
+  try {
+    const models = await fetch('/api/models').then((r) => r.json());
+    const sel = $('#modelSel');
+    (models.models || []).forEach((m) => { if (!m.id || m.id === 'auto') return; const o = document.createElement('option'); o.value = m.id; o.textContent = m.label || m.id; sel.appendChild(o); });
+  } catch { /* auto-only fallback */ }
+
+  try {
+    const prov = await fetch('/api/auth/providers').then((r) => r.json());
+    state.robloxSignin = !!(prov.providers && prov.providers.roblox);
+  } catch { /* stays hidden */ }
+
+  await loadProjects();
+  const qp = new URLSearchParams(location.search).get('project');
+  if (qp && state.projects.some((p) => p.id === qp)) selectProject(qp);
+  else if (state.projects.length) selectProject(state.projects[0].id);
+  else await createFirstProject();
+})();
+
+async function loadProjects() {
+  try { const { projects } = await api('/api/roblox/projects'); state.projects = projects || []; }
+  catch (e) { if (e.message === 'auth') return; state.projects = []; }
+  renderRail();
+}
+function renderRail() {
+  const el = $('#projList');
+  if (!state.projects.length) { el.innerHTML = `<div class="dim" style="padding:.6rem;font-size:.8rem">No games yet.</div>`; return; }
+  el.innerHTML = state.projects.map((p) => `
+    <div class="proj-item ${p.id === state.currentId ? 'active' : ''} ${p.paired ? 'paired' : ''}" data-id="${p.id}">
+      <span class="pi-dot" title="${p.paired ? 'Plugin connected' : 'Plugin not connected'}"></span>
+      <span class="pi-name">${esc(p.title)}</span>
+    </div>`).join('');
+  $$('.proj-item', el).forEach((row) => row.addEventListener('click', () => selectProject(row.dataset.id)));
+}
+$('#newProjectBtn').onclick = () => createProject();
+async function createProject() {
+  const title = prompt('Name your Roblox game', 'Untitled game');
+  if (title === null) return;
+  const { project } = await api('/api/roblox/projects', { method: 'POST', body: JSON.stringify({ title: title || 'Untitled game' }) });
+  state.projects.unshift(project); renderRail(); selectProject(project.id);
+}
+async function createFirstProject() {
+  try {
+    const { project } = await api('/api/roblox/projects', { method: 'POST', body: JSON.stringify({ title: 'Untitled game' }) });
+    state.projects.unshift(project); renderRail(); selectProject(project.id);
+  } catch (e) {
+    if (e.message === 'auth') return;
+    $('#messages').innerHTML = `<div class="empty-chat"><div class="big">🎮</div><h2>Build Roblox games with AI</h2><p>Chat to write Luau, design maps, and sync it live into Studio.</p><button class="btn primary" onclick="createProject()">Start a game</button></div>`;
+  }
+}
+$('#deleteProjectBtn').onclick = async () => {
+  if (!state.currentId) return;
+  if (!confirm('Delete this Roblox game? This cannot be undone.')) return;
+  try { await api('/api/roblox/projects/' + state.currentId, { method: 'DELETE' }); } catch (e) { toast(e.message); return; }
+  state.projects = state.projects.filter((p) => p.id !== state.currentId);
+  state.currentId = null; state.current = null; renderRail();
+  if (state.projects.length) selectProject(state.projects[0].id); else createFirstProject();
+};
+
+async function selectProject(id) {
+  state.currentId = id; renderRail();
+  const data = await api('/api/roblox/projects/' + id);
+  state.current = data;
+  $('#deleteProjectBtn').style.display = '';
+  renderTitle(); renderMessages(); renderScripts(); loadMarketplaceStatus();
+  const wantView = new URLSearchParams(location.search).get('view');
+  if (wantView === 'explorer' || wantView === 'activity') setStudioView(wantView);
+  history.replaceState(null, '', '/roblox?project=' + id);
+  loadLink(); loadOps(); loadTree(); startStudioPoll();
+}
+function renderTitle() {
+  const p = state.current.project;
+  $('#titleWrap').innerHTML = `<input class="title-edit" id="titleInput" value="${esc(p.title)}" size="${Math.max(8, p.title.length)}">`;
+  const input = $('#titleInput');
+  input.addEventListener('change', async () => {
+    const title = input.value.trim() || 'Untitled game';
+    await api('/api/roblox/projects/' + p.id, { method: 'PATCH', body: JSON.stringify({ title }) });
+    p.title = title; const proj = state.projects.find((x) => x.id === p.id); if (proj) proj.title = title; renderRail();
+  });
+}
+
+// ---------- Chat ----------
+function renderMessages() {
+  const m = $('#messages'); m.innerHTML = '';
+  const msgs = state.current.messages || [];
+  if (!msgs.length) {
+    m.innerHTML = `<div class="empty-chat"><div class="big">🎮</div><h2>What do you want to build?</h2>
+      <p>I'm one AI with full access to your place — I write Luau, build extravagant maps, sculpt & 3D-generate models, insert virus-scanned free models, and edit anything. Just ask.</p>
+      <div class="suggest">
+        <button data-s="Build a big medieval village with a market square, houses, a tavern and a forest border">Medieval village</button>
+        <button data-s="Make a sword tool that does 25 damage and knocks players back on hit">Sword with knockback</button>
+        <button data-s="Turn the ground to snow and add a pine forest with a frozen lake">Snowy forest</button>
+      </div></div>`;
+    $$('.suggest button', m).forEach((b) => b.addEventListener('click', () => sendPrompt(b.dataset.s)));
+    return;
+  }
+  msgs.forEach((msg) => m.appendChild(bubble(msg.role === 'user' ? 'you' : (msg.model || 'yield'), msg.content, msg.role === 'user')));
+  m.scrollTop = m.scrollHeight;
+}
+function bubble(meta, text, user) {
+  const g = document.createElement('div');
+  g.className = 'msg ' + (user ? 'user' : 'ai');
+  g.innerHTML = `<div class="meta">${esc(meta)}</div><div class="bubble">${esc(text)}</div>`;
+  return g;
+}
+function renderScripts() {
+  const files = (state.current && state.current.files) || [];
+  $('#scriptCount').textContent = files.length ? '(' + files.length + ')' : '';
+  const el = $('#scriptList');
+  el.innerHTML = files.length ? files.map((f) => `<div class="script-row" data-path="${esc(f.path)}"><span class="sc-path">${esc(f.path)}</span><span class="sc-cls">${esc(f.class_name)}</span></div>`).join('')
+    : `<div class="feed-empty">No scripts yet.</div>`;
+  $$('.script-row', el).forEach((row) => row.addEventListener('click', () => openEditor(row.dataset.path)));
+}
+
+const promptBox = $('#promptBox');
+const PROMPT_MAX = 4000;
+function updateComposer() {
+  const n = promptBox.value.length;
+  const c = $('#charCount');
+  c.textContent = n >= 3000 ? n + '/' + PROMPT_MAX : '';
+  c.classList.toggle('warn', n >= PROMPT_MAX - 150);
+  if (!state.streaming) $('#sendBtn').disabled = !promptBox.value.trim();
+}
+function setSending(on) {
+  state.streaming = on;
+  $('#sendBtn').classList.toggle('hidden', on);
+  $('#stopBtn').classList.toggle('hidden', !on);
+  if (!on) $('#sendBtn').disabled = !promptBox.value.trim();
+}
+promptBox.addEventListener('input', () => { promptBox.style.height = 'auto'; promptBox.style.height = Math.min(180, promptBox.scrollHeight) + 'px'; updateComposer(); });
+promptBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); } });
+$('#sendBtn').onclick = () => sendPrompt();
+$('#stopBtn').onclick = () => { if (state.abort) state.abort.abort(); };
+updateComposer();
+
+async function sendPrompt(overrideText) {
+  if (state.streaming || !state.currentId) return;
+  const text = (overrideText || promptBox.value).trim().slice(0, PROMPT_MAX);
+  if (!text) return;
+  if (!(state.current.messages || []).length) $('#messages').innerHTML = '';
+  promptBox.value = ''; promptBox.style.height = 'auto'; updateComposer();
+  const ctrl = new AbortController(); state.abort = ctrl;
+  setSending(true);
+
+  const m = $('#messages');
+  m.appendChild(bubble('you', text, true));
+  const aiDiv = bubble('yield', '', false);
+  m.appendChild(aiDiv); m.scrollTop = m.scrollHeight;
+  const wk = document.createElement('div'); wk.className = 'working';
+  wk.innerHTML = '<span class="wk-spin"></span><span class="wk-text">Working…</span>';
+  aiDiv.insertBefore(wk, aiDiv.querySelector('.bubble'));
+  const wkSet = (t) => { const el = wk.querySelector('.wk-text'); if (el) el.textContent = t; };
+  const chatSpan = document.createElement('span');
+  aiDiv.querySelector('.bubble').appendChild(chatSpan);
+  const bubbleEl = aiDiv.querySelector('.bubble');
+  let thinkEl, thinkBody, thinkAcc = '';
+  const ensureThink = () => { if (!thinkEl) { thinkEl = document.createElement('details'); thinkEl.className = 'think'; thinkEl.innerHTML = '<summary>💭 Thinking…</summary><div class="think-body"></div>'; aiDiv.appendChild(thinkEl); thinkBody = thinkEl.querySelector('.think-body'); } return thinkEl; };
+  let lcEl, lcBody; const codeSecs = {};
+  const ensureLive = () => { if (!lcEl) { lcEl = document.createElement('details'); lcEl.className = 'livecode'; lcEl.open = true; lcEl.innerHTML = '<summary>⌨ Writing code — live</summary><div class="lc-body"></div>'; aiDiv.appendChild(lcEl); lcBody = lcEl.querySelector('.lc-body'); } return lcEl; };
+
+  // "What's happening" — a live feed of what the AI is doing. Raw mode shows the
+  // event lines as they arrive; Plain English mode has gpt-oss-20b interpret the
+  // tail of the feed every few seconds (server: /api/roblox/interpret).
+  let hpEl, hpBody, hpMode = 'plain', hpTimer = null, hpBusy = false, hpThought = false;
+  const hpRaw = [], hpPlain = [];
+  const renderHappening = () => {
+    if (!hpBody) return;
+    hpBody.classList.toggle('raw', hpMode === 'raw');
+    hpBody.textContent = (hpMode === 'raw' ? hpRaw : (hpPlain.length ? hpPlain : ['Interpreting…'])).join('\n');
+    hpBody.scrollTop = hpBody.scrollHeight;
+  };
+  const interpretNow = async () => {
+    if (hpBusy || !hpRaw.length) return;
+    hpBusy = true;
+    try {
+      const r = await api('/api/roblox/interpret', { method: 'POST', body: JSON.stringify({ lines: hpRaw.slice(-40) }) });
+      if (r.text && r.text !== hpPlain[hpPlain.length - 1]) {
+        hpPlain.push(r.text);
+        if (hpPlain.length > 60) hpPlain.shift();
+        if (hpMode === 'plain') renderHappening();
+      }
+    } catch { /* the raw view still works */ }
+    hpBusy = false;
+  };
+  const ensureHappening = () => {
+    if (hpEl) return hpEl;
+    hpEl = document.createElement('details');
+    hpEl.className = 'happening';
+    hpEl.innerHTML = '<summary>👁 What’s happening…</summary><div class="hp-tabs"><button class="hp-tab on" data-m="plain">Plain English</button><button class="hp-tab" data-m="raw">Raw</button></div><div class="hp-body"></div>';
+    aiDiv.appendChild(hpEl);
+    hpBody = hpEl.querySelector('.hp-body');
+    hpEl.querySelectorAll('.hp-tab').forEach((b) => b.addEventListener('click', (e) => {
+      e.preventDefault();
+      hpMode = b.dataset.m;
+      hpEl.querySelectorAll('.hp-tab').forEach((x) => x.classList.toggle('on', x === b));
+      renderHappening();
+      if (hpMode === 'plain') interpretNow();
+    }));
+    hpEl.addEventListener('toggle', () => { if (hpEl.open && hpMode === 'plain') interpretNow(); });
+    return hpEl;
+  };
+  const hpLine = (s) => {
+    hpRaw.push(s);
+    if (hpRaw.length > 200) hpRaw.shift();
+    ensureHappening();
+    if (hpMode === 'raw') renderHappening();
+  };
+  const appendCode = (p) => {
+    ensureLive(); let sec = codeSecs[p.path];
+    if (!sec) { const wrap = document.createElement('div'); wrap.className = 'lc-file'; wrap.innerHTML = `<div class="lc-head">${esc(p.className || 'Script')} · ${esc(p.path)}</div><pre class="lc-pre live"></pre>`; lcBody.appendChild(wrap); sec = codeSecs[p.path] = { pre: wrap.querySelector('.lc-pre'), text: '' }; wkSet('Writing ' + p.path); }
+    if (p.delta) { sec.text += p.delta; sec.pre.textContent = sec.text; sec.pre.scrollTop = sec.pre.scrollHeight; }
+  };
+
+  try {
+    const res = await fetch('/api/roblox/projects/' + state.currentId + '/generate', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: text, model: $('#modelSel').value }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok || !res.body) { bubbleEl.textContent = ((await res.json().catch(() => ({}))).error) || 'Request failed.'; throw 0; }
+    // Interpret the live feed every few seconds — but only while the dropdown is
+    // actually open in Plain English mode, so idle chats cost nothing.
+    hpTimer = setInterval(() => { if (hpEl && hpEl.open && hpMode === 'plain') interpretNow(); }, 4000);
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = '', chatAcc = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let i;
+      while ((i = buf.indexOf('\n\n')) !== -1) {
+        const frame = buf.slice(0, i); buf = buf.slice(i + 2);
+        const ev = /event: (.*)/.exec(frame)?.[1];
+        const data = /data: ([\s\S]*)/.exec(frame)?.[1];
+        if (!ev || data == null) continue;
+        let payload; try { payload = JSON.parse(data); } catch { continue; }
+        if (ev === 'status') { wkSet(payload.stage || 'Working…'); hpLine('▸ ' + (payload.stage || 'Working…')); }
+        else if (ev === 'meta') { aiDiv.querySelector('.meta').textContent = payload.label ? ('yield · ' + payload.label) : 'yield'; wkSet('Generating…'); hpLine('⚡ model: ' + (payload.label || payload.model || 'auto')); }
+        else if (ev === 'thinking') { ensureThink(); thinkAcc += payload; thinkBody.textContent = thinkAcc; if (!hpThought) { hpThought = true; hpLine('💭 reasoning about the request…'); } }
+        else if (ev === 'chat') { chatAcc += payload; chatSpan.textContent = chatAcc; m.scrollTop = m.scrollHeight; }
+        else if (ev === 'code') { appendCode(payload); if (payload.start) hpLine('✎ writing ' + payload.path + ' (' + (payload.className || 'Script') + ')'); }
+        else if (ev === 'ops') { hpLine('⚙ queued edits: ' + ((payload.types || []).join(', ') || 'ops')); }
+        else if (ev === 'image') {
+          if (payload.url) { const fig = document.createElement('figure'); fig.style.margin = '.5rem 0 0'; fig.innerHTML = `<img src="${esc(payload.url)}" alt="${esc(payload.prompt || '')}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" loading="lazy">` + (payload.prompt ? `<figcaption class="dim" style="font-size:.72rem;margin-top:.3rem">${esc(payload.prompt)}</figcaption>` : ''); aiDiv.appendChild(fig); m.scrollTop = m.scrollHeight; hpLine('🖼 concept art: ' + (payload.prompt || 'image')); }
+        } else if (ev === 'ask') {
+          const el = document.createElement('div'); el.className = 'ask-card';
+          el.innerHTML = `<div class="ask-q">🤔 ${esc(payload.question)}</div>` + (payload.options && payload.options.length ? `<div class="ask-opts">${payload.options.map((o) => `<button class="ask-opt">${esc(o)}</button>`).join('')}</div>` : '');
+          el.querySelectorAll('.ask-opt').forEach((b) => b.addEventListener('click', () => { el.querySelectorAll('.ask-opt').forEach((x) => x.disabled = true); b.classList.add('chosen'); sendPrompt(b.textContent); }));
+          aiDiv.appendChild(el); m.scrollTop = m.scrollHeight;
+        } else if (ev === 'done') {
+          if (wk) wk.remove();
+          aiDiv.querySelectorAll('.lc-pre.live').forEach((p) => p.classList.remove('live'));
+          const nfiles = Object.keys(codeSecs).length;
+          if (lcEl) { const sm = lcEl.querySelector('summary'); if (sm) sm.textContent = `✓ Wrote ${nfiles} script${nfiles === 1 ? '' : 's'}`; }
+          const n = (payload.scripts ? payload.scripts.length : 0) + (payload.edits || 0);
+          if (n > 0) { const note = document.createElement('div'); note.className = 'sent-note'; note.textContent = `→ Sent ${n} action(s) to Roblox Studio`; aiDiv.appendChild(note); }
+          (payload.notes || []).forEach((t) => { const nl = document.createElement('div'); nl.className = 'note-line'; nl.textContent = '⚠ ' + t; aiDiv.appendChild(nl); });
+          if (hpEl) { hpLine(n > 0 ? `✓ done — sent ${n} action(s) to Studio` : '✓ done'); const sm = hpEl.querySelector('summary'); if (sm) sm.textContent = '👁 What happened'; }
+        } else if (ev === 'blocked' || ev === 'gate' || ev === 'error') {
+          const e = document.createElement('div'); e.style.cssText = 'color:#f58ea0;margin-top:.4rem;font-size:.85rem'; e.textContent = payload.message || 'Something went wrong.'; aiDiv.appendChild(e);
+          if (hpEl) hpLine('⚠ ' + (payload.message || 'error'));
+        }
+      }
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') { const s = document.createElement('div'); s.className = 'dim'; s.style.cssText = 'font-size:.75rem;margin-top:.3rem'; s.textContent = '⏹ Stopped.'; aiDiv.appendChild(s); }
+    else if (e) console.error(e);
+  }
+  finally {
+    if (hpTimer) { clearInterval(hpTimer); hpTimer = null; }
+    if (hpEl && hpEl.open && hpMode === 'plain') interpretNow(); // one last summary of the finished turn
+    if (wk) wk.remove();
+    aiDiv.querySelectorAll('.lc-pre.live').forEach((p) => p.classList.remove('live'));
+    state.abort = null; setSending(false);
+    try { const fresh = await api('/api/roblox/projects/' + state.currentId); state.current = fresh; renderScripts(); } catch { /* keep */ }
+    loadOps(); loadLink();
+  }
+}
+
+// ---------- Editor modal ----------
+function openEditor(path) {
+  const f = (state.current.files || []).find((x) => x.path === path);
+  if (!f) return;
+  $('#editorPath').textContent = f.path + ' · ' + f.class_name;
+  $('#editorSource').value = f.source; $('#editorSource').dataset.path = f.path; $('#editorSource').dataset.cls = f.class_name;
+  $('#editorModal').classList.add('show');
+}
+$('#editorClose').onclick = () => $('#editorModal').classList.remove('show');
+$('#editorModal').addEventListener('click', (e) => { if (e.target === $('#editorModal')) $('#editorModal').classList.remove('show'); });
+$('#editorSave').onclick = async () => {
+  const ta = $('#editorSource');
+  try { await api('/api/roblox/projects/' + state.currentId + '/files', { method: 'PUT', body: JSON.stringify({ path: ta.dataset.path, className: ta.dataset.cls, source: ta.value }) }); } catch (e) { toast(e.message); return; }
+  const f = state.current.files.find((x) => x.path === ta.dataset.path); if (f) f.source = ta.value;
+  toast('Saved — will apply on next plugin sync.'); $('#editorModal').classList.remove('show'); loadOps();
+};
+$('#editorDelete').onclick = async () => {
+  const ta = $('#editorSource');
+  if (!confirm('Delete ' + ta.dataset.path + '? This removes it from your place on next sync.')) return;
+  try { await api('/api/roblox/projects/' + state.currentId + '/files?path=' + encodeURIComponent(ta.dataset.path), { method: 'DELETE' }); } catch (e) { toast(e.message); return; }
+  state.current.files = state.current.files.filter((x) => x.path !== ta.dataset.path); renderScripts();
+  $('#editorModal').classList.remove('show'); loadOps(); toast('Deleted — will apply on next plugin sync.');
+};
+
+// ---------- Studio drawer (link + key) ----------
+$('#toolsBtn').onclick = () => { $('#drawer').classList.add('show'); loadLink(); loadMarketplaceStatus(); };
+$('#drawerClose').onclick = () => $('#drawer').classList.remove('show');
+$('#drawer').addEventListener('click', (e) => { if (e.target === $('#drawer')) $('#drawer').classList.remove('show'); });
+
+// Account-level Marketplace Key (a Roblox Open Cloud key) — added once, used by the
+// AI for free-model search + 3D upload across every game. The key is never returned
+// by the server; only a connected boolean + the non-secret creator id come back.
+async function loadMarketplaceStatus() {
+  try {
+    const r = await api('/api/roblox/marketplace-key');
+    const conn = !!r.connected;
+    const masked = r.last4 ? `key ····${esc(r.last4)}` : 'key saved';
+    $('#keyStatus').textContent = conn
+      ? (r.creatorId ? `● Connected · ${masked} · creator #${r.creatorId} (${r.creatorType || 'User'})` : `● Connected · ${masked} — add a creator id below to enable 3D-model upload`)
+      : 'Not connected — the AI models detailed props from parts instead.';
+    if (conn && r.creatorType) $('#creatorTypeInput').value = r.creatorType;
+    if (conn && r.creatorId) $('#creatorIdInput').value = r.creatorId;
+    // A key is saved server-side and used by the AI (resolveRobloxKey) whether or
+    // not this panel is ever reopened — connecting once persists it for good.
+    $('#robloxKeyLabel').textContent = conn ? 'Replace with a new key (rotates immediately)' : 'Open Cloud API key';
+    $('#connectKeyBtn').textContent = conn ? 'Rotate key' : 'Connect';
+    $('#robloxKeyInput').placeholder = conn ? `paste a new key to rotate — currently ····${r.last4 || '····'}` : 'paste your key — kept encrypted';
+    if (state.current && state.current.project) state.current.project.robloxKeyConnected = conn;
+  } catch { /* ignore */ }
+}
+$('#connectKeyBtn').onclick = async () => {
+  const apiKey = $('#robloxKeyInput').value.trim();
+  const msg = $('#keyMsg');
+  const rotating = $('#connectKeyBtn').textContent === 'Rotate key';
+  if (!apiKey) { msg.style.color = '#f58ea0'; msg.textContent = 'Paste your Open Cloud key first.'; return; }
+  msg.style.color = 'var(--muted)'; msg.textContent = rotating ? 'Rotating…' : 'Validating with Roblox…';
+  try {
+    const r = await api('/api/roblox/marketplace-key', { method: 'POST', body: JSON.stringify({ apiKey, creatorType: $('#creatorTypeInput').value, creatorId: $('#creatorIdInput').value.trim() }) });
+    $('#robloxKeyInput').value = '';
+    msg.style.color = '#5fe0a6';
+    const savedNote = r.last4 ? ` Saved as ····${r.last4} — the old key stops working immediately.` : '';
+    msg.textContent = (rotating ? '✓ Key rotated.' : '✓ Connected.') + (r.creatorId ? ' The chatbot can now upload 3D models.' : ' Add a creator id for 3D upload.') + savedNote;
+    loadMarketplaceStatus(); toast(rotating ? 'Marketplace Key rotated.' : 'Marketplace Key connected.');
+  } catch (e) { msg.style.color = '#f58ea0'; msg.textContent = e.message; }
+};
+$('#disconnectKeyBtn').onclick = async () => {
+  try { await api('/api/roblox/marketplace-key', { method: 'POST', body: JSON.stringify({ apiKey: '' }) }); } catch (e) { toast(e.message); return; }
+  $('#keyMsg').textContent = ''; $('#creatorIdInput').value = '';
+  loadMarketplaceStatus(); toast('Disconnected.');
+};
+
+// ---------- Studio panel (link + activity + explorer) ----------
+$$('#studioSeg button').forEach((b) => b.addEventListener('click', () => setStudioView(b.dataset.view)));
+function setStudioView(v) {
+  state.studioView = v;
+  $$('#studioSeg button').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
+  $('#view-activity').style.display = v === 'activity' ? '' : 'none';
+  $('#view-explorer').style.display = v === 'explorer' ? '' : 'none';
+  if (v === 'explorer') loadTree();
+}
+function startStudioPoll() { stopStudioPoll(); state.studioPoll = setInterval(() => { loadLink(); loadOps(); if (state.studioView === 'explorer') loadTree(); }, 6000); }
+function stopStudioPoll() { if (state.studioPoll) { clearInterval(state.studioPoll); state.studioPoll = null; } }
+
+async function loadLink() {
+  const r = await api('/api/roblox/link').catch(() => null);
+  if (!r) return;
+  // `linked` is the server's live token state; fall back to the old heuristic only
+  // if talking to a not-yet-redeployed API.
+  const linked = r.linked !== undefined ? !!r.linked : (r.linkedPlaces > 0 || !!r.lastSeenAt);
+  const badge = $('#studioBadge');
+  badge.className = 'badge' + (linked ? ' ok' : ''); badge.textContent = linked ? '● Linked' : '○ Not linked';
+  $('#studioSub').textContent = linked
+    ? [r.linkedPlaces ? r.linkedPlaces + ' place' + (r.linkedPlaces === 1 ? '' : 's') : '', r.robloxUsername ? '@' + r.robloxUsername : '', r.lastSeenAt ? 'synced ' + ago(r.lastSeenAt) : ''].filter(Boolean).join(' · ')
+    : 'Link Studio so the AI can read + build your game';
+  $('#studioLinkBtn').style.display = linked ? 'none' : '';
+  $('#linkStatus').innerHTML = `<span class="pair-badge ${linked ? 'on' : ''}">${linked ? '● Studio linked' : '○ Studio not linked yet'}${r.robloxUsername ? ' · @' + esc(r.robloxUsername) : ''}${r.linkedPlaces ? ' · ' + r.linkedPlaces + ' place' + (r.linkedPlaces === 1 ? '' : 's') : ''}${r.lastSeenAt ? ' · last seen ' + ago(r.lastSeenAt) : ''}</span>`;
+  $('#unlinkBtn').style.display = linked ? '' : 'none';
+  $('#robloxSigninBtn').style.display = (state.robloxSignin && !r.robloxConnected) ? '' : 'none';
+  const bound = state.current && state.current.project && state.current.project.place_id;
+  const pb = $('#placeBadge');
+  if (bound) { pb.className = 'badge ok'; pb.textContent = '● place linked'; pb.style.display = ''; }
+  else if (linked) { pb.className = 'badge'; pb.textContent = '○ open this place in Studio'; pb.style.display = ''; }
+  else pb.style.display = 'none';
+}
+async function getLinkCode(targetEl) {
+  try { const r = await api('/api/roblox/link', { method: 'POST' }); targetEl.innerHTML = `<div class="pair-code">${esc(r.code)}</div><p class="dim center" style="font-size:.78rem">Paste into the Yield panel in Studio — just once. Expires in 10 min.</p>`; }
+  catch (e) { toast(e.message); }
+}
+$('#studioLinkBtn').onclick = () => getLinkCode($('#studioLinkCode'));
+$('#linkBtn').onclick = () => getLinkCode($('#linkCodeArea'));
+$('#unlinkBtn').onclick = async () => {
+  if (!confirm('Unlink every Studio install from your Yield account? Each will need a new link code to reconnect.')) return;
+  try { await api('/api/roblox/unlink', { method: 'POST' }); toast('Unlinked.'); loadLink(); } catch (e) { toast(e.message); }
+};
+
+async function loadOps() {
+  if (!state.currentId) return;
+  const r = await api('/api/roblox/projects/' + state.currentId + '/ops').catch(() => null);
+  if (!r) return;
+  const proj = state.projects.find((p) => p.id === state.currentId);
+  if (proj && proj.paired !== (r.paired ? 1 : 0)) { proj.paired = r.paired ? 1 : 0; renderRail(); }
+  if (state.current && state.current.project) state.current.project.place_id = r.placeId || state.current.project.place_id;
+  const feed = $('#actionsFeed');
+  if (!r.ops.length) { feed.innerHTML = `<div class="feed-empty">Ask the chatbot to build something — every action it sends to Studio shows here and flips to <b>Applied</b> once the plugin syncs.</div>`; return; }
+  feed.innerHTML = r.ops.map((o) => {
+    const icon = OP_ICON[o.type] || '⚙';
+    const sub = o.detail ? esc(o.detail) : (OP_TYPE[o.type] || o.type || 'action') + ' · ' + ago(o.created_at);
+    return `<div class="action"><span class="a-ic">${icon}</span><div class="a-col"><div class="a-title">${esc(o.label || OP_TYPE[o.type] || o.type || 'action')}</div><div class="a-sub">${sub}</div></div><span class="status-pill ${esc(o.status)}">${esc(o.status)}</span></div>`;
+  }).join('');
+}
+
+async function loadTree() {
+  if (!state.currentId) return;
+  const r = await api('/api/roblox/projects/' + state.currentId + '/tree').catch(() => null);
+  const box = $('#treeBox');
+  const payload = r && r.tree;
+  if (!payload || !Array.isArray(payload.tree) || !payload.tree.length) {
+    $('#treeMeta').textContent = '';
+    box.innerHTML = `<div class="feed-empty">Open a saved place in Studio — the plugin pushes the full game here (every instance Yield can see and edit). Auto-updates as you work.</div>`;
+    return;
+  }
+  $('#treeMeta').textContent = `(${payload.tree.length}${payload.truncated ? '+' : ''}) · ${ago(Math.round(payload.at / 1000))}`;
+  const nodes = payload.tree.slice().sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0).slice(0, 500);
+  box.innerHTML = nodes.map((n) => {
+    const segs = n.path.split('/');
+    const depth = segs.length - 1;
+    const name = segs[segs.length - 1];
+    const root = depth === 0;
+    return `<div class="tnode ${root ? 'root' : ''}" style="padding-left:${6 + depth * 14}px" title="${esc(n.path)}"><span class="t-ic">${root ? '🗂' : CLASS_ICON(n.className)}</span><span class="t-name">${esc(name)}</span><span class="t-cls">${esc(n.className)}</span></div>`;
+  }).join('');
+}
+</script>
+</body>
+</html>

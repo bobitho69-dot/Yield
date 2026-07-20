@@ -1,9 +1,11 @@
 name: Deploy to Cloudflare Workers
 
-# Optional CI deploy. Cloudflare's native "Connect to Git" (see docs/DEPLOY.md,
-# Option A) needs no workflow at all. Use this only if you prefer GitHub Actions.
+# CI typecheck + optional deploy. Production deploys happen via Cloudflare's
+# native "Connect to Git" integration (see docs/DEPLOY.md, Option A), so the
+# deploy step here is skipped unless the repo secrets are configured.
 #
-# Requires repo secrets:  CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+# To also deploy from Actions, add repo secrets: CLOUDFLARE_API_TOKEN,
+# CLOUDFLARE_ACCOUNT_ID (Settings → Secrets and variables → Actions).
 # Worker app secrets (NVIDIA_API_KEY, etc.) are set once in the Cloudflare dashboard.
 
 on:
@@ -23,12 +25,13 @@ jobs:
       - run: npm run typecheck
       # Deploy with the project's own pinned wrangler (v4) rather than the action's
       # bundled v3 — v3 silently ignores `run_worker_first`, which would break /api/*
-      # and /p/* routing. Fails fast with a clear message if the secrets are missing.
+      # and /p/* routing. Skipped when the secrets are absent because Cloudflare's
+      # git integration already deploys every push to main.
       - name: Deploy
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::CLOUDFLARE_API_TOKEN secret is not set. Add it (and CLOUDFLARE_ACCOUNT_ID) in repo Settings → Secrets and variables → Actions."
-            exit 1
+            echo "::notice::CLOUDFLARE_API_TOKEN secret is not set — skipping Actions deploy. Cloudflare's git integration deploys main automatically. To deploy from Actions instead, add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in repo Settings → Secrets and variables → Actions."
+            exit 0
           fi
           npx wrangler deploy
         env:

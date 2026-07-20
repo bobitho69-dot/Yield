@@ -39,6 +39,12 @@ GITHUB_CLIENT_SECRET=
 # Google: https://console.cloud.google.com/apis/credentials (callback: <APP_URL>/api/auth/google/callback)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+# Roblox ("Sign in with Roblox"): create.roblox.com → Creator Dashboard → Open Cloud →
+# OAuth 2.0 Apps (redirect: <APP_URL>/api/auth/roblox/callback, scopes: openid profile).
+# OPTIONAL — the Studio plugin links fine without it (link code, or zero-friction in
+# open testing mode). Leave blank to hide the "Continue with Roblox" button.
+ROBLOX_CLIENT_ID=
+ROBLOX_CLIENT_SECRET=
 
 # --- Stripe (required for the $20/mo plan) -------------------------------------
 STRIPE_SECRET_KEY=sk_test_xxx

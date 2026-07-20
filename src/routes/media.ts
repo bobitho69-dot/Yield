@@ -66,18 +66,75 @@ export async function generate3dModel(env: Env, prompt: string, seed = 0): Promi
   const url = env.TRELLIS_API_URL;
   const key = env.NVIDIA_API_KEY;
   if (!url || !key || !prompt) return null;
-  const body = JSON.stringify({ prompt, seed });
-  const post = (k: string) => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${k}`, 'content-type': 'application/json', accept: 'application/json' }, body });
-  try {
-    let r = await post(key);
+
+  const post = async (payload: Record<string, any>): Promise<{ ok: boolean; status: number; data: any }> => {
+    const body = JSON.stringify(payload);
+    const send = (k: string) => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${k}`, 'content-type': 'application/json', accept: 'application/json' }, body });
+    let r = await send(key);
     if ((r.status === 429 || r.status === 402) && env.NVIDIA_API_KEY_BACKUP && env.NVIDIA_API_KEY_BACKUP !== key) {
-      r = await post(env.NVIDIA_API_KEY_BACKUP);
+      r = await send(env.NVIDIA_API_KEY_BACKUP);
     }
     const data: any = await r.json().catch(() => ({}));
-    if (!r.ok) return null;
+    return { ok: r.ok, status: r.status, data };
+  };
+  const extract = (data: any): string | null => {
     const b64 = data?.artifacts?.[0]?.base64 || data?.artifacts?.[0]?.b64_json || (typeof data?.model === 'string' ? data.model : null);
     if (typeof b64 === 'string' && b64) return b64.startsWith('data:') ? b64 : `data:model/gltf-binary;base64,${b64}`;
     return data?.url || data?.artifacts?.[0]?.url || null; // some endpoints return a URL
+  };
+
+  try {
+    // The hosted TRELLIS NIM validates its request schema strictly (mode/image/
+    // sampling-step fields), and a bare {prompt} is rejected by image-to-3D
+    // deployments — so try each known-good shape in turn and take the first that
+    // yields a model. Text mode first (cheapest end-to-end).
+    const textShapes: Record<string, any>[] = [
+      { mode: 'text', prompt, seed, ss_sampling_steps: 25, slat_sampling_steps: 25 },
+      { prompt, seed },
+    ];
+    let lastStatus = 0;
+    for (const shape of textShapes) {
+      const r = await post(shape);
+      if (r.ok) { const out = extract(r.data); if (out) return out; }
+      lastStatus = r.status;
+    }
+    // Text mode rejected (many TRELLIS deployments are image-to-3D only): render a
+    // clean single-object reference image with the image model we already have, then
+    // feed THAT to TRELLIS in image mode. Slower, but works on image-only endpoints.
+    const rendered = await generateImage(env, `${prompt}. A single isolated object, centered, full view, plain flat light-gray background, soft even studio lighting, 3D asset reference render, no text, no watermark.`, { width: 1024, height: 1024 });
+    const image = rendered ? await toDataUrl(rendered) : null;
+    if (image) {
+      const imageShapes: Record<string, any>[] = [
+        { mode: 'image', image, seed, ss_sampling_steps: 25, slat_sampling_steps: 25 },
+        { image, seed },
+      ];
+      for (const shape of imageShapes) {
+        const r = await post(shape);
+        if (r.ok) { const out = extract(r.data); if (out) return out; }
+        lastStatus = r.status;
+      }
+    }
+    console.error(`trellis: every request shape failed (last HTTP ${lastStatus}${image ? '' : ', and no reference image could be generated'})`);
+    return null;
+  } catch (e) {
+    console.error('trellis: request error:', e);
+    return null;
+  }
+}
+
+// Normalize an image result (data: URL or provider URL) into a data: URL, which is
+// what TRELLIS's image mode expects inline. Returns null if the URL can't be fetched.
+async function toDataUrl(urlOrDataUrl: string): Promise<string | null> {
+  if (urlOrDataUrl.startsWith('data:')) return urlOrDataUrl;
+  try {
+    const r = await fetch(urlOrDataUrl);
+    if (!r.ok) return null;
+    const mime = r.headers.get('content-type')?.split(';')[0] || 'image/png';
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    let bin = '';
+    const CHUNK = 8192; // chunked to avoid call-stack limits on large images
+    for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    return `data:${mime};base64,${btoa(bin)}`;
   } catch {
     return null;
   }

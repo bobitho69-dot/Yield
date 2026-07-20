@@ -14,7 +14,7 @@
   svg.ic { flex:0 0 auto; display:block; }
   .badge { display:inline-flex; align-items:center; gap:.4rem; font-family:var(--font-mono); font-size:.66rem; font-weight:500; letter-spacing:.04em; padding:.26rem .55rem; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--muted); white-space:nowrap; text-transform:uppercase; }
   .badge::before { content:""; width:6px; height:6px; border-radius:2px; background:var(--faint); flex:0 0 auto; }
-  .badge.ok { color:var(--brand-2); border-color:rgba(0,212,180,.35); background:rgba(0,212,180,.08); }
+  .badge.ok { color:var(--brand-2); border-color:rgba(137,160,106,.35); background:rgba(137,160,106,.08); }
   .badge.ok::before { background:var(--brand-2); }
   .sec-label { font-family:var(--font-mono); font-size:.66rem; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); }
   .dim { color:var(--faint); font-weight:400; }
@@ -105,7 +105,7 @@
   .suggest button:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
   .composer-wrap { flex:0 0 auto; padding:.5rem 1.5rem 1.35rem; }
   .composer { display:flex; gap:.55rem; align-items:flex-end; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.65rem .7rem; transition:border-color .12s, box-shadow .12s; }
-  .composer:focus-within { border-color:var(--line-strong); box-shadow:0 0 0 2px rgba(124,92,255,.35); }
+  .composer:focus-within { border-color:var(--line-strong); box-shadow:0 0 0 2px rgba(217,119,87,.35); }
   .composer textarea { flex:1; background:none; border:none; color:var(--text); font-family:inherit; font-size:.94rem; resize:none; min-height:26px; max-height:180px; outline:none; line-height:1.5; }
   .composer textarea::placeholder { color:var(--faint); }
   .composer .csel { background:var(--panel-2); border:1px solid var(--line); color:var(--muted); border-radius:6px; padding:.42rem .5rem; font-size:.72rem; font-family:var(--font-mono); align-self:center; }
@@ -136,7 +136,7 @@
   .action .a-title { font-family:var(--font-mono); font-size:.72rem; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .action .a-sub { font-family:var(--font-mono); font-size:.64rem; font-weight:500; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .status-pill { font-family:var(--font-mono); font-size:.6rem; font-weight:600; padding:.18rem .45rem; border-radius:6px; text-transform:uppercase; letter-spacing:.04em; flex:0 0 auto; }
-  .status-pill.applied { background:rgba(0,212,180,.08); color:var(--brand-2); border:1px solid rgba(0,212,180,.35); }
+  .status-pill.applied { background:rgba(137,160,106,.08); color:var(--brand-2); border:1px solid rgba(137,160,106,.35); }
   .status-pill.pending { background:transparent; color:var(--warn); border:1px solid rgba(232,194,74,.4); }
   .status-pill.failed { background:transparent; color:#f58ea0; border:1px solid rgba(245,142,160,.4); }
   .feed-empty { display:flex; flex-direction:column; gap:.3rem; font-size:.8rem; color:var(--muted); padding:.6rem .1rem; line-height:1.5; }
@@ -157,7 +157,7 @@
   .pair-code { display:flex; align-items:center; gap:.6rem; font-family:var(--font-mono); font-size:1.6rem; font-weight:700; letter-spacing:.14em; padding:.9rem 1rem; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; margin:.6rem 0 .3rem; color:var(--text); }
   .pair-badge { display:inline-flex; align-items:center; gap:.45rem; font-family:var(--font-mono); font-size:.72rem; padding:.32rem .7rem; border-radius:6px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); }
   .pair-badge::before { content:""; width:6px; height:6px; border-radius:2px; background:var(--faint); flex:0 0 auto; }
-  .pair-badge.on { color:var(--brand); border-color:rgba(124,92,255,.4); background:rgba(124,92,255,.08); }
+  .pair-badge.on { color:var(--brand); border-color:rgba(217,119,87,.4); background:rgba(217,119,87,.08); }
   .pair-badge.on::before { background:var(--brand); }
 
   /* ---------- Studio drawer (link + optional key) ---------- */
@@ -191,7 +191,7 @@
   .modal-head .close { margin-left:auto; cursor:pointer; color:var(--muted); background:none; border:none; display:inline-flex; align-items:center; padding:.25rem; border-radius:6px; }
   .modal-head .close:hover { color:var(--text); }
   .modal-head .close:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
-  .modal-box textarea.code-edit { flex:1; margin:0; padding:1rem; background:#0a0c11; color:#dfe6f5; border:none; outline:none; font-size:.82rem; white-space:pre; font-family:var(--font-mono); resize:none; min-height:320px; }
+  .modal-box textarea.code-edit { flex:1; margin:0; padding:1rem; background:#1a1917; color:#dfe6f5; border:none; outline:none; font-size:.82rem; white-space:pre; font-family:var(--font-mono); resize:none; min-height:320px; }
   .modal-foot { display:flex; gap:.6rem; padding:.8rem 1.1rem; border-top:1px solid var(--line); }
   .toast { position:fixed; bottom:18px; left:50%; transform:translate(-50%,14px); background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:.6rem .9rem; font-size:.84rem; box-shadow:var(--shadow); z-index:200; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
   .toast.show { opacity:1; transform:translate(-50%,0); }
@@ -206,7 +206,7 @@
 </head>
 <body class="rbx-app">
   <header class="nav">
-    <a class="brand" href="/"><svg class="logo-mark" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="3" transform="rotate(45 12 12)" fill="#7c5cff"/><rect x="10" y="10" width="4" height="4" rx="1.2" transform="rotate(45 12 12)" fill="#00d4b4"/></svg> Yield</a>
+    <a class="brand" href="/"><svg class="logo-mark" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="3" transform="rotate(45 12 12)" fill="#d97757"/><rect x="10" y="10" width="4" height="4" rx="1.2" transform="rotate(45 12 12)" fill="#89a06a"/></svg> Yield</a>
     <nav class="nav-links">
       <a class="toplink" href="/dashboard">Projects</a>
       <a class="toplink" href="/security">Security</a>
@@ -270,7 +270,7 @@
         <div id="view-activity">
           <div class="studio-sec">
             <div class="sec-label">Live actions</div>
-            <div id="actionsFeed" class="actions-feed"><div class="feed-empty">Every edit Yield sends to Studio lands here.<span class="fe-hint">Turns teal once the plugin applies it.</span></div></div>
+            <div id="actionsFeed" class="actions-feed"><div class="feed-empty">Every edit Yield sends to Studio lands here.<span class="fe-hint">Turns green once the plugin applies it.</span></div></div>
           </div>
         </div>
         <div id="view-explorer" style="display:none">

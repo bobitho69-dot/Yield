@@ -38,11 +38,18 @@ function headers(apiKey: string): HeadersInit {
   };
 }
 
-// AbortSignal that fires after `ms`, so a hung upstream can't freeze a request.
-function timeout(ms: number): { signal: AbortSignal; clear: () => void } {
+// AbortSignal that fires after `ms` of INACTIVITY. Callers streaming a response call
+// reset() as each chunk arrives, so a long-but-progressing stream (e.g. a big multi-file
+// build) is never aborted mid-flight — only a genuinely stalled/hung upstream is. For
+// non-streaming callers reset() is simply never called, so it behaves as a plain deadline.
+function timeout(ms: number): { signal: AbortSignal; clear: () => void; reset: () => void } {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
-  return { signal: ctrl.signal, clear: () => clearTimeout(t) };
+  let t: ReturnType<typeof setTimeout> | null = setTimeout(() => ctrl.abort(), ms);
+  return {
+    signal: ctrl.signal,
+    clear: () => { if (t) { clearTimeout(t); t = null; } },
+    reset: () => { if (t) { clearTimeout(t); t = setTimeout(() => ctrl.abort(), ms); } },
+  };
 }
 
 // Combine the internal timeout signal with an optional external one (the user's "stop"),
@@ -200,6 +207,7 @@ export async function chatStream(
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
+      to.reset(); // data is flowing — push back the inactivity deadline
       buffer += value;
       // Lines are separated by \n; process every complete line.
       let idx: number;

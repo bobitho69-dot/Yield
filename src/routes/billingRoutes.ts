@@ -45,6 +45,15 @@ async function handleWebhook(req: Request, c: Ctx): Promise<Response> {
 
   const isSecurity = obj.metadata?.product === 'security';
 
+  // True if a subscription contains a line item for `priceId` — so ONLY the real Priority
+  // (or Security) price grants that entitlement, never just any subscription on the customer
+  // (e.g. a Security-only sub, or a dashboard-created one, must not unlock Priority).
+  const subHasPrice = (o: any, priceId?: string): boolean => {
+    if (!priceId) return false;
+    const items = o?.items?.data;
+    return Array.isArray(items) && items.some((it: any) => it?.price?.id === priceId || it?.plan?.id === priceId);
+  };
+
   switch (event.type) {
     case 'checkout.session.completed': {
       const userId = obj.client_reference_id || obj.metadata?.user_id;
@@ -58,20 +67,25 @@ async function handleWebhook(req: Request, c: Ctx): Promise<Response> {
     case 'customer.subscription.updated':
     case 'customer.subscription.created': {
       const active = obj.status === 'active' || obj.status === 'trialing';
-      if (isSecurity) {
+      const isSec = isSecurity || subHasPrice(obj, c.env.SECURITY_PRICE_ID);
+      const isPriority = subHasPrice(obj, c.env.STRIPE_PRICE_ID);
+      if (isSec) {
         const user = (await getUserBySecuritySub(c.env, obj.id)) || (await getUserByCustomer(c.env, obj.customer));
         if (user) await setUserSecurity(c.env, user.id, active, { security_subscription_id: obj.id });
-      } else {
+      } else if (isPriority) {
         const user = await getUserByCustomer(c.env, obj.customer);
         if (user) await setUserPlan(c.env, user.id, active ? 'priority' : 'free', { stripe_subscription_id: obj.id, plan_renews_at: obj.current_period_end ?? null });
       }
+      // Any other price on the customer's account is ignored — it must never grant Priority.
       break;
     }
     case 'customer.subscription.deleted': {
-      if (isSecurity) {
+      const isSec = isSecurity || subHasPrice(obj, c.env.SECURITY_PRICE_ID);
+      const isPriority = subHasPrice(obj, c.env.STRIPE_PRICE_ID);
+      if (isSec) {
         const user = (await getUserBySecuritySub(c.env, obj.id)) || (await getUserByCustomer(c.env, obj.customer));
         if (user) await setUserSecurity(c.env, user.id, false);
-      } else {
+      } else if (isPriority) {
         const user = await getUserByCustomer(c.env, obj.customer);
         if (user) await setUserPlan(c.env, user.id, 'free');
       }

@@ -765,8 +765,9 @@ async function loadOps() {
   if (proj && proj.paired !== (r.paired ? 1 : 0)) { proj.paired = r.paired ? 1 : 0; renderRail(); }
   if (state.current && state.current.project) state.current.project.place_id = r.placeId || state.current.project.place_id;
   const feed = $('#actionsFeed');
-  if (!r.ops.length) { feed.innerHTML = `<div class="feed-empty">Ask the chatbot to build something — every action it sends to Studio shows here and flips to <b>Applied</b> once the plugin syncs.</div>`; return; }
-  feed.innerHTML = r.ops.map((o) => {
+  const ops = Array.isArray(r.ops) ? r.ops : []; // a 200 without an ops[] must not throw + freeze the feed
+  if (!ops.length) { feed.innerHTML = `<div class="feed-empty">Ask the chatbot to build something — every action it sends to Studio shows here and flips to <b>Applied</b> once the plugin syncs.</div>`; return; }
+  feed.innerHTML = ops.map((o) => {
     const icon = OP_ICON[o.type] || '⚙';
     const sub = o.detail ? esc(o.detail) : (OP_TYPE[o.type] || o.type || 'action') + ' · ' + ago(o.created_at);
     return `<div class="action"><span class="a-ic">${icon}</span><div class="a-col"><div class="a-title">${esc(o.label || OP_TYPE[o.type] || o.type || 'action')}</div><div class="a-sub">${sub}</div></div><span class="status-pill ${esc(o.status)}">${esc(o.status)}</span></div>`;

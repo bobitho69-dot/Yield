@@ -14,7 +14,7 @@ import { checkPrompt } from '../lib/jailbreak';
 import { resolveModel, endpointsFor } from '../config/models';
 import { chatStream } from '../lib/nvidia';
 import { workersAiConfigured, workersAiStream, compactWAMessages } from '../lib/workersai';
-import { CHAT_SYSTEM, YIELD_AI_IDENTITY } from '../lib/prompts';
+import { CHAT_SYSTEM, YIELD_AI_CHAT_SYSTEM } from '../lib/prompts';
 import { routeModel, shortReason, STABLE_FALLBACKS } from './generate';
 
 interface ChatTurn { role: 'user' | 'assistant'; content: string }
@@ -119,11 +119,13 @@ export async function handleChat(req: Request, c: Ctx): Promise<Response> {
       let model = resolveModel(modelId);
       await send('meta', { model: model.id, label: model.label, routeReason });
 
-      // 3) Build the OpenAI-style message list. The in-house Yield AI gets its identity
-      //    so it introduces itself correctly.
+      // 3) Build the OpenAI-style message list. The in-house Yield AI runs on a small base
+      //    model, so it gets a SHORT strict prompt (a long one gets parroted back as menus /
+      //    fake links / emoji); the hosted models get the full CHAT_SYSTEM.
+      const isYieldAI = model.id === 'yield-ai';
+      const chatTemp = isYieldAI ? 0.4 : 0.6; // lower temp for the base model = less rambling
       const messages = [
-        { role: 'system' as const, content: CHAT_SYSTEM },
-        ...(model.id === 'yield-ai' ? [{ role: 'system' as const, content: YIELD_AI_IDENTITY }] : []),
+        { role: 'system' as const, content: isYieldAI ? YIELD_AI_CHAT_SYSTEM : CHAT_SYSTEM },
         ...history.map((m) => ({ role: m.role, content: m.content })),
       ];
 
@@ -143,7 +145,7 @@ export async function handleChat(req: Request, c: Ctx): Promise<Response> {
         // the fallback ladder below still applies.
         if (mdef.id === 'yield-ai' && workersAiConfigured(c.env)) {
           await workersAiStream(
-            c.env, compactWAMessages(messages, { maxTurns: 8 }), { temperature: 0.6, max_tokens: 2048 },
+            c.env, compactWAMessages(messages, { maxTurns: 8 }), { temperature: chatTemp, max_tokens: 2048 },
             async (delta) => { await filter.feed(delta); },
           );
           await filter.end();
@@ -156,7 +158,7 @@ export async function handleChat(req: Request, c: Ctx): Promise<Response> {
             await chatStream(
               {
                 baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-                temperature: 0.6, top_p: 0.95, max_tokens: 8000, timeoutMs: 120000,
+                temperature: chatTemp, top_p: 0.95, max_tokens: 8000, timeoutMs: 120000,
                 ...(eff ? { extra: { reasoning_effort: eff } } : {}),
               },
               async (delta) => { await filter.feed(delta); },

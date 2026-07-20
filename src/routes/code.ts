@@ -370,7 +370,7 @@ async function runCodeStream(req: Request, c: Ctx): Promise<Response> {
     c.ctx.waitUntil((async () => {
       await c.env.KV.put(flagKey, String(Date.now()), { expirationTtl: 1800 }).catch(() => {});
       try {
-        await runBuild(c, { prompt, model: body.model, projectId: project!.id, thinking: body.thinking }, send, async () => {});
+        await runBuild(c, { prompt, model: body.model, projectId: project!.id, thinking: body.thinking }, send, async () => {}, req.signal);
       } finally {
         await c.env.KV.delete(flagKey).catch(() => {});
         await close();
@@ -379,10 +379,11 @@ async function runCodeStream(req: Request, c: Ctx): Promise<Response> {
     return response;
   }
 
-  // Repo / local mode: the agentic edit stream.
+  // Repo / local mode: the agentic edit stream. Thread the request's AbortSignal so the
+  // client's Stop button (which aborts the fetch) actually cancels the in-flight model work.
   const { response, send, close } = sse();
   c.ctx.waitUntil((async () => {
-    try { await runCode(c, body, send); }
+    try { await runCode(c, body, send, req.signal); }
     catch (e: any) {
       console.error('code run failed:', e?.stack || e);
       await send('error', { message: `Something went wrong (${shortReason(e)}). Please try again.` });

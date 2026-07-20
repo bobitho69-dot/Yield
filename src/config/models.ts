@@ -365,8 +365,10 @@ const BY_ID: Record<string, ModelDef> = Object.fromEntries(
   [...CODER_MODELS, YIELD_AI_MODEL, ROUTER_MODEL, GUARD_MODEL].map((m) => [m.id, m]),
 );
 
-/** True once the self-hosted Yield AI endpoint is configured (YIELD_AI_BASE_URL set). */
+/** True once Yield AI has a backend: either the Cloudflare Workers AI binding
+ *  (YIELD_AI_BACKEND=workers-ai + [ai] binding) or a self-hosted endpoint (YIELD_AI_BASE_URL). */
 export function isYieldAIConfigured(env: Env): boolean {
+  if ((env.YIELD_AI_BACKEND || '').trim().toLowerCase() === 'workers-ai' && (env as { AI?: unknown }).AI) return true;
   return !!(envGet(env, 'YIELD_AI_BASE_URL') || '').trim();
 }
 

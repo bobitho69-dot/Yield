@@ -1,14 +1,21 @@
 # Yield AI — fine-tuning (make the model truly yours)
 
-Serving an open model as Yield AI is real, but it's still someone else's weights. Fine-tuning
-trains a small **LoRA adapter** on your own examples so the model (a) builds apps the Yield
-way — the `=== file: ===` format, no placeholders, real empty states — and (b) identifies as
-Yield AI. The base weights stay frozen; you train a few MB of adapter. That's why it fits one
-GPU and takes minutes-to-hours, not months.
+Yield AI is a **general-purpose, all-around coder**. Fine-tuning trains a small **LoRA adapter**
+so the model (a) identifies as Yield AI and (b) picks up a clean, consistent coding + general
+style. The base weights stay frozen; you train a few MB of adapter — so it fits one GPU and
+takes minutes-to-hours, not months.
 
-> This does **not** turn a small model into GPT-5. It specializes a good open model at *your*
-> task. That specialization is exactly what makes it feel like *your* model rather than a
-> generic one.
+> **The general coding ability comes from the BASE model, not the LoRA.** Fine-tuning
+> specializes and brands a good open model — it does **not** turn a small model into GPT-5/Kimi.
+> That's the honest trade for owning it. Pick a strong general base (this pipeline defaults to
+> Llama-3.1-8B, a solid all-rounder) and the LoRA makes it *yours*.
+
+## 🟢 Easiest: free on Colab → serve free on Cloudflare
+
+Open **[`train_yield_ai_colab.ipynb`](train_yield_ai_colab.ipynb)** in Google Colab (free T4),
+run the cells, download the adapter, then follow **[`../cloudflare.md`](../cloudflare.md)** to
+serve it free on Cloudflare Workers AI. Total cost: **$0–$10**. The CLI path below is for local
+or rented-GPU training instead.
 
 ## Steps
 
@@ -76,6 +83,7 @@ Tune with `--epochs`, `--lr`, `--rank`, `--max-len`, `--grad-accum` (run `python
 
 | File | What it does |
 |------|--------------|
+| `train_yield_ai_colab.ipynb` | **Free Colab notebook** — train the LoRA on a T4, download the adapter. |
 | `prepare_data.py` | Validates + splits seed and your data into `data/train.jsonl` / `val.jsonl`. |
 | `train_lora.py` | QLoRA supervised fine-tune → `out/yield-ai-lora/` adapter. |
 | `merge_lora.py` | Merges the adapter into the base → `out/yield-ai-merged/` (servable). |

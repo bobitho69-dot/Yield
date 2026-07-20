@@ -58,6 +58,13 @@ class_name = "BuildSession"
 tag = "v1"
 new_sqlite_classes = ["BuildSession"]
 
+# --- Workers AI: powers the in-house "Yield AI" model on Cloudflare's own GPUs ---------
+# Declaring this binding is free. It's only USED when YIELD_AI_BACKEND="workers-ai" (see
+# [vars] below); otherwise it sits idle. Lets Yield AI run a Workers AI base model plus your
+# uploaded LoRA with no external provider. See yield-ai/cloudflare.md.
+[ai]
+binding = "AI"
+
 # --- Cron: daily re-scan of monitored repos (Yield Security continuous monitoring) ----
 [triggers]
 crons = ["0 6 * * *"]
@@ -129,16 +136,25 @@ VIDEO_API_MODEL = ""
 VISION_MODEL = "qwen/qwen3.5-397b-a17b"
 
 # ── Yield AI — your OWN in-house model (optional) ──────────────────────────────
-# Yield AI is not a third-party API — it's a model YOU self-host on a GPU you control
-# (see the /yield-ai folder for the full setup: rent a GPU, run vLLM, paste the URL here).
-# Set YIELD_AI_BASE_URL to your server's OpenAI-compatible endpoint and "Yield AI" shows
-# up in the model picker, calling ONLY your box. Leave it blank and the model is hidden.
-#   YIELD_AI_BASE_URL   your server, e.g. "https://<your-gpu-host>:8000/v1"
-#   YIELD_AI_MODEL_ID   the --served-model-name you launched with (default "yield-ai")
-# If your server needs a key (vLLM --api-key), set YIELD_AI_API_KEY as a real secret
-# (`wrangler secret put YIELD_AI_API_KEY`) — do NOT put it here.
+# Yield AI is not a third-party API — it's YOUR model. Two ways to run it (see /yield-ai):
+#
+# 1) Cloudflare Workers AI (cheapest — runs on Cloudflare's own GPUs, free daily allowance,
+#    LoRA free in beta). Set YIELD_AI_BACKEND="workers-ai", pick a base model, and (optionally)
+#    the name of a LoRA you uploaded. Needs the [ai] binding below.
+#      YIELD_AI_BACKEND  "workers-ai"
+#      YIELD_AI_MODEL_ID e.g. "@cf/meta/llama-3.1-8b-instruct"  (a Workers AI base model)
+#      YIELD_AI_LORA     e.g. "yield-ai"  (a fine-tune you uploaded; leave blank for base only)
+#
+# 2) Self-hosted (any model, full control) — run vLLM/Ollama on a GPU you rent and point here:
+#      YIELD_AI_BASE_URL your server, e.g. "https://<your-gpu-host>:8000/v1"
+#      YIELD_AI_MODEL_ID the --served-model-name you launched with (default "yield-ai")
+#      (set YIELD_AI_API_KEY as a real secret if the server uses --api-key)
+#
+# Set EITHER backend and "Yield AI" appears in the picker; leave both blank and it's hidden.
+YIELD_AI_BACKEND = ""
 YIELD_AI_BASE_URL = ""
 YIELD_AI_MODEL_ID = "yield-ai"
+YIELD_AI_LORA = ""
 
 # OAuth is OPTIONAL — email + password login works without it. These placeholders
 # let the app deploy today; the login UI auto-hides GitHub/Google until they're real.

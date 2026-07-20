@@ -1,11 +1,15 @@
 # ◆ Yield AI — your own in-house model
 
-**Yield AI is not a third-party API.** It's a model *you* run on a GPU *you* control, behind
-an OpenAI-compatible endpoint. Your Yield app talks only to your server — no NVIDIA, no
-OpenRouter, no ZenMux, no Anthropic/OpenAI in the loop. You own the weights, you can
-fine-tune them, and it's branded and served as **Yield AI**.
+**Yield AI is not a third-party API.** It's a **general-purpose, all-around coder** (strong
+across every language and stack, plus general use) that *you* run on hardware *you* control.
+Your Yield app talks only to your model — no NVIDIA, no OpenRouter, no Anthropic/OpenAI in the
+loop. You own it, you can fine-tune it, and it's branded and served as **Yield AI**.
 
 This folder is everything you need to stand it up and wire it into the app.
+
+> **💸 Cheapest path (free–$10): [`cloudflare.md`](cloudflare.md).** Train a LoRA free on Google
+> Colab, then serve it free on Cloudflare Workers AI (LoRA is free during their beta). Start
+> there if you want $0. The rest of this README covers the full-control self-hosted path.
 
 ---
 
@@ -139,11 +143,16 @@ it's Yield AI. 🎉
 
 ---
 
-## 🧬 Make it truly *yours* — fine-tune it (optional)
+## 🧬 Make it truly *yours* — fine-tune it
 
 Serving an open model as Yield AI is real, but it's still someone else's weights. To make it
-**custom** — better at Yield-style app building and unmistakably yours — fine-tune it on your
-own examples. See **[`finetune/`](./finetune/)** for a ready-to-run LoRA pipeline:
+**custom** — reinforce a clean, general coding style and give it Yield's identity — fine-tune a
+LoRA on your own examples.
+
+- **Free, on Google Colab → serve on Cloudflare:** the easiest path. Open
+  **[`finetune/train_yield_ai_colab.ipynb`](finetune/train_yield_ai_colab.ipynb)** (free T4 GPU),
+  then follow **[`cloudflare.md`](cloudflare.md)** to serve it free. Total cost: $0–$10.
+- **Locally / on your rented GPU:** the CLI pipeline in **[`finetune/`](./finetune/)**:
 
 ```bash
 cd yield-ai/finetune
@@ -175,6 +184,7 @@ README.
 
 | File | What it is |
 |------|-----------|
+| `cloudflare.md` | **The free–$10 path:** train on Colab, serve on Cloudflare Workers AI. |
 | `serve.sh` | Launches the vLLM server from your `.env`. The main entry point. |
 | `.env.example` | All the server knobs (model, key, context, GPUs). Copy to `.env`. |
 | `Dockerfile` / `docker-compose.yml` | Containerized, one-command serving. |

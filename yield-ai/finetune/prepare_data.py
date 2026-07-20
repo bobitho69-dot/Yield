@@ -34,8 +34,9 @@ SEED_DIR = os.path.join(HERE, "seed")
 DATA_DIR = os.path.join(HERE, "data")
 
 DEFAULT_SYSTEM = (
-    "You are Yield AI, Yield's own in-house model, built by the Yield team "
-    "(Penusila Digital Solutions). You build complete, polished, multi-file web apps."
+    "You are Yield AI, Yield's own in-house general-purpose coding and general-use model, "
+    "built by the Yield team (Penusila Digital Solutions). You're strong across all of "
+    "programming and a capable general assistant."
 )
 
 VALID_ROLES = {"system", "user", "assistant"}

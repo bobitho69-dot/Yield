@@ -9,6 +9,11 @@ export interface Env {
   // Durable Object that runs app builds independently of any browser tab, so a
   // build keeps running (and saves) even if the user refreshes or closes the page.
   BUILDER: DurableObjectNamespace;
+  // Cloudflare Workers AI binding (optional). Present when the [ai] binding is declared
+  // in wrangler.toml. Lets the in-house Yield AI run ON Cloudflare's own GPUs — a base
+  // model plus (optionally) your uploaded LoRA — with no external provider. Minimal
+  // structural type so we don't depend on a specific workers-types version.
+  AI?: { run: (model: string, input: unknown, options?: unknown) => Promise<unknown> };
 
   // Vars
   APP_NAME: string;
@@ -52,9 +57,18 @@ export interface Env {
   // it blank and the model is hidden (no dead option). This is your own box — no
   // third-party AI provider is involved.
   YIELD_AI_BASE_URL?: string;
-  // The served model name you launched the server with (vLLM --served-model-name).
-  // Defaults to "yield-ai" when unset.
+  // The served model name you launched the server with (vLLM --served-model-name), OR —
+  // when running on Cloudflare Workers AI — the Workers AI base model id
+  // (e.g. "@cf/meta/llama-3.1-8b-instruct"). Defaults to "yield-ai" when unset.
   YIELD_AI_MODEL_ID?: string;
+  // Which backend serves Yield AI. "workers-ai" runs it on Cloudflare's own GPUs via the
+  // AI binding (free daily allowance; LoRA free in beta). Anything else (default) uses the
+  // self-hosted OpenAI-compatible endpoint at YIELD_AI_BASE_URL (vLLM/Ollama on your GPU).
+  YIELD_AI_BACKEND?: string;
+  // Optional: the name/id of a LoRA fine-tune you uploaded to Workers AI. When set (and the
+  // backend is workers-ai), it's applied on top of the base model — this is how YOUR
+  // fine-tuned Yield AI runs on Cloudflare. Ignored by the self-hosted backend.
+  YIELD_AI_LORA?: string;
 
   // Secrets
   NVIDIA_API_KEY: string;         // the single key for the whole NVIDIA catalog (every model)

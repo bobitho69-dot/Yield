@@ -12,6 +12,7 @@ import { checkPrompt } from '../lib/jailbreak';
 import { gateGeneration, recordGeneration } from '../lib/usage';
 import { CODER_MODELS, ROUTER_MODEL, resolveModel, endpointFor, endpointsFor, visionEndpoint, type ModelDef } from '../config/models';
 import { chat, chatStream, type ContentPart } from '../lib/nvidia';
+import { workersAiConfigured, workersAiStream } from '../lib/workersai';
 import { CONVO_SYSTEM, SUBAGENT_SYSTEM, RESEARCH_SYSTEM, ENHANCE_SYSTEM, YIELD_AI_IDENTITY, routerSystem } from '../lib/prompts';
 import { PLATFORM_GUIDE } from '../lib/platformGuide';
 import { verifyFiles } from '../lib/verify';
@@ -712,20 +713,30 @@ async function verifyAndRepair(
       },
     ];
     const repair = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, 'Verify');
-    const ep = endpointFor(env, model);
-    for (const eff of [effort, null] as const) {
+    if (model.id === 'yield-ai' && workersAiConfigured(env)) {
+      // In-house Yield AI on Cloudflare Workers AI: repair via the AI binding.
       try {
-        await chatStream(
-          {
-            baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
-            temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000, signal,
-            ...(eff ? { extra: { reasoning_effort: eff } } : {}),
-          },
+        await workersAiStream(
+          env, messages, { temperature: 0.2, signal },
           async (delta) => { await repair.feed(delta); await heartbeat(); },
-          async (rr) => { await send('thinking', rr); await heartbeat(); },
         );
-        break;
-      } catch { if (repair.produced || signal?.aborted) break; /* effort rejected -> retry plain -> give up */ }
+      } catch { /* keep whatever the repair pass produced */ }
+    } else {
+      const ep = endpointFor(env, model);
+      for (const eff of [effort, null] as const) {
+        try {
+          await chatStream(
+            {
+              baseUrl: ep.baseUrl, apiKey: ep.apiKey, apiKeyBackup: ep.apiKeyBackup, model: ep.modelId, messages,
+              temperature: 0.2, top_p: 0.95, max_tokens: 40000, timeoutMs: 600000, signal,
+              ...(eff ? { extra: { reasoning_effort: eff } } : {}),
+            },
+            async (delta) => { await repair.feed(delta); await heartbeat(); },
+            async (rr) => { await send('thinking', rr); await heartbeat(); },
+          );
+          break;
+        } catch { if (repair.produced || signal?.aborted) break; /* effort rejected -> retry plain -> give up */ }
+      }
     }
     await repair.end();
     const fixed = repair.result().files;
@@ -882,6 +893,16 @@ export async function runBuild(
     const streamOnce = async () => {
       const streamer = makeFileStreamer(send);
       const streamWith = async (mdef: typeof model, eff: 'low' | 'medium' | 'high' | null) => {
+        // In-house Yield AI on Cloudflare Workers AI: run on Cloudflare's own GPUs via the
+        // AI binding (base model + optional LoRA) instead of an HTTP endpoint. Throws on
+        // failure so the same fallback ladder below still applies.
+        if (mdef.id === 'yield-ai' && workersAiConfigured(c.env)) {
+          await workersAiStream(
+            c.env, messages, { temperature: 0.3, signal },
+            async (delta) => { await streamer.feed(delta); await heartbeat(); },
+          );
+          return;
+        }
         // Endpoint chain: primary provider (key + backup key), then any alternate provider
         // hosting the SAME model. Fall through to the next only if this one produced nothing.
         const chain = endpointsFor(c.env, mdef);

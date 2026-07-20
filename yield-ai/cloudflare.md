@@ -5,10 +5,10 @@ cost: **$0–$10.** It splits across two places, because **Cloudflare does not t
 Workers AI is inference only:
 
 ```
-Train the LoRA (free)            Serve it (free)
-Google Colab / Kaggle T4    →    Cloudflare Workers AI
-  (a few $ at most)                (free daily allowance;
-                                    LoRA free during beta)
+Train the LoRA (free)              Serve it (free)
+Google Colab T4 / Lightning AI  →  Cloudflare Workers AI
+  (free credits; a few $ at most)    (free daily allowance;
+                                      LoRA free during beta)
 ```
 
 > **Reality check.** This makes a **great, private, all-around ~8B assistant that's yours** —
@@ -22,14 +22,15 @@ Google Colab / Kaggle T4    →    Cloudflare Workers AI
 ## Step 1 — Train the LoRA for free (Colab)
 
 Open **[`finetune/train_yield_ai_colab.ipynb`](finetune/train_yield_ai_colab.ipynb)** in Google
-Colab (Runtime → T4 GPU) and run the cells. It:
-- trains a rank-8 LoRA (Cloudflare's limit) on a Workers-AI-supported base — **Llama-3.1-8B**
-  by default (general + coding), or Mistral/Gemma;
+Colab (Runtime → T4 GPU) **or Lightning AI** (a Studio with an L4 24 GB GPU on free credits —
+persistent, no disconnects). Run the cells. It:
+- trains a rank-8 LoRA (Cloudflare's limit) on **`Mistral-7B-Instruct-v0.2`** by default — an
+  **Apache 2.0** base you can freely brand as Yield AI, and one Cloudflare serves LoRAs for;
 - mixes a public code-instruction dataset for breadth + your own examples for identity/style;
 - outputs `adapter_model.safetensors` + `adapter_config.json`, zipped for download.
 
-Free on Colab's T4. If you want a bigger base (14B) or a longer run, rent a GPU for an hour —
-still under $10. (Kaggle's free 2×T4 works too.)
+Free on Colab's T4; Lightning AI is nicer for a longer run. (Qwen2.5-Coder-7B / gpt-oss-20b are
+also options, but those aren't on Cloudflare's LoRA list — self-host those via the vLLM path.)
 
 ## Step 2 — Upload the adapter to Workers AI
 
@@ -47,7 +48,8 @@ CF_API_TOKEN=<token with "Workers AI: Edit">
 # 1) Create the fine-tune record (note the returned finetune id)
 curl -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/ai/finetunes" \
   -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" \
-  -d '{"model":"@cf/meta/llama-3.1-8b-instruct","name":"yield-ai","description":"Yield AI general coder LoRA"}'
+  -d '{"model":"@cf/mistral/mistral-7b-instruct-v0.2-lora","name":"yield-ai","description":"Yield AI general coder LoRA"}'
+# ^ use the LoRA-capable Mistral base id from Cloudflare's model list (must match the base you trained on)
 
 # 2) Upload each adapter file to that finetune (repeat for both files)
 FINETUNE_ID=<id from step 1>
@@ -73,8 +75,8 @@ binding = "AI"          # already added in this repo
 
 [vars]
 YIELD_AI_BACKEND  = "workers-ai"
-YIELD_AI_MODEL_ID = "@cf/meta/llama-3.1-8b-instruct"   # the base your LoRA targets
-YIELD_AI_LORA     = "yield-ai"                          # your fine-tune's name (blank = base only)
+YIELD_AI_MODEL_ID = "@cf/mistral/mistral-7b-instruct-v0.2-lora"   # the LoRA-capable base your LoRA targets
+YIELD_AI_LORA     = "yield-ai"                                     # your fine-tune's name (blank = base only)
 ```
 
 Deploy. **"Yield AI" appears in the model picker**, runs on Cloudflare's GPUs, and every build

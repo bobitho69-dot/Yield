@@ -7,8 +7,12 @@ takes minutes-to-hours, not months.
 
 > **The general coding ability comes from the BASE model, not the LoRA.** Fine-tuning
 > specializes and brands a good open model — it does **not** turn a small model into GPT-5/Kimi.
-> That's the honest trade for owning it. Pick a strong general base (this pipeline defaults to
-> Llama-3.1-8B, a solid all-rounder) and the LoRA makes it *yours*.
+> That's the honest trade for owning it.
+>
+> **Use an Apache-2.0 base so you can brand it "Yield AI" freely** (Llama/Gemma force their name
+> into yours). Good picks: the Colab notebook defaults to **Mistral-7B-v0.2** (Apache; also
+> Cloudflare-serveable); the CLI (`train_lora.py`) defaults to **Qwen2.5-Coder-7B** (Apache;
+> stronger at code, self-host). Step up to **gpt-oss-20b** (Apache) on a 24 GB GPU for more.
 
 ## 🟢 Easiest: free on Colab → serve free on Cloudflare
 

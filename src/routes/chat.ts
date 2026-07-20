@@ -13,7 +13,8 @@ import { sse, error } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
 import { resolveModel, endpointsFor } from '../config/models';
 import { chatStream } from '../lib/nvidia';
-import { CHAT_SYSTEM } from '../lib/prompts';
+import { workersAiConfigured, workersAiStream, compactWAMessages } from '../lib/workersai';
+import { CHAT_SYSTEM, YIELD_AI_IDENTITY } from '../lib/prompts';
 import { routeModel, shortReason, STABLE_FALLBACKS } from './generate';
 
 interface ChatTurn { role: 'user' | 'assistant'; content: string }
@@ -63,9 +64,11 @@ export async function handleChat(req: Request, c: Ctx): Promise<Response> {
       let model = resolveModel(modelId);
       await send('meta', { model: model.id, label: model.label, routeReason });
 
-      // 3) Build the OpenAI-style message list.
+      // 3) Build the OpenAI-style message list. The in-house Yield AI gets its identity
+      //    so it introduces itself correctly.
       const messages = [
         { role: 'system' as const, content: CHAT_SYSTEM },
+        ...(model.id === 'yield-ai' ? [{ role: 'system' as const, content: YIELD_AI_IDENTITY }] : []),
         ...history.map((m) => ({ role: m.role, content: m.content })),
       ];
 
@@ -74,6 +77,16 @@ export async function handleChat(req: Request, c: Ctx): Promise<Response> {
       //    through the stable anchor models so a chat reply almost always lands.
       let sawText = false;
       const streamWith = async (mdef: typeof model, eff: 'low' | 'medium' | 'high' | null) => {
+        // In-house Yield AI on Cloudflare Workers AI: run on Cloudflare's GPUs via the AI
+        // binding (base model + optional LoRA), NOT an HTTP endpoint. Throws on failure so
+        // the fallback ladder below still applies.
+        if (mdef.id === 'yield-ai' && workersAiConfigured(c.env)) {
+          await workersAiStream(
+            c.env, compactWAMessages(messages, { maxTurns: 8 }), { temperature: 0.6, max_tokens: 2048 },
+            async (delta) => { sawText = true; await send('chat', delta); },
+          );
+          return;
+        }
         const chain = endpointsFor(c.env, mdef);
         for (let i = 0; i < chain.length; i++) {
           const ep = chain[i];

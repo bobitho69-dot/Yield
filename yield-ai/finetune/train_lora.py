@@ -92,7 +92,12 @@ def main():
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
 
-    sft = SFTConfig(
+    # SFTConfig's fields drift across trl versions (e.g. max_seq_length -> max_length, and
+    # dataset_text_field / packing come and go). Build the kwargs from whatever THIS installed
+    # version actually accepts, so the script works across trl releases.
+    import dataclasses
+    sft_fields = {f.name for f in dataclasses.fields(SFTConfig)}
+    cfg_kwargs = dict(
         output_dir=args.out,
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch,
@@ -104,11 +109,18 @@ def main():
         save_strategy="epoch",
         bf16=True,
         gradient_checkpointing=True,
-        dataset_text_field="text",
-        max_seq_length=args.max_len,
-        packing=False,
         report_to="none",
     )
+    if "dataset_text_field" in sft_fields:
+        cfg_kwargs["dataset_text_field"] = "text"
+    if "packing" in sft_fields:
+        cfg_kwargs["packing"] = False
+    # The sequence-length field was renamed max_seq_length -> max_length in newer trl.
+    if "max_length" in sft_fields:
+        cfg_kwargs["max_length"] = args.max_len
+    elif "max_seq_length" in sft_fields:
+        cfg_kwargs["max_seq_length"] = args.max_len
+    sft = SFTConfig(**cfg_kwargs)
 
     # TRL renamed the tokenizer arg to processing_class in newer versions — support both.
     trainer_kwargs = dict(model=model, args=sft, train_dataset=ds, eval_dataset=val_ds, peft_config=lora)

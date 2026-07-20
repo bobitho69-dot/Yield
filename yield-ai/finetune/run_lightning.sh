@@ -22,7 +22,13 @@ echo "   base model : $BASE"
 echo "══════════════════════════════════════════════════════════════"
 
 echo; echo "▶ Step 1/4 — installing libraries (~2-3 min)…"
-pip install -q -U -r requirements.txt
+# Install the training libs but do NOT touch the platform's torch — upgrading torch on a
+# managed GPU box (Lightning/Colab) breaks its prebuilt torchvision, which then crashes
+# transformers on import ("operator torchvision::nms does not exist").
+pip install -q -U transformers peft trl datasets accelerate bitsandbytes sentencepiece
+# torchvision isn't needed for text training and is the usual ABI-mismatch culprit — remove
+# it so transformers doesn't try to import its (possibly mismatched) native ops.
+pip uninstall -y torchvision >/dev/null 2>&1 || true
 
 echo; echo "══════════════════════════════════════════════════════════════"
 echo " ▶ Step 2/4 — Hugging Face login  ⏸  PASTE YOUR KEY WHEN PROMPTED"

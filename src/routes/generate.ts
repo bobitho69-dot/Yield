@@ -75,6 +75,40 @@ function shortReason(e: unknown): string {
 // so a build still completes rather than erroring out. (Same anchors the sub-agents use.)
 const STABLE_FALLBACKS = ['glm-5.1', 'deepseek-v4-flash', 'nemotron-3-ultra'];
 
+// Output cap for the in-house Yield AI on Cloudflare Workers AI. Its context window is far
+// smaller than the big hosted models', so we bound the output (input + max output must fit
+// the window, else Workers AI returns error 5021).
+const YIELD_AI_WA_MAX_TOKENS = 4096;
+
+// A COMPACT platform note that replaces the full (large) PLATFORM_GUIDE when building with
+// the Cloudflare-hosted Yield AI — just enough of the runtime so the model can still build,
+// without blowing its limited context window.
+const YIELD_AI_WA_PLATFORM_NOTE =
+  'Yield runtime available inside generated apps (guard each call): ' +
+  'window.YIELD.entities.{list,create,get,update,delete}(entity, ...) — a built-in async database (returns Promises); ' +
+  'await window.YIELD.image(prompt) — returns an AI image URL; ' +
+  'window.YIELD.agents["Name"] — an AI agent id you POST {"input":"..."} to at /api/agents/<id>/run. ' +
+  'Style with Tailwind via CDN. Output EACH file as a line "=== file: path ===" followed by its FULL contents (index.html is the entry point). No placeholders, no dead buttons.';
+
+// Shrink the full builder message list to fit Yield AI's smaller Cloudflare context window:
+// swap the big platform guide for the short note, cap the current-files dump, and keep only
+// the most recent conversation turns. Used ONLY for the yield-ai Workers AI path.
+function compactMessagesForWA(
+  all: { role: 'system' | 'user' | 'assistant'; content: string }[],
+): { role: 'system' | 'user' | 'assistant'; content: string }[] {
+  const mapped = all.map((m) => {
+    if (m.role === 'system' && m.content === PLATFORM_GUIDE) return { role: m.role, content: YIELD_AI_WA_PLATFORM_NOTE };
+    if (m.role === 'system' && m.content.startsWith('The current project files are:')) {
+      return { role: m.role, content: m.content.slice(0, 4000) };
+    }
+    return m;
+  });
+  // Keep every system message (instructions/context) + only the last 4 chat turns.
+  const sys = mapped.filter((m) => m.role === 'system');
+  const convo = mapped.filter((m) => m.role !== 'system').slice(-4);
+  return [...sys, ...convo];
+}
+
 // Use gpt-oss-20b to choose the best coder model. Falls back to a heuristic.
 export async function routeModel(c: Ctx, prompt: string, exclude: string[] = [], signal?: AbortSignal): Promise<{ id: string; reason: string }> {
   // Pool of models Auto may choose from, minus any already-tried (failed) ones.
@@ -714,10 +748,12 @@ async function verifyAndRepair(
     ];
     const repair = makeFileStreamer(async (ev, d) => { if (ev === 'code') await send('code', d); }, 'Verify');
     if (model.id === 'yield-ai' && workersAiConfigured(env)) {
-      // In-house Yield AI on Cloudflare Workers AI: repair via the AI binding.
+      // In-house Yield AI on Cloudflare Workers AI: repair via the AI binding, with the
+      // same compact prompt + output cap so it fits the smaller context window.
       try {
         await workersAiStream(
-          env, messages, { temperature: 0.2, signal },
+          env, compactMessagesForWA(messages),
+          { temperature: 0.2, max_tokens: YIELD_AI_WA_MAX_TOKENS, signal },
           async (delta) => { await repair.feed(delta); await heartbeat(); },
         );
       } catch { /* keep whatever the repair pass produced */ }
@@ -898,7 +934,8 @@ export async function runBuild(
         // failure so the same fallback ladder below still applies.
         if (mdef.id === 'yield-ai' && workersAiConfigured(c.env)) {
           await workersAiStream(
-            c.env, messages, { temperature: 0.3, signal },
+            c.env, compactMessagesForWA(messages),
+            { temperature: 0.3, max_tokens: YIELD_AI_WA_MAX_TOKENS, signal },
             async (delta) => { await streamer.feed(delta); await heartbeat(); },
           );
           return;

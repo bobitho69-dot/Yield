@@ -91,10 +91,14 @@ const YIELD_AI_WA_SYSTEM =
   `=== file: index.html ===\n` +
   `then that file's full, real contents on the following lines (index.html is the entry point).\n` +
   `BUILD RULES:\n` +
+  `- ALL code goes INSIDE "=== file: path ===" blocks. NEVER write code in the chat text and NEVER use markdown fences (\`\`\`). The chat is only your one-sentence plan.\n` +
   `- Real, working code ONLY. No placeholder comments ("your code here", "// ..."), no template stubs, no prose or sentences inside code files.\n` +
-  `- NEVER use markdown fences (\`\`\`). Use ONLY the "=== file: path ===" markers.\n` +
   `- Style with Tailwind via CDN. Every button/link/form must work; no dead links, no "coming soon".\n` +
-  `- Persist data with window.YIELD.entities — all async, so await them: list(entity)->array, create(entity,obj), get(entity,id), update(entity,id,obj), delete(entity,id). Render arrays into the DOM element by element; never set innerHTML to a Promise or an object.\n` +
+  `- Yield runtime (guard + await each):\n` +
+  `  · window.YIELD.entities.list(e)->array, create(e,obj), get(e,id), update(e,id,obj), delete(e,id) — the built-in database; render arrays element-by-element (never innerHTML a Promise/object).\n` +
+  `  · window.YIELD.image(prompt)->image URL · window.YIELD.model3d(prompt)->a .glb (show with <model-viewer>) · window.YIELD.video(prompt)->video URL.\n` +
+  `  · window.YIELD.agents["Name"] is an agent id you POST {"input":"..."} to /api/agents/<id>/run — use it to add AI chatbots/generators.\n` +
+  `- For multi-page apps, make separate .html files that share one nav and load the same styles/scripts.\n` +
   `- No alert()/confirm()/prompt(). Write each file in full — never truncate.`;
 
 // Shrink the full builder message list to fit Yield AI's smaller Cloudflare context window:

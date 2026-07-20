@@ -96,8 +96,17 @@ export async function getRepoFile(token: string, fullName: string, branch: strin
   const r = await gh(token, `/repos/${owner}/${repo}/contents/${encPath(path)}?ref=${branch}`);
   if (!r.ok) return null;
   const data: any = await r.json();
-  if (typeof data?.content !== 'string') return null;
-  return { content: DEC.decode(unb64(data.content.replace(/\n/g, ''))), sha: data.sha };
+  if (typeof data?.sha !== 'string') return null;
+  // The Contents API omits/empties `content` for files >1MB (encoding !== 'base64');
+  // fall back to the Blobs API so large files aren't silently read as ''.
+  if (data.encoding === 'base64' && typeof data.content === 'string' && data.content.length) {
+    return { content: DEC.decode(unb64(data.content.replace(/\n/g, ''))), sha: data.sha };
+  }
+  const br = await gh(token, `/repos/${owner}/${repo}/git/blobs/${data.sha}`);
+  if (!br.ok) return null;
+  const blob: any = await br.json();
+  if (blob.encoding !== 'base64' || typeof blob.content !== 'string') return null;
+  return { content: DEC.decode(unb64(blob.content.replace(/\n/g, ''))), sha: data.sha };
 }
 
 // Create/overwrite a file in a repo (reads current sha first).

@@ -149,7 +149,7 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
   if (!file && !path.includes('.')) file = files.find((f) => f.path === 'index.html');
   if (!file) return new Response('Not found', { status: 404 });
 
-  const ext = path.split('.').pop()?.toLowerCase() || 'txt';
+  const ext = (file.path.split('.').pop() || 'txt').toLowerCase();
   // For HTML, inject window.YIELD (agent ids + the entities/image SDK) plus the
   // error reporter for the auto bug-checker. Secrets are NOT injected — they live
   // in the user's own Cloudflare Worker backend, never in Yield or the frontend.
@@ -159,7 +159,7 @@ export async function serveProjectFile(c: Ctx, projectId: string, filePath: stri
     const { results: ags } = await listAgents(c.env, project.user_id, project.id);
     for (const a of ags) if (a.is_public) agentMap[a.name] = a.id;
     const sdk =
-      `window.YIELD=Object.assign(window.YIELD||{},{agents:${JSON.stringify(agentMap)}});` +
+      `window.YIELD=Object.assign(window.YIELD||{},{agents:${JSON.stringify(agentMap).replace(/<\/script>/gi, '<\\/script>')}});` +
       `window.YIELD.entities=(function(P){var H={'content-type':'application/json'},B='/api/apps/'+P+'/entities/';function jr(r){return r.json();}return{` +
       `list:function(e){return fetch(B+e).then(jr).then(function(d){return d.records||[];});},` +
       `create:function(e,d){return fetch(B+e,{method:'POST',headers:H,body:JSON.stringify(d||{})}).then(jr).then(function(x){return x.record;});},` +

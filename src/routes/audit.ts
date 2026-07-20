@@ -142,7 +142,7 @@ export async function auditResponse(
 
   if (!opts.stream) {
     // Cache deterministic results in the edge cache, keyed by a content hash (AI is not).
-    const cacheKey = !usesAI ? new Request(`https://audit.cache/${await sha256hex(level + files.map((f) => f.path + f.content).join(' '))}`) : null;
+    const cacheKey = !usesAI ? new Request(`https://audit.cache/${await sha256hex(level + ' ' + (source ?? '') + ' ' + files.map((f) => f.path + f.content).join(' '))}`) : null;
     if (cacheKey) {
       const hit = await caches.default.match(cacheKey).catch(() => undefined);
       if (hit) return new Response(hit.body, { headers: { 'content-type': 'application/json; charset=utf-8', 'x-audit-cache': 'hit' } });

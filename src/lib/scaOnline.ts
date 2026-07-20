@@ -78,15 +78,18 @@ async function osvScan(env: Env, deps: Dep[]): Promise<AuditFinding[] | null> {
     const d = uncached[i];
     const vulns = results[i]?.vulns || [];
     const hits: OsvHit[] = [];
+    let complete = true; // false if any vuln couldn't be fully resolved (budget/fetch)
     for (const vref of vulns) {
-      if (detailBudget <= 0) break;
+      if (detailBudget <= 0) { complete = false; break; }
       let full = detailCache.get(vref.id);
       if (!full) {
         try { const dr = await fetch(`${OSV}/vulns/${vref.id}`); if (dr.ok) { full = await dr.json(); detailCache.set(vref.id, full); detailBudget--; } } catch { /* skip */ }
       }
-      if (full) hits.push(summarizeVuln(full));
+      if (full) hits.push(summarizeVuln(full)); else complete = false;
     }
-    await env.KV.put(`osv:${d.ecosystem}:${d.name}:${d.version}`, JSON.stringify(hits), { expirationTtl: 86400 }).catch(() => {});
+    // Only cache when every matched vuln was resolved; a truncated/partial list must be
+    // re-queried next scan so vulnerable packages aren't reported clean for 24h.
+    if (complete) await env.KV.put(`osv:${d.ecosystem}:${d.name}:${d.version}`, JSON.stringify(hits), { expirationTtl: 86400 }).catch(() => {});
     for (const h of hits) findings.push(hitToFinding(d, h));
   }
   return findings;

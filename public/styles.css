@@ -219,13 +219,13 @@ a { color: inherit; text-decoration: none; }
 .pmax-btn, .attach-btn { display: inline-flex; align-items: center; gap: .35rem; }
 .pmax-btn.on .ic-svg, .example:hover .ex-emoji { color: currentColor; }
 .lc-head { display: flex; align-items: center; gap: .35rem; }
-.msg { padding: .75rem .9rem; border-radius: 10px; font-size: .92rem; line-height: 1.5; max-width: 90%; white-space: pre-wrap; }
+.msg { padding: .75rem .9rem; border-radius: 10px; font-size: .92rem; line-height: 1.5; max-width: 90%; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .msg.user { background: #20283a; align-self: flex-end; }
 .msg.ai { background: var(--panel); border: 1px solid var(--line); align-self: flex-start; }
 .msg.ai.streaming { border-color: var(--brand); }
 .msg .meta { font-size: .72rem; color: var(--muted); margin-bottom: .3rem; }
 .msg.flagged { background: #3a0f15; color: #ffc4ca; }
-.msg .body { white-space: normal; }
+.msg .body { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .msg .think { margin-bottom: .5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-2); }
 .msg .think summary { cursor: pointer; padding: .35rem .55rem; font-size: .78rem; color: var(--muted); list-style: none; }
 .msg .think summary::-webkit-details-marker { display: none; }
@@ -288,7 +288,7 @@ a { color: inherit; text-decoration: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .btn.working-btn { background: var(--panel-2); border-color: var(--brand); color: var(--brand-2); cursor: default; }
 .composer.busy { box-shadow: inset 3px 0 0 var(--brand); }
-.composer.busy::before { content: '⏳ Yield is working — new messages are scheduled'; display: block; font-size: .72rem; color: var(--brand-2); margin-bottom: .45rem; }
+.composer.busy::before { content: 'Yield is working — new messages are scheduled'; display: block; font-size: .72rem; color: var(--brand-2); margin-bottom: .45rem; }
 
 .composer { border-top: 1px solid var(--line); padding: .7rem; background: var(--panel); }
 .composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .5rem; }

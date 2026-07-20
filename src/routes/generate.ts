@@ -269,7 +269,10 @@ async function buildAttachmentContext(
   // Images: describe them with the vision model (best-effort).
   const imgs = atts.filter((a) => a.kind === 'image' && a.dataUrl);
   if (imgs.length) {
-    if (c.env.NVIDIA_API_KEY) {
+    // Gate on the ACTUAL vision endpoint (NVIDIA default OR a ZenMux VLM), not a
+    // hardcoded NVIDIA key — otherwise a valid ZenMux vision setup is silently ignored.
+    const v = visionEndpoint(c.env);
+    if (v.apiKey) {
       await send('status', { stage: `👁 Looking at ${imgs.length} image(s)…` });
       await heartbeat();
       const desc = await describeImages(c, prompt, imgs, signal);
@@ -1003,7 +1006,7 @@ export async function runBuild(
             const reason = shortReason(selErr);
             const tried = new Set<string>([activeModel.id]);
             for (let attempt = 0; attempt < 3 && !ok && !streamer.produced && !stopped(); attempt++) {
-              const choice = await routeModel(c, prompt, [...tried], signal);
+              const choice = await routeModel(c, buildPrompt, [...tried], signal);
               if (tried.has(choice.id)) break; // Auto has nothing new to suggest
               tried.add(choice.id);
               const fb = resolveModel(choice.id);
@@ -1048,7 +1051,7 @@ export async function runBuild(
       const reqs = result.research;
       await send('status', { stage: `Consulting ${reqs.length} helper AI(s)…` });
       await heartbeat();
-      const rctx = `App being built. Goal:\n${prompt.slice(0, 1400)}`;
+      const rctx = `App being built. Goal:\n${buildPrompt.slice(0, 1400)}`;
       const findings = await Promise.all(reqs.map(async (r) => {
         await send('status', { stage: `🔬 ${r.name} researching…` });
         await send('research', { name: r.name, status: 'working' });
@@ -1103,7 +1106,7 @@ export async function runBuild(
       await send('status', { stage: `Launching ${result.tasks.length} build agents…` });
       await heartbeat();
       const sharedContext =
-        `You are part of a team building ONE app. App goal:\n${prompt.slice(0, 1500)}\n\n` +
+        `You are part of a team building ONE app. App goal:\n${buildPrompt.slice(0, 1500)}\n\n` +
         `Orchestrator plan/notes:\n${(chatBody || '').slice(0, 2000)}` +
         (files.length ? `\n\nThe orchestrator already wrote these files — do NOT recreate them: ${files.map((f) => f.path).join(', ')}` : '');
       // Mark every agent as working up-front (roster appears immediately), then

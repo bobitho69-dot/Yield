@@ -48,7 +48,7 @@ export async function handleAuth(req: Request, c: Ctx, provider?: string, action
     // Only allow same-origin relative paths (a single leading slash, not "//evil.com")
     // — otherwise an attacker could craft a login link that redirects off-site.
     const reqRedirect = c.url.searchParams.get('redirect') || '/app';
-    const redirectTo = /^\/(?!\/)/.test(reqRedirect) ? reqRedirect : '/app';
+    const redirectTo = /^\/[^/\\]/.test(reqRedirect) ? reqRedirect : '/app';
     // Optional elevated scope (e.g. ?scope=repo&store_token=1) to enable code storage.
     const scopeOverride = c.url.searchParams.get('scope') || undefined;
     const storeToken = c.url.searchParams.get('store_token') === '1';

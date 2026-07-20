@@ -182,8 +182,10 @@ export async function handleVideo(req: Request, c: Ctx): Promise<Response> {
   const { prompt, ...opts } = body;
   const url = await generateVideo(c.env, String(prompt), opts);
   if (!url) return j({ error: 'Video API error (check VIDEO_API_URL / try a simpler prompt)' }, 502);
-  await recordGeneration(c);
-  await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_video' });
+  // Best-effort bookkeeping: the paid media already succeeded, so never fail the
+  // request (and prompt a retry / double-charge) on a D1 hiccup.
+  await recordGeneration(c).catch(() => {});
+  await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_video' }).catch(() => {});
   return j({ url });
 }
 
@@ -200,8 +202,10 @@ export async function handleModel3d(req: Request, c: Ctx): Promise<Response> {
   if (!body.prompt) return j({ error: 'prompt required' }, 400);
   const url = await generate3dModel(c.env, String(body.prompt), Number(body.seed) || 0);
   if (!url) return j({ error: '3D model API error (check TRELLIS_API_URL / try a simpler prompt)' }, 502);
-  await recordGeneration(c);
-  await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_3d' });
+  // Best-effort bookkeeping: the paid media already succeeded, so never fail the
+  // request (and prompt a retry / double-charge) on a D1 hiccup.
+  await recordGeneration(c).catch(() => {});
+  await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_3d' }).catch(() => {});
   return j({ url });
 }
 
@@ -219,9 +223,11 @@ export async function handleMedia(req: Request, c: Ctx): Promise<Response> {
   const body = (await req.json().catch(() => ({}))) as Record<string, any>;
   if (!body.prompt) return j({ error: 'prompt required' }, 400);
   const { prompt, ...opts } = body;
-  const url = await generateImage(c.env, prompt, opts);
+  const url = await generateImage(c.env, String(prompt), opts);
   if (!url) return j({ error: 'Media API error' }, 502);
-  await recordGeneration(c);
-  await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_image' });
+  // Best-effort bookkeeping: the paid media already succeeded, so never fail the
+  // request (and prompt a retry / double-charge) on a D1 hiccup.
+  await recordGeneration(c).catch(() => {});
+  await logUsage(c.env, { user_id: c.user?.id ?? null, kind: 'media_image' }).catch(() => {});
   return j({ url });
 }

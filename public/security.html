@@ -160,6 +160,7 @@
   .tier-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;max-width:820px;margin:1.5rem auto 0}
   .tcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1.3rem;text-align:center}
   .tcard.feat{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+  .pill{display:inline-block;background:var(--brand);color:#fff;font-size:.68rem;font-weight:800;padding:.15rem .55rem;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;margin-bottom:.4rem}
   .tcard .amt{font-size:2.2rem;font-weight:800} .tcard .amt small{font-size:1rem;color:var(--muted)}
   .tcard ul{list-style:none;padding:0;margin:1rem 0;text-align:left;font-size:.85rem;color:var(--muted);display:flex;flex-direction:column;gap:.35rem}
   @media (max-width:820px){ .mkt-feats,.tier-grid{grid-template-columns:1fr} .grid2{grid-template-columns:1fr}
@@ -562,7 +563,7 @@ function renderApp(){
       <div class="sb-foot">
         <a class="sb-item" data-view="settings"><span class="ic">${I('settings',18)}</span> Settings</a>
         <a class="sb-item" href="/app"><span class="ic" style="color:var(--brand)">◆</span> Yield</a>
-        <a class="sb-item" id="acct"><span class="ic">${I('user',18)}</span> ${S.github.login?'@'+esc(S.github.login):'Account'}</a>
+        <a class="sb-item" id="acct" data-view="settings"><span class="ic">${I('user',18)}</span> ${S.github.login?'@'+esc(S.github.login):'Account'}</a>
       </div>
     </aside>
     <main class="main">
@@ -1000,7 +1001,7 @@ async function subscribe(){ if(S.loginRequired){ location.href='/login?redirect=
 
 // ---------------- AI fix / ignore / export ----------------
 async function doIgnore(f,btn){ btn.disabled=true; btn.textContent='…';
-  await api('/api/security/ignores',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:S.sourceKey,type:f.type,file:f.location.file,line:f.location.line})});
+  await api('/api/security/ignores',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:S.sourceKey,type:f.type,file:f.location?.file||'',line:f.location?.line||1})});
   S.findings=S.findings.filter(x=>x!==f); toast('Ignored — excluded from your score'); (S.view==='findings'?renderFindings:()=>scanDone(S.result))(); }
 
 // AI fixes run as a background job on the server (see /api/security/fix-status) — a slow
@@ -1085,9 +1086,9 @@ function fixModal(f,fixed,payload){
 function download(name,text,mime){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:mime})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 function exportAs(fmt){ const stamp=new Date().toISOString().slice(0,10), fs=S.findings||[];
   if(fmt==='json') return download(`yield-security-${stamp}.json`,JSON.stringify(S.result,null,2),'application/json');
-  if(fmt==='sarif'){ const rules={}, results=fs.map(f=>{ rules[f.type]={id:f.type,name:f.type,properties:{cwe:f.cwe,'security-severity':({CRITICAL:'9.5',HIGH:'8',MEDIUM:'5',LOW:'3'})[f.severity]}}; return {ruleId:f.type,level:({CRITICAL:'error',HIGH:'error',MEDIUM:'warning',LOW:'note'})[f.severity]||'warning',message:{text:f.description},locations:[{physicalLocation:{artifactLocation:{uri:f.location.file},region:{startLine:f.location.line||1}}}]}; });
+  if(fmt==='sarif'){ const rules={}, results=fs.map(f=>{ rules[f.type]={id:f.type,name:f.type,properties:{cwe:f.cwe,'security-severity':({CRITICAL:'9.5',HIGH:'8',MEDIUM:'5',LOW:'3'})[f.severity]}}; return {ruleId:f.type,level:({CRITICAL:'error',HIGH:'error',MEDIUM:'warning',LOW:'note'})[f.severity]||'warning',message:{text:f.description},locations:[{physicalLocation:{artifactLocation:{uri:f.location?.file||''},region:{startLine:f.location?.line||1}}}]}; });
     return download(`yield-security-${stamp}.sarif`,JSON.stringify({version:'2.1.0',$schema:'https://json.schemastore.org/sarif-2.1.0.json',runs:[{tool:{driver:{name:'Yield Security',rules:Object.values(rules)}},results}]},null,2),'application/json'); }
-  const html=`<!doctype html><meta charset=utf-8><title>Yield Security report</title><style>body{font:14px system-ui;margin:2rem;color:#111}.s{font-weight:700}pre{background:#f5f5f5;padding:.4rem;border-radius:4px;white-space:pre-wrap}</style><h1>Yield Security report</h1><p>${esc(S.sourceKey||'')} · ${stamp} · health <b>${S.result?.codeHealthScore??'—'}/100</b> · ${fs.length} findings</p>${fs.map(f=>`<div style="border-left:3px solid #ccc;padding:.3rem .6rem;margin:.5rem 0"><span class="s">${f.severity}</span> <b>${esc(f.type)}</b> · ${esc(f.cwe)} · ${esc(f.location.file)}:${f.location.line}<br>${esc(f.description||'')}<br><b>Fix:</b> ${esc(f.fix||'')}</div>`).join('')}`;
+  const html=`<!doctype html><meta charset=utf-8><title>Yield Security report</title><style>body{font:14px system-ui;margin:2rem;color:#111}.s{font-weight:700}pre{background:#f5f5f5;padding:.4rem;border-radius:4px;white-space:pre-wrap}</style><h1>Yield Security report</h1><p>${esc(S.sourceKey||'')} · ${stamp} · health <b>${S.result?.codeHealthScore??'—'}/100</b> · ${fs.length} findings</p>${fs.map(f=>`<div style="border-left:3px solid #ccc;padding:.3rem .6rem;margin:.5rem 0"><span class="s">${f.severity}</span> <b>${esc(f.type)}</b> · ${esc(f.cwe)} · ${esc(f.location?.file||'')}:${f.location?.line||1}<br>${esc(f.description||'')}<br><b>Fix:</b> ${esc(f.fix||'')}</div>`).join('')}`;
   download(`yield-security-${stamp}.html`,html,'text/html');
 }
 

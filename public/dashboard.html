@@ -43,14 +43,33 @@
         : `<a class="btn ghost sm" href="/login">Sign in</a>`;
       if (me.user) document.getElementById('logout').onclick = async () => { await fetch('/api/auth/logout',{method:'POST'}); location.reload(); };
 
-      const res = await fetch('/api/projects');
       const content = document.getElementById('content');
+      let res;
+      try {
+        res = await fetch('/api/projects');
+      } catch (e) {
+        content.innerHTML = `<div class="empty-state"><h2>Couldn't load your projects</h2>
+          <p>Check your connection and try again.</p><button class="btn primary" onclick="location.reload()">Retry</button></div>`;
+        return;
+      }
       if (res.status === 401) {
         content.innerHTML = `<div class="empty-state"><h2>Sign in to see your projects</h2>
           <p>Your builds are saved to your account.</p><a class="btn primary" href="/login">Sign in</a></div>`;
         return;
       }
-      const { projects } = await res.json();
+      if (!res.ok) {
+        content.innerHTML = `<div class="empty-state"><h2>Couldn't load your projects</h2>
+          <p>Something went wrong on our end. Please try again.</p><button class="btn primary" onclick="location.reload()">Retry</button></div>`;
+        return;
+      }
+      let projects;
+      try {
+        ({ projects } = await res.json());
+      } catch (e) {
+        content.innerHTML = `<div class="empty-state"><h2>Couldn't load your projects</h2>
+          <p>Something went wrong on our end. Please try again.</p><button class="btn primary" onclick="location.reload()">Retry</button></div>`;
+        return;
+      }
       let cards = `<div class="proj-card new-card" onclick="location.href='/app'">＋ New app</div>`;
       if (projects && projects.length) {
         cards += projects.map(p => `
@@ -61,7 +80,7 @@
             <div class="proj-body">
               <h3>${p.logo ? `<img class="proj-logo" src="data:image/svg+xml,${encodeURIComponent(p.logo)}" alt="" loading="lazy">` : ''}${esc(p.title)}</h3>
               ${p.description ? `<p class="proj-desc">${esc(p.description)}</p>` : ''}
-              <span class="when">edited ${ago(p.updated_at)}${p.github_url ? ' · <a href="'+p.github_url+'" target="_blank" style="color:var(--brand-2)">GitHub ↗</a>' : ''}</span>
+              <span class="when">edited ${ago(p.updated_at)}${p.github_url && /^https:\/\//.test(p.github_url) ? ' · <a href="'+esc(p.github_url)+'" target="_blank" rel="noopener noreferrer" style="color:var(--brand-2)">GitHub ↗</a>' : ''}</span>
               <div class="proj-actions">
                 <a class="btn primary sm" href="/app?project=${p.id}">Open</a>
                 <button class="btn ghost sm" onclick="del('${p.id}')">Delete</button>

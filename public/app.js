@@ -295,7 +295,7 @@ function renderQuota(s) {
 
 function renderMessages(msgs) {
   const m = $('#messages');
-  if (!msgs.length) return;
+  if (!msgs.length) { m.innerHTML = ''; renderEmptyChat(); return; }
   m.innerHTML = msgs
     .map((x) => {
       if (x.flagged) return `<div class="msg user flagged">${esc(x.content)}<div class="meta">⚠ blocked by safety guard</div></div>`;

@@ -309,11 +309,12 @@ async function runCode(c: Ctx, body: CodeBody, send: SendFn, signal?: AbortSigna
   }
 
   const hasFiles = files.length > 0;
-  const chatText = (result.chat || (hasFiles ? 'Applied your changes.' : 'Done.')) + agentNote +
+  let chatText = (result.chat || (hasFiles ? 'Applied your changes.' : 'Done.')) + agentNote +
     (stopped() ? '\n\n■ Stopped early — kept what was written so far.' : '');
 
   // Commit to GitHub (repo mode) — one commit per changed file, like the builder's push.
   const committed: string[] = [];
+  const failed: string[] = [];
   if (mode === 'repo' && token && hasFiles && !stopped()) {
     await send('status', { stage: `Committing ${files.length} file(s) to ${body.repo}…` });
     const msg = `Yield Code: ${prompt.slice(0, 60).replace(/\s+/g, ' ').trim() || 'update'}`;
@@ -323,8 +324,14 @@ async function runCode(c: Ctx, body: CodeBody, send: SendFn, signal?: AbortSigna
         committed.push(f.path);
         await send('committed', { path: f.path });
       } catch (e) {
+        failed.push(f.path);
         await send('status', { stage: `Could not commit ${f.path}: ${shortReason(e)}` });
       }
+    }
+    if (failed.length) {
+      chatText += committed.length
+        ? `\n\n■ Committed ${committed.length} of ${files.length} file(s); ${failed.length} could not be pushed: ${failed.join(', ')}.`
+        : `\n\n■ Could not push any of the ${files.length} file(s) to ${body.repo}: ${failed.join(', ')}.`;
     }
   }
 
@@ -336,6 +343,7 @@ async function runCode(c: Ctx, body: CodeBody, send: SendFn, signal?: AbortSigna
     repo: body.repo || null,
     branch: body.branch || null,
     committed,
+    failed,
     githubUrl: mode === 'repo' && body.repo ? `https://github.com/${body.repo}` : null,
     model: model.id,
     label: model.label,

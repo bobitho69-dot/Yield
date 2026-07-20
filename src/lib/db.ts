@@ -364,16 +364,17 @@ export function getIntegrations(env: Env, userId: string): Promise<IntegrationRo
 export async function setIntegrations(env: Env, userId: string, f: Partial<IntegrationRow>): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO security_integrations (user_id,slack_webhook,jira_base,jira_email,jira_token_enc,jira_project,post_pr_comments,post_commit_status,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,COALESCE(?,1),COALESCE(?,1),?)
        ON CONFLICT(user_id) DO UPDATE SET
          slack_webhook=COALESCE(excluded.slack_webhook, security_integrations.slack_webhook),
          jira_base=COALESCE(excluded.jira_base, security_integrations.jira_base),
          jira_email=COALESCE(excluded.jira_email, security_integrations.jira_email),
          jira_token_enc=COALESCE(excluded.jira_token_enc, security_integrations.jira_token_enc),
          jira_project=COALESCE(excluded.jira_project, security_integrations.jira_project),
-         post_pr_comments=excluded.post_pr_comments, post_commit_status=excluded.post_commit_status, updated_at=excluded.updated_at`,
+         post_pr_comments=COALESCE(?, security_integrations.post_pr_comments), post_commit_status=COALESCE(?, security_integrations.post_commit_status), updated_at=excluded.updated_at`,
   ).bind(userId, f.slack_webhook ?? null, f.jira_base ?? null, f.jira_email ?? null, f.jira_token_enc ?? null, f.jira_project ?? null,
-    f.post_pr_comments ?? 1, f.post_commit_status ?? 1, now()).run();
+    f.post_pr_comments ?? null, f.post_commit_status ?? null, now(),
+    f.post_pr_comments ?? null, f.post_commit_status ?? null).run();
 }
 
 // Aggregate the latest score per scanned source for the overview dashboard.

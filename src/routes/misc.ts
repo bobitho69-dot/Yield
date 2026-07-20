@@ -5,14 +5,15 @@
 
 import type { Ctx } from '../types';
 import { json } from '../lib/response';
-import { CODER_MODELS, ROUTER_MODEL, endpointFor, pickerModels, visionEndpoint } from '../config/models';
+import { activeCoderModels, ROUTER_MODEL, endpointFor, pickerModels, visionEndpoint } from '../config/models';
+import { workersAiConfigured, workersAiChat } from '../lib/workersai';
 import { getUsageState, usageSnapshot } from '../lib/usage';
 import { enabledProviders } from '../lib/auth';
 import { chat } from '../lib/nvidia';
 import { checkPrompt } from '../lib/jailbreak';
 
-export function handleModels(): Response {
-  return json({ models: pickerModels() });
+export function handleModels(c: Ctx): Response {
+  return json({ models: pickerModels(c.env) });
 }
 
 export async function handleStatus(c: Ctx): Promise<Response> {
@@ -70,7 +71,23 @@ async function probeModels(c: Ctx): Promise<ModelHealth[]> {
     if (hit) return await hit.json();
   } catch { /* probe fresh */ }
 
-  const coders = CODER_MODELS.map((m) => probeChat(m.id, m.label, 'coder', endpointFor(c.env, m)));
+  // Probe every offered coder — including the in-house Yield AI when it's configured.
+  // Yield AI on the Cloudflare Workers AI backend has no HTTP endpoint, so probe it via
+  // the AI binding instead of a chat-completions URL.
+  const probeYieldAiWA = async (): Promise<ModelHealth> => {
+    const t0 = Date.now();
+    try {
+      await workersAiChat(c.env, [{ role: 'user', content: 'ping' }], { max_tokens: 1, temperature: 0 });
+      return { id: 'yield-ai', label: 'Yield AI 1.1', status: 'operational', latencyMs: Date.now() - t0, group: 'coder' };
+    } catch (e: any) {
+      return { id: 'yield-ai', label: 'Yield AI 1.1', status: classifyProbe(e), latencyMs: Date.now() - t0, group: 'coder' };
+    }
+  };
+  const coders = activeCoderModels(c.env).map((m) =>
+    m.id === 'yield-ai' && workersAiConfigured(c.env)
+      ? probeYieldAiWA()
+      : probeChat(m.id, m.label, 'coder', endpointFor(c.env, m)),
+  );
 
   // Utility AIs: the Auto router + the vision (image-understanding) model share the chat
   // probe; the jailbreak guard has its own classify API, so probe it via checkPrompt.

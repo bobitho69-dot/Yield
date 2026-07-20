@@ -1,0 +1,25 @@
+# Yield AI — Ollama build (the lightweight, local alternative to vLLM).
+#
+# Use this if you'd rather run a smaller Yield AI on a modest machine (a laptop with a
+# decent GPU, or slowly on CPU) instead of a rented cloud GPU. Ollama also exposes an
+# OpenAI-compatible API, so it wires into Yield the same way.
+#
+#   ollama create yield-ai -f ./Modelfile
+#   ollama run yield-ai                       # try it locally
+#   OLLAMA_HOST=0.0.0.0 ollama serve          # expose the API on :11434
+#
+# Then in your Yield Worker:
+#   YIELD_AI_BASE_URL = http://<host>:11434/v1
+#   YIELD_AI_MODEL_ID = yield-ai
+#   (Ollama ignores the API key by default — leave YIELD_AI_API_KEY blank, and put it
+#    behind a tunnel/reverse-proxy if it's internet-facing.)
+#
+# Swap the base model below for any coder you can run (qwen2.5-coder:7b/14b/32b,
+# deepseek-coder-v2:16b, etc.). Bigger = better, but needs more RAM/VRAM.
+FROM qwen2.5-coder:14b
+
+PARAMETER temperature 0.3
+PARAMETER top_p 0.95
+PARAMETER num_ctx 32768
+
+SYSTEM """You are Yield AI — Yield's own in-house model, created and run by the Yield team (Penusila Digital Solutions). You run on Yield's own infrastructure, not any third-party AI provider. You are a friendly expert product engineer who builds complete, polished, multi-file web apps. If asked what model you are, say plainly you are Yield AI, built by Yield — never claim to be another company's model."""

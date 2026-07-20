@@ -58,6 +58,13 @@ class_name = "BuildSession"
 tag = "v1"
 new_sqlite_classes = ["BuildSession"]
 
+# --- Workers AI: powers the in-house "Yield AI" model on Cloudflare's own GPUs ---------
+# Declaring this binding is free. It's only USED when YIELD_AI_BACKEND="workers-ai" (see
+# [vars] below); otherwise it sits idle. Lets Yield AI run a Workers AI base model plus your
+# uploaded LoRA with no external provider. See yield-ai/cloudflare.md.
+[ai]
+binding = "AI"
+
 # --- Cron: daily re-scan of monitored repos (Yield Security continuous monitoring) ----
 [triggers]
 crons = ["0 6 * * *"]
@@ -128,6 +135,27 @@ VIDEO_API_MODEL = ""
 # image pre-pass — they are never offered as coder models.
 VISION_MODEL = "qwen/qwen3.5-397b-a17b"
 
+# ── Yield AI — your OWN in-house model (optional) ──────────────────────────────
+# Yield AI is not a third-party API — it's YOUR model. Two ways to run it (see /yield-ai):
+#
+# 1) Cloudflare Workers AI (cheapest — runs on Cloudflare's own GPUs, free daily allowance,
+#    LoRA free in beta). Set YIELD_AI_BACKEND="workers-ai", pick a base model, and (optionally)
+#    the name of a LoRA you uploaded. Needs the [ai] binding below.
+#      YIELD_AI_BACKEND  "workers-ai"
+#      YIELD_AI_MODEL_ID e.g. "@cf/meta/llama-3.1-8b-instruct"  (a Workers AI base model)
+#      YIELD_AI_LORA     e.g. "yield-ai"  (a fine-tune you uploaded; leave blank for base only)
+#
+# 2) Self-hosted (any model, full control) — run vLLM/Ollama on a GPU you rent and point here:
+#      YIELD_AI_BASE_URL your server, e.g. "https://<your-gpu-host>:8000/v1"
+#      YIELD_AI_MODEL_ID the --served-model-name you launched with (default "yield-ai")
+#      (set YIELD_AI_API_KEY as a real secret if the server uses --api-key)
+#
+# Set EITHER backend and "Yield AI" appears in the picker; leave both blank and it's hidden.
+YIELD_AI_BACKEND = "workers-ai"
+YIELD_AI_BASE_URL = ""
+YIELD_AI_MODEL_ID = "@cf/mistral/mistral-7b-instruct-v0.2-lora"
+YIELD_AI_LORA = "yield-ai-1-1"
+
 # OAuth is OPTIONAL — email + password login works without it. These placeholders
 # let the app deploy today; the login UI auto-hides GitHub/Google until they're real.
 # To enable later: put your real Client ID values here, and for each *_SECRET set a
@@ -152,6 +180,7 @@ ROBLOX_CLIENT_SECRET = "PLACEHOLDER_ROBLOX_CLIENT_SECRET"
 #   YIELDNVIDIAAIKEY          nvapi-...  optional DEDICATED key for the security-audit feature (so it's metered/keyed separately). Falls back to NVIDIA_API_KEY.
 #   OPENROUTER_API_KEY        optional — only for Qwen3 Coder / Laguna (the two OpenRouter models). Omit and they just fall back.
 #   ZEMUZAPI                  optional — ONE ZenMux (zenmux.ai) key for all its free models: the coder models Claude Sonnet 5 / Fable 5, GLM 4.7 Flash, Step 3.7 Flash, plus the ZenMux vision models (GLM-4.6V, Gemini image) when VISION_MODEL points at one. Omit and those models just fall back.
+#   YIELD_AI_API_KEY          optional — the key your OWN Yield AI server expects (vLLM --api-key). Omit if your server has no auth. This is YOUR server's key, not a provider key.
 #   GITHUB_WEBHOOK_SECRET     optional — enables Yield Security continuous monitoring (scan-on-push). Random 32+ byte string; set on the repo webhook automatically.
 #   SESSION_SECRET            random 32+ byte string (HMAC for session cookies)
 #   # GitHub/Google OAuth are OPTIONAL placeholder vars above (email+password works

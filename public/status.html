@@ -8,11 +8,11 @@
   <link rel="stylesheet" href="/styles.css" />
   <style>
     :root {
-      --bg: #1a1917; --bg-2: #201e1b; --panel: #262523; --panel-2: #2f2d29; --panel-3: #38352f;
-      --line: #3b3833; --line-strong: #4b473f;
-      --text: #f3f0e9; --muted: #aba498; --faint: #7c7469;
-      --brand: #d97757; --brand-2: #89a06a;
-      --ok: #89a06a; --warn: #d4a03e; --err: #d6564d;
+      --bg: #0a0c11; --bg-2: #0d1017; --panel: #141823; --panel-2: #1a1f2b; --panel-3: #212838;
+      --line: #232a39; --line-strong: #313a4d;
+      --text: #f2f4f8; --muted: #98a2b8; --faint: #5e6880;
+      --brand: #7c5cff; --brand-2: #00d4b4;
+      --ok: #3ecf8e; --warn: #e8c24a; --err: #f0566d;
       --font-mono-stack: var(--font-mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
       --font-disp-stack: var(--font-display, "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif);
       --font-body-stack: var(--font-body, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
@@ -33,7 +33,7 @@
     .nav {
       position: sticky; top: 0; z-index: 20; height: 56px;
       display: flex; align-items: center; justify-content: space-between; gap: 16px;
-      background: rgba(26,25,23,.92); border-bottom: 1px solid var(--line);
+      background: rgba(10,12,17,.92); border-bottom: 1px solid var(--line);
       margin: 0 -24px 0; padding: 0 24px;
     }
     .nav-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -49,7 +49,7 @@
       font-family: var(--font-body-stack); font-size: .82rem; font-weight: 600; color: #fff; background: var(--brand);
       padding: 8px 14px; border-radius: 8px; border: 1px solid transparent; line-height: 1; margin-left: 4px;
     }
-    .btn-primary:hover { background: #e08a6d; text-decoration: none; }
+    .btn-primary:hover { background: #8f70ff; text-decoration: none; }
 
     /* ---- Verdict band ---- */
     .banner {
@@ -158,7 +158,7 @@
       background: var(--brand); color: #fff; border: 1px solid transparent; border-radius: 8px;
       padding: 9px 12px; font-family: var(--font-body-stack); font-size: .82rem; font-weight: 600; cursor: pointer;
     }
-    .sub-form button:hover { background: #e08a6d; }
+    .sub-form button:hover { background: #8f70ff; }
   </style>
 </head>
 <body>

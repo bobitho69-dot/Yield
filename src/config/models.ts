@@ -401,6 +401,22 @@ export function isYieldAIConfigured(env: Env): boolean {
 }
 
 /**
+ * True once at least one HOSTED provider key is configured — i.e. the strong models can
+ * actually run. NVIDIA_API_KEY unlocks the whole NVIDIA catalog + Auto router + guard;
+ * ZEMUZAPI unlocks the free ZenMux models (Claude Sonnet 5, …); OPENROUTER_API_KEY unlocks
+ * Qwen3 Coder / Laguna. When NONE are set, the only working model is the keyless in-house
+ * Yield AI (Workers AI) — which is weak — so callers surface a clear "set a key" message
+ * instead of failing with a bare 401 that reads like the app is broken.
+ */
+export function hostedAIConfigured(env: Env): boolean {
+  return !!(
+    (envGet(env, 'NVIDIA_API_KEY') || '').trim() ||
+    (envGet(env, 'ZEMUZAPI') || '').trim() ||
+    (envGet(env, 'OPENROUTER_API_KEY') || '').trim()
+  );
+}
+
+/**
  * The coder models that are actually offered right now. Yield AI (the small in-house model)
  * is appended LAST — offered but never featured — ONLY when its server is configured;
  * otherwise it's omitted so it never appears as a dead option. The strong hosted roster

@@ -11,7 +11,7 @@
 import type { Ctx } from '../types';
 import { sse, error } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
-import { resolveModel, endpointsFor } from '../config/models';
+import { resolveModel, endpointsFor, hostedAIConfigured } from '../config/models';
 import { chatStream } from '../lib/nvidia';
 import { workersAiConfigured, workersAiStream, compactWAMessages } from '../lib/workersai';
 import { CHAT_SYSTEM, YIELD_AI_CHAT_SYSTEM } from '../lib/prompts';
@@ -110,6 +110,19 @@ export async function handleChat(req: Request, c: Ctx): Promise<Response> {
 
       // 2) Resolve the model (Auto → route via gpt-oss-20b on the latest user turn).
       let modelId = body.model || 'auto';
+      // No hosted-AI key configured → the strong models (and Auto) can't run at all, and a
+      // bare 401 reads like the app is broken. Tell the owner exactly what to set instead of
+      // firing a doomed request. (The keyless in-house Yield AI still works if picked.)
+      if (modelId !== 'yield-ai' && !hostedAIConfigured(c.env)) {
+        await send('error', {
+          message:
+            "No AI provider key is configured, so the hosted models can't run yet. Set NVIDIA_API_KEY " +
+            "(unlocks every model + Auto) — or the free ZEMUZAPI (Claude Sonnet 5) / OPENROUTER_API_KEY — " +
+            'as a Cloudflare secret. Until then, pick "Yield AI 1.1 (beta)" in the model menu; it\'s the ' +
+            'only model that runs without a key (and it\'s small, so keep prompts simple).',
+        });
+        return;
+      }
       let routeReason: string | undefined;
       if (modelId === 'auto') {
         const choice = await routeModel(c, lastUser.content);

@@ -16,7 +16,7 @@
 import type { Ctx } from '../types';
 import { sse, json, error } from '../lib/response';
 import { checkPrompt } from '../lib/jailbreak';
-import { resolveModel, endpointsFor, pickerModels } from '../config/models';
+import { resolveModel, endpointsFor, pickerModels, hostedAIConfigured } from '../config/models';
 import { chatStream } from '../lib/nvidia';
 import { workersAiConfigured, workersAiStream, compactWAMessages } from '../lib/workersai';
 import { CODE_SYSTEM, YIELD_AI_IDENTITY } from '../lib/prompts';
@@ -169,6 +169,18 @@ async function runCode(c: Ctx, body: CodeBody, send: SendFn, signal?: AbortSigna
 
   // Resolve model (Auto → route).
   let modelId = body.model || 'auto';
+  // No hosted-AI key → the strong coders (and Auto) can't run. The in-house Yield AI is a
+  // small model and weak at real code, so don't silently steer a coding task onto it — tell
+  // the owner what to set. (If they explicitly pick Yield AI, that path still runs below.)
+  if (modelId !== 'yield-ai' && !hostedAIConfigured(c.env)) {
+    await send('error', {
+      message:
+        "No AI provider key is configured, so the coder models can't run yet. Set NVIDIA_API_KEY " +
+        '(unlocks every model + Auto) — or the free ZEMUZAPI / OPENROUTER_API_KEY — as a Cloudflare ' +
+        'secret. The in-house Yield AI runs without a key, but it\'s small and weak at real coding.',
+    });
+    return;
+  }
   let routeReason: string | undefined;
   if (modelId === 'auto') {
     await send('status', { stage: 'Picking the best model' });

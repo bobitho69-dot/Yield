@@ -80,13 +80,21 @@
     .cc-chip span { display: block; color: var(--text); font-size: .92rem; line-height: 1.45; }
     @media (max-width: 640px) { .cc-suggest { grid-template-columns: 1fr; } .cc-empty h2 { font-size: 2rem; } }
 
-    /* ----- Message turn (role-rail transcript) ----- */
-    .msg { display: block; }
-    .msg .av { display: none; }
-    .msg .body { min-width: 0; }
-    .msg.ai .body { border-left: 2px solid var(--line); padding-left: 18px; }
-    .msg .who { font-family: var(--font-mono); font-size: .7rem; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
-    .msg .who .mdl { font-family: var(--font-mono); color: var(--brand-2); font-weight: 500; }
+    /* ----- Message turn (Claude Code / Codex conversation log — left-aligned,
+       role-labelled; the user's turn sits in a quiet panel, the AI answers as
+       clean prose beneath its label). Scoped to .cc-thread-inner so it overrides
+       the LEGACY shared .msg chat rules in styles.css (which right-align + box
+       every turn, and are still used by the builder + Roblox surfaces). ----- */
+    .cc-thread-inner .msg { display: block; max-width: none; padding: 0; border: 0; border-radius: 0; background: none; align-self: stretch; white-space: normal; }
+    .cc-thread-inner .msg .av { display: none; }
+    .cc-thread-inner .msg .body { min-width: 0; }
+    .cc-thread-inner .msg .who { font-family: var(--font-mono); font-size: .68rem; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); margin-bottom: 9px; display: flex; align-items: center; gap: 7px; }
+    .cc-thread-inner .msg .who::before { content: ""; width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+    .cc-thread-inner .msg.user .who::before { background: var(--muted); }
+    .cc-thread-inner .msg.ai .who::before { background: var(--brand); }
+    .cc-thread-inner .msg .who .mdl { font-family: var(--font-mono); color: var(--brand-2); font-weight: 500; }
+    .cc-thread-inner .msg.user .prose { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: .7rem .95rem; }
+    .cc-thread-inner .msg.user .prose p { margin: 0; }
 
     .prose { font-size: 1rem; line-height: 1.7; color: var(--text); overflow-wrap: anywhere; }
     .prose > *:first-child { margin-top: 0; } .prose > *:last-child { margin-bottom: 0; }
@@ -106,22 +114,25 @@
     .cursor-blink::after { content: ""; display: inline-block; width: .5em; height: 1.05em; vertical-align: text-bottom; background: var(--brand-2); margin-left: 2px; animation: ccblink 1s steps(2) infinite; }
     @keyframes ccblink { 50% { opacity: 0; } }
 
-    /* ----- Thinking disclosure (mono trace) ----- */
-    .think { margin: 0 0 .85rem; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); overflow: hidden; }
-    .think summary { cursor: pointer; padding: .55rem .8rem; font-family: var(--font-mono); font-size: .72rem; letter-spacing: .04em; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 8px; }
-    .think summary::-webkit-details-marker { display: none; }
-    .think summary::after { content: ""; width: 12px; height: 12px; margin-left: auto; background-color: var(--faint); transition: transform .15s;
+    /* ----- Thinking disclosure (mono trace, collapsible row — the Claude Code /
+       Codex "tool row" feel). Scoped + a marker reset to beat the legacy
+       .msg .think ▸/▾ styling in styles.css. ----- */
+    .cc-thread-inner .think { margin: 0 0 .85rem; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); overflow: hidden; }
+    .cc-thread-inner .think summary { cursor: pointer; padding: .55rem .8rem; font-family: var(--font-mono); font-size: .72rem; letter-spacing: .04em; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 8px; }
+    .cc-thread-inner .think summary::-webkit-details-marker { display: none; }
+    .cc-thread-inner .think summary::before { content: none; }
+    .cc-thread-inner .think summary::after { content: ""; width: 12px; height: 12px; margin-left: auto; background-color: var(--faint); transition: transform .15s;
       -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
       mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat; }
-    .think[open] summary::after { transform: rotate(90deg); }
-    .think summary .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-2); flex: 0 0 auto; }
-    .think .tc { padding: .3rem .9rem .8rem; font-family: var(--font-mono); font-size: .78rem; color: var(--faint); white-space: pre-wrap; line-height: 1.55; max-height: 260px; overflow-y: auto; }
+    .cc-thread-inner .think[open] summary::after { transform: rotate(90deg); }
+    .cc-thread-inner .think summary .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-2); flex: 0 0 auto; }
+    .cc-thread-inner .think .tc { padding: .3rem .9rem .8rem; font-family: var(--font-mono); font-size: .78rem; color: var(--faint); white-space: pre-wrap; line-height: 1.55; max-height: 260px; overflow-y: auto; }
 
-    /* ----- Composer ----- */
+    /* ----- Composer (Claude Code / Codex pattern: one rounded box — textarea on
+       top, a control bar of chips along the bottom, send pinned bottom-right) ----- */
     .cc-composer { border-top: 1px solid var(--line); padding: .85rem 0 1rem; background: var(--bg-2); }
     .cc-composer-inner { max-width: 780px; margin: 0 auto; padding: 0 1.5rem; }
-    .cc-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-    .cc-ctx { margin-left: auto; font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+    .cc-ctx { font-family: var(--font-mono); font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); white-space: nowrap; }
 
     .cc-model { position: relative; }
     .model-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: .4rem .65rem; font-family: var(--font-mono); font-size: .74rem; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; transition: border-color .15s; }
@@ -143,19 +154,23 @@
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%235e6880' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right .5rem center; background-size: 13px; }
     .think-sel:hover { border-color: var(--line-strong); }
 
-    .cc-inputwrap { display: flex; align-items: flex-end; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: .5rem .5rem .5rem .9rem; transition: border-color .15s, box-shadow .15s; }
+    .cc-inputwrap { display: flex; flex-direction: column; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: .55rem .6rem .5rem; transition: border-color .15s, box-shadow .15s; }
     .cc-inputwrap:focus-within { border-color: var(--line-strong); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-2) 40%, transparent); }
-    #ccInput { flex: 1; background: transparent; border: none; color: var(--text); font-family: var(--font-body); font-size: 1rem; line-height: 1.55; resize: none; max-height: 200px; padding: .4rem 0; outline: none; }
+    #ccInput { width: 100%; background: transparent; border: none; color: var(--text); font-family: var(--font-body); font-size: 1rem; line-height: 1.55; resize: none; max-height: 200px; padding: .3rem .3rem .1rem; outline: none; }
     #ccInput::placeholder { color: var(--faint); }
 
-    .cc-send { background: var(--brand); border: none; color: #fff; width: 38px; height: 38px; border-radius: 10px; cursor: pointer; display: grid; place-items: center; flex: 0 0 auto; transition: background .15s; }
+    /* bottom control bar, inside the same box */
+    .cc-bar { display: flex; align-items: center; gap: 7px; }
+    .cc-bar .spacer { flex: 1; }
+
+    .cc-send { background: var(--brand); border: none; color: #fff; width: 34px; height: 34px; border-radius: 9px; cursor: pointer; display: grid; place-items: center; flex: 0 0 auto; transition: background .15s; }
     .cc-send:hover { background: #8f70ff; }
     .cc-send:disabled { opacity: .4; cursor: default; }
     .cc-send svg { display: block; }
-    .cc-stop { background: color-mix(in srgb, var(--danger) 14%, var(--panel)); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); width: 38px; height: 38px; border-radius: 10px; cursor: pointer; display: grid; place-items: center; flex: 0 0 auto; }
+    .cc-stop { background: color-mix(in srgb, var(--danger) 14%, var(--panel)); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); width: 34px; height: 34px; border-radius: 9px; cursor: pointer; display: grid; place-items: center; flex: 0 0 auto; }
     .cc-stop svg { display: block; }
 
-    .cc-foot-note { text-align: left; color: var(--faint); font-family: var(--font-mono); font-size: .68rem; letter-spacing: .04em; margin-top: 10px; }
+    .cc-foot-note { text-align: center; color: var(--faint); font-family: var(--font-mono); font-size: .66rem; letter-spacing: .04em; margin-top: 9px; }
 
     /* ----- Mobile ----- */
     .cc-menu { display: none; }
@@ -227,28 +242,29 @@
 
       <div class="cc-composer">
         <div class="cc-composer-inner">
-          <div class="cc-controls">
-            <div class="cc-model">
-              <button class="model-btn" id="ccModelBtn" type="button" title="Choose the AI model">
-                <span class="model-btn-dot"></span><span id="ccModelLabel">Auto</span><span class="caret" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
-              </button>
-              <div class="model-panel hidden" id="ccModelPanel"></div>
-            </div>
-            <select class="think-sel" id="ccThink" title="How hard the AI thinks before answering">
-              <option value="low">Fast</option>
-              <option value="medium" selected>Balanced</option>
-              <option value="high">Max</option>
-            </select>
-            <span class="cc-ctx">15+ models · Auto</span>
-          </div>
           <form class="cc-inputwrap" id="ccForm">
-            <textarea id="ccInput" rows="1" placeholder="Message Yield Chat…"></textarea>
-            <button class="cc-stop hidden" id="ccStop" type="button" title="Stop" aria-label="Stop">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-            </button>
-            <button class="cc-send" id="ccSend" type="submit" title="Send" aria-label="Send" disabled>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg>
-            </button>
+            <textarea id="ccInput" rows="1" placeholder="Reply to Yield…"></textarea>
+            <div class="cc-bar">
+              <div class="cc-model">
+                <button class="model-btn" id="ccModelBtn" type="button" title="Choose the AI model">
+                  <span class="model-btn-dot"></span><span id="ccModelLabel">Auto</span><span class="caret" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+                </button>
+                <div class="model-panel hidden" id="ccModelPanel"></div>
+              </div>
+              <select class="think-sel" id="ccThink" title="How hard the AI thinks before answering">
+                <option value="low">Fast</option>
+                <option value="medium" selected>Balanced</option>
+                <option value="high">Max</option>
+              </select>
+              <span class="spacer"></span>
+              <span class="cc-ctx">15+ models</span>
+              <button class="cc-stop hidden" id="ccStop" type="button" title="Stop" aria-label="Stop">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              </button>
+              <button class="cc-send" id="ccSend" type="submit" title="Send" aria-label="Send" disabled>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg>
+              </button>
+            </div>
           </form>
           <div class="cc-foot-note">Yield can make mistakes. Prompts pass an automatic safety guard.</div>
         </div>

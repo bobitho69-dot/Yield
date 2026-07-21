@@ -139,7 +139,8 @@
   async function loadModels() {
     try {
       const r = await fetch('/api/models'); const j = await r.json();
-      if (j && Array.isArray(j.models)) models = [models[0], ...j.models];
+      // /api/models already includes Auto first — drop it so we don't list Auto twice.
+      if (j && Array.isArray(j.models)) models = [models[0], ...j.models.filter((m) => m.id !== 'auto')];
     } catch { /* keep default */ }
     renderModelPanel();
   }

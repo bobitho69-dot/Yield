@@ -59,7 +59,8 @@
     try {
       const r = await fetch('/api/code/status'); const j = await r.json();
       state.github = j.github || state.github;
-      if (Array.isArray(j.models)) state.models = [state.models[0], ...j.models];
+      // status already includes Auto first — drop it so we don't list Auto twice.
+      if (Array.isArray(j.models)) state.models = [state.models[0], ...j.models.filter((m) => m.id !== 'auto')];
       state.projects = j.projects || [];
     } catch {}
     renderConn(); renderModelPanel(); renderProjects(); renderMcp();

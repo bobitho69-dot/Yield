@@ -87,15 +87,17 @@ const zenmux = (): ProviderConfig => ({ apiKeyEnv: 'ZEMUZAPI', baseUrl: ZENMUX_B
 // so it never shows as a broken option before the server exists.
 export const YIELD_AI_MODEL: ModelDef = {
   id: 'yield-ai',
-  label: 'Yield AI 1.1',
+  label: 'Yield AI 1.1 (beta)',
   modelId: 'yield-ai',
   modelIdEnv: 'YIELD_AI_MODEL_ID',
   role: 'coder',
-  tier: 'pro',
+  // A small in-house base model — NOT a flagship. Kept in the 'flash' tier so it's never
+  // sorted or presented as a top-quality coder; Auto and the fallback ladder never pick it.
+  tier: 'flash',
   speed: 3,
-  blurb: "Yield's own in-house model — self-hosted and private, no third-party AI provider.",
+  blurb: "Yield's own small in-house model — private & self-hosted. Best for quick, simple chat; pick a hosted model (or Auto) for real coding.",
   pros: ['In-house & private — runs on your own server', 'No external AI API involved', 'Yours to fine-tune and specialize'],
-  cons: ['Needs your Yield AI server running (a GPU)', 'Quality scales with the hardware you give it'],
+  cons: ['A small model — much weaker than the hosted coders, especially on real code', 'Can ramble or repeat on vague prompts', 'Experimental — use Auto or a hosted model for anything serious'],
   provider: { apiKeyEnv: 'YIELD_AI_API_KEY', baseUrlEnv: 'YIELD_AI_BASE_URL' },
 };
 
@@ -399,12 +401,13 @@ export function isYieldAIConfigured(env: Env): boolean {
 }
 
 /**
- * The coder models that are actually offered right now. Yield AI (the in-house model) is
- * prepended — featured first — ONLY when its server is configured; otherwise it's omitted
- * so it never appears as a dead option. Everything else is the standard hosted roster.
+ * The coder models that are actually offered right now. Yield AI (the small in-house model)
+ * is appended LAST — offered but never featured — ONLY when its server is configured;
+ * otherwise it's omitted so it never appears as a dead option. The strong hosted roster
+ * leads, so users land on capable models by default instead of the weak in-house one.
  */
 export function activeCoderModels(env: Env): ModelDef[] {
-  return isYieldAIConfigured(env) ? [YIELD_AI_MODEL, ...CODER_MODELS] : CODER_MODELS;
+  return isYieldAIConfigured(env) ? [...CODER_MODELS, YIELD_AI_MODEL] : CODER_MODELS;
 }
 
 /** Apply optional runtime overrides of modelId via a MODEL_OVERRIDES JSON var. */
